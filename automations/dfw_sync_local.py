@@ -1,3 +1,6 @@
+import os
+from dotenv import load_dotenv
+load_dotenv()
 """Local DFW sync - downloads from OneDrive, processes, loads into DB.
 Does NOT delete the file from OneDrive.
 """
@@ -12,7 +15,7 @@ from psycopg2.extras import execute_values
 # --- Config ---
 CLIENT_ID = '43fbe5a9-6b5b-4c81-9067-7aff9ac3ed5a'
 TENANT_ID = 'b1504b1d-d096-409a-a0f0-6cc546dde993'
-CLIENT_SECRET = 'w6B8Q~W3ac9klXa8NkMDo4cPNyOsjEryVL5TwdhQ'
+CLIENT_SECRET = os.getenv('ONEDRIVE_CLIENT_SECRET', '')
 AUTHORITY = f'https://login.microsoftonline.com/{TENANT_ID}'
 SCOPES = ['Files.Read.All', 'Files.ReadWrite.All']
 GRAPH = 'https://graph.microsoft.com/v1.0'
@@ -213,7 +216,7 @@ def main():
         refresh_token = token_data['refresh_token']
     else:
         # Use the refresh token from the server paste
-        refresh_token = '1.AU4AHUtQsZbQmkCg8GzFRt3pk6nl-0Nba4FMkGd6_5rD7VoBAIhOAA.BQABAwEAAAADAOz_BQD0_0V2b1N0c0FydGlmYWN0cwIAAAAAAD0qOO_S50QqsUZ_tINzZtyAwAgaWWc2Jvt05VMgyT1t4TavhFixmnQ2QTCmOYfUAYsyzYnhGoKlJB2urOTi2rIazCQyIq928Rxu8mZ3mOei0ByRf__BjzO_7wyT8zaxpN4UHQvbrObcA3sB_7r3eTnsVzHJkBHLuMHeJIo2tvgq3Emgz9BMY86ORQ2v2Nk0IsTs2KFKhY1ELah4fEy0Q-9lI8zafJRcSI0NQHXEavwoJeOSbqV5Qbu-F2B25s5vymQsfc6q0XfpbTaUDDUgSlL7eyGk7CZQXMPxIO2jAzlO6cOUWMZuBTm9UrGAZd7BHGU-fygSPgFQaTkWyQ8ROV5b_YtNxy2pjGr_eW-xaK6xot4eiFMrrrgXfdx0sjMq4Vlaa3p9hDp3BlsWyS7Ex6Zx8v0Ug9o8o2JpSFERYCwkC20eh0e-184FYDYIzy5l9mDBAMIlfjUcXkO33FOc9s7nFLDOOXtYCYM3-aCIlsy3Pu4Z5JMWxcBfUBbdnckWKuikugv6rDr9ijd1Pu4fV5MnYow1XXtLqNnzavzBXKgHEx20KrjZYDtPr5RlizJm7b1elcVCzm8S3eKFolTt8W5yfx5cMAcJdMdeBQKczjN2YwY57atm6BC9XhAy5l-YXhai1AZE2mcDpuEwvo1Zr2-Xn6Ro8y1Q9b87JrlF80gfc8Kb_SLl2KTfNlfPVg2ZwAnzBNBfY_Mz4tvQojNV23qggX-Ltd7oXy3dC8_F0yzyZkoi-QQrOQGCP-hKbiIdVH4W8hPsjz6_cNS4ulgMfETc-YM6SjZ-p1MxeXlCkaJNdNvPyrLM4Iuu51ZvDTMS5EOZYWqQe0s9BNY8Qj4YdfmPaWzvgPExiI-Ag_smCANrFB0yvLPsIYWWgxapOE7awBJgP1i8TorRyA9vr8StGdN6nbFMeuQkksOiNUpVGBsg_BMdboxMrcbUfhpuUYAmyGDzyfh54Z81yMulp2L9G3FLTwb_dl0YooK5gRizVrCK8TBtBEI0lq1eu7qWC2VFQSaPvmwKq-0lkhxM6--OMT69AB6BbufaZMr7h5xmVIwY_AxE7M9E5r0OsTbMbhMk9GAOVC0M9NVXMCkXo-r3bhzmNyBVmRORBKGWAST4018cn1TiZd72URR57CoOukAFpLhEOJMB0hsMjOrpp01SISE9rTa_bfc4xQDPMQCLQC-Lf7Wx_vx7QaSEcNGbU7i8BegB8u2NXi_4_hdF7HkHolEl-JmYYqn7HjwtjbuC8AGpg5IO_fSYh51Q9gdS7tmWVAHe2gZ3lwUUDbGYOVkmFtYdNMM7B18nzhzaZnUiYiglfzKA1Tdqh9FdZCMQL4qdiRkHLmnkzBZ9xCVT6asyV1PTJpUm_S73ZGmy1Hcw0qUVbqp2zqjb8x7VyEieXBaSsrmRBNfHDcayb0tjBA'
+        refresh_token = os.getenv('ONEDRIVE_REFRESH_TOKEN', '')
         token_data = {}
 
     app = msal.ConfidentialClientApplication(CLIENT_ID, authority=AUTHORITY, client_credential=CLIENT_SECRET)

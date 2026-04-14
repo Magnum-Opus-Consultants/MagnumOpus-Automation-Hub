@@ -1,9 +1,12 @@
+import os
+from dotenv import load_dotenv
+load_dotenv()
 """Quick test: send one email via AWS SES to verify connectivity."""
 import boto3
 from botocore.exceptions import ClientError
 
-AWS_ACCESS_KEY = 'AKIAWYY5J2ZMZ2F6BMUH'
-AWS_SECRET_KEY = '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'
+AWS_ACCESS_KEY = os.getenv('AWS_SES_ACCESS_KEY_ID', '')
+AWS_SECRET_KEY = os.getenv('AWS_SES_SECRET_ACCESS_KEY', '')
 AWS_REGION = 'eu-west-1'
 
 SENDER = 'ethan.sevenster@moc-pty.com'

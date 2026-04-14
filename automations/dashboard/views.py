@@ -1,3 +1,6 @@
+import os
+from dotenv import load_dotenv
+load_dotenv()
 from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
@@ -2673,7 +2676,7 @@ def get_touchpoint_schedules(request):
 
 GRAPH_CLIENT_ID = '43fbe5a9-6b5b-4c81-9067-7aff9ac3ed5a'
 GRAPH_TENANT_ID = 'b1504b1d-d096-409a-a0f0-6cc546dde993'
-GRAPH_CLIENT_SECRET = 'w6B8Q~W3ac9klXa8NkMDo4cPNyOsjEryVL5TwdhQ'
+GRAPH_CLIENT_SECRET = os.getenv('GRAPH_CLIENT_SECRET', '')
 GRAPH_MAILBOX = 'waldogaybba@moc-pty.com'
 
 

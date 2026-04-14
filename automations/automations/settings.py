@@ -1,10 +1,13 @@
 from pathlib import Path
+import os
+from dotenv import load_dotenv
+load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = 'django-insecure-automations-key'
+SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'dev-key')
 DEBUG = False
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = ['workspace.moc-pty.com', '137.184.229.140', '*']
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -50,10 +53,10 @@ WSGI_APPLICATION = 'automations.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'turnover_data',
+        'NAME': 'automation_platform',
         'USER': 'powerbi',
-        'PASSWORD': 'your_secure_password',
-        'HOST': '167.88.43.168',
+        'PASSWORD': 'MOC_PowerBI_2026_S3cure',
+        'HOST': '127.0.0.1',
         'PORT': '5432',
     }
 }
@@ -80,8 +83,8 @@ LOGIN_URL = '/login/'
 TEST_EMAIL_OVERRIDE = None
 
 # AWS SES settings
-AWS_SES_ACCESS_KEY_ID = 'AKIAWYY5J2ZMZ2F6BMUH'
-AWS_SES_SECRET_ACCESS_KEY = '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'
+AWS_SES_ACCESS_KEY_ID = os.getenv('AWS_SES_ACCESS_KEY_ID', '')
+AWS_SES_SECRET_ACCESS_KEY = os.getenv('AWS_SES_SECRET_ACCESS_KEY', '')
 AWS_SES_REGION = 'eu-west-1'
 AWS_SES_FROM_EMAIL = 'ethan.sevenster@moc-pty.com'
 
@@ -92,7 +95,7 @@ GOOGLE_TOKEN_FILE = str(BASE_DIR / 'token.json')
 # OneDrive settings
 ONEDRIVE_CLIENT_ID = '43fbe5a9-6b5b-4c81-9067-7aff9ac3ed5a'
 ONEDRIVE_TENANT_ID = 'b1504b1d-d096-409a-a0f0-6cc546dde993'
-ONEDRIVE_CLIENT_SECRET = 'w6B8Q~W3ac9klXa8NkMDo4cPNyOsjEryVL5TwdhQ'
+ONEDRIVE_CLIENT_SECRET = os.getenv('ONEDRIVE_CLIENT_SECRET', '')
 ONEDRIVE_REDIRECT_URI = 'http://localhost:8000/onedrive/callback'
 ONEDRIVE_SCOPES = ['Files.Read.All', 'Files.ReadWrite.All']
 ONEDRIVE_FOLDER_PATH = '/Automation Platform/Turn Over Automation Report'
@@ -141,3 +144,4 @@ IMPORT_OPS_LAST_SYNC_FILE = str(BASE_DIR / 'import_ops_last_sync.json')
 WIP_ACCRUAL_LAST_SYNC_FILE = str(BASE_DIR / 'wip_accrual_last_sync.json')
 TFS_LAST_SYNC_FILE = str(BASE_DIR / 'tfs_last_sync.json')
 SYNC_HEALTH_FILE = str(BASE_DIR / 'sync_health.json')
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'

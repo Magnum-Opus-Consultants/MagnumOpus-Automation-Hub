@@ -1,6 +1,6 @@
 {
   "onedrive_token": {
-    "last_check": "2026-04-12T20:35:23.963617+02:00",
+    "last_check": "2026-04-14T21:51:19.843733+02:00",
     "status": "error",
     "message": "Token refresh exception: Extra data: line 1 column 6324 (char 6323)",
     "records": 0
@@ -12,123 +12,123 @@
     "records": 0
   },
   "ppg": {
-    "last_check": "2026-04-08T03:37:29.470664+02:00",
-    "status": "success",
-    "message": "No file",
+    "last_check": "2026-04-14T21:28:00.667738+02:00",
+    "status": "error",
+    "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "ccc": {
-    "last_check": "2026-04-12T19:18:17.679855+02:00",
+    "last_check": "2026-04-14T20:28:00.669528+02:00",
     "status": "error",
     "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "fax": {
-    "last_check": "2026-04-12T19:18:18.132283+02:00",
+    "last_check": "2026-04-14T21:28:00.696721+02:00",
     "status": "error",
     "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "ccd": {
-    "last_check": "2026-04-08T07:37:26.377041+02:00",
-    "status": "success",
-    "message": "No file",
+    "last_check": "2026-04-14T20:28:00.674456+02:00",
+    "status": "error",
+    "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "con": {
-    "last_check": "2026-04-08T07:37:26.143714+02:00",
-    "status": "success",
-    "message": "No file",
+    "last_check": "2026-04-14T21:28:00.705521+02:00",
+    "status": "error",
+    "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "jfk": {
-    "last_check": "2026-04-08T07:37:26.004184+02:00",
-    "status": "success",
-    "message": "No file",
+    "last_check": "2026-04-14T19:28:00.670482+02:00",
+    "status": "error",
+    "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "dor": {
-    "last_check": "2026-04-08T07:37:25.590187+02:00",
-    "status": "success",
-    "message": "No file",
+    "last_check": "2026-04-14T21:28:00.677716+02:00",
+    "status": "error",
+    "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "atl": {
-    "last_check": "2026-04-08T07:37:26.249568+02:00",
-    "status": "success",
-    "message": "No file",
+    "last_check": "2026-04-14T20:28:00.666943+02:00",
+    "status": "error",
+    "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "hnl": {
-    "last_check": "2026-04-08T07:37:25.436671+02:00",
-    "status": "success",
-    "message": "No file",
+    "last_check": "2026-04-14T21:28:00.692324+02:00",
+    "status": "error",
+    "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "turnover": {
-    "last_check": "2026-04-08T07:39:30.619703+02:00",
+    "last_check": "2026-04-14T21:28:00.664999+02:00",
     "status": "error",
-    "message": "server closed the connection unexpectedly\n\tThis probably means the server terminated abnormally\n\tbefore or while processing the request.\nserver closed the connection unexpectedly\n\tThis probably means the server terminated abnormally\n\tbefore or while processing the request.\n",
+    "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "lax": {
-    "last_check": "2026-04-08T02:37:17.021038+02:00",
+    "last_check": "2026-04-14T21:28:00.698739+02:00",
     "status": "error",
-    "message": "Extra data: line 1 column 6325 (char 6324)",
+    "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "wip_accrual": {
-    "last_check": "2026-04-07T15:37:16.907757+02:00",
+    "last_check": "2026-04-14T19:28:00.706499+02:00",
     "status": "error",
-    "message": "Extra data: line 1 column 6325 (char 6324)",
+    "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "ics": {
-    "last_check": "2026-04-07T14:37:16.818512+02:00",
+    "last_check": "2026-04-14T19:28:00.780450+02:00",
     "status": "error",
-    "message": "Extra data: line 1 column 6325 (char 6324)",
+    "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "ord": {
-    "last_check": "2026-04-07T08:37:16.825394+02:00",
+    "last_check": "2026-04-14T14:51:38.479901+02:00",
     "status": "error",
-    "message": "Extra data: line 1 column 6325 (char 6324)",
+    "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "imp": {
-    "last_check": "2026-04-07T08:37:16.789503+02:00",
+    "last_check": "2026-04-14T14:51:38.300624+02:00",
     "status": "error",
-    "message": "Extra data: line 1 column 6325 (char 6324)",
+    "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "condor_dor": {
-    "last_check": "2026-04-07T09:37:16.871757+02:00",
+    "last_check": "2026-04-14T19:28:00.820907+02:00",
     "status": "error",
-    "message": "Extra data: line 1 column 6325 (char 6324)",
+    "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "lcl": {
-    "last_check": "2026-04-07T11:37:16.888779+02:00",
+    "last_check": "2026-04-14T13:51:38.459935+02:00",
     "status": "error",
-    "message": "Extra data: line 1 column 6325 (char 6324)",
+    "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "hou": {
-    "last_check": "2026-04-12T19:18:17.971318+02:00",
+    "last_check": "2026-04-14T16:28:00.691850+02:00",
     "status": "error",
     "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "creditor": {
-    "last_check": "2026-04-08T01:37:17.441359+02:00",
+    "last_check": "2026-04-14T20:28:00.727814+02:00",
     "status": "error",
-    "message": "Extra data: line 1 column 6325 (char 6324)",
+    "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "import_ops": {
-    "last_check": "2026-04-08T02:37:16.885531+02:00",
+    "last_check": "2026-04-14T16:28:00.740150+02:00",
     "status": "error",
-    "message": "Extra data: line 1 column 6325 (char 6324)",
+    "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
   },
   "tp3_auto": {
@@ -144,7 +144,7 @@
     "records": 0
   },
   "dfw": {
-    "last_check": "2026-04-12T19:18:18.169030+02:00",
+    "last_check": "2026-04-14T20:28:00.760361+02:00",
     "status": "error",
     "message": "Extra data: line 1 column 6324 (char 6323)",
     "records": 0
