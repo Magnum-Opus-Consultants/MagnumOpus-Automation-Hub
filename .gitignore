@@ -1,21 +1,7 @@
-# Python
-__pycache__/
-*.pyc
-*.pyo
-
-# Temp files
-*.tmp
-
-# OS
-Thumbs.db
-Desktop.ini
-.DS_Store
-
-# IDE
-.claude/
-.vscode/
-.env
 venv/
+**/venv/
+automations/venv/
 node_modules/
 __pycache__/
 *.pyc
+.env
