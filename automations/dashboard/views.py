@@ -1845,6 +1845,15 @@ def sync_all(request):
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
 
+    _sync_all_state_file = os.path.join(os.path.dirname(__file__), '..', 'sync_all_state.json')
+
+    def _write_state(data):
+        try:
+            with open(_sync_all_state_file, 'w') as f:
+                json.dump(data, f)
+        except Exception:
+            pass
+
     def run_all():
         from .scheduler import (
             run_ppg_email_sync_job, run_ccc_email_sync_job, run_ccd_email_sync_job,
@@ -1856,24 +1865,44 @@ def sync_all(request):
             run_wip_email_sync_job, run_import_ops_email_sync_job,
             run_creditor_email_sync_job, run_condor_dor_email_sync_job,
         )
-        fns = [
-            run_ppg_email_sync_job, run_ccc_email_sync_job, run_ccd_email_sync_job,
-            run_hnl_email_sync_job, run_jfk_email_sync_job, run_lcl_email_sync_job,
-            run_hou_email_sync_job, run_ics_email_sync_job, run_ord_email_sync_job,
-            run_imp_email_sync_job, run_lax_email_sync_job, run_fax_email_sync_job,
-            run_atl_email_sync_job, run_dfw_email_sync_job, run_con_email_sync_job,
-            run_dor_email_sync_job, run_turnover_email_sync_job,
-            run_wip_email_sync_job, run_import_ops_email_sync_job,
-            run_creditor_email_sync_job, run_condor_dor_email_sync_job,
+        jobs = [
+            ('PPG', run_ppg_email_sync_job), ('CCC', run_ccc_email_sync_job),
+            ('CCD', run_ccd_email_sync_job), ('HNL', run_hnl_email_sync_job),
+            ('JFK', run_jfk_email_sync_job), ('LCL', run_lcl_email_sync_job),
+            ('HOU', run_hou_email_sync_job), ('ICS', run_ics_email_sync_job),
+            ('ORD', run_ord_email_sync_job), ('IMP', run_imp_email_sync_job),
+            ('LAX', run_lax_email_sync_job), ('FAX', run_fax_email_sync_job),
+            ('ATL', run_atl_email_sync_job), ('DFW', run_dfw_email_sync_job),
+            ('CON', run_con_email_sync_job), ('DOR', run_dor_email_sync_job),
+            ('Turnover', run_turnover_email_sync_job),
+            ('WIP & Accrual', run_wip_email_sync_job),
+            ('Import Ops', run_import_ops_email_sync_job),
+            ('Creditor', run_creditor_email_sync_job),
+            ('Condor+DOR', run_condor_dor_email_sync_job),
         ]
-        for fn in fns:
+        errors = 0
+        for i, (name, fn) in enumerate(jobs):
+            _write_state({'running': True, 'current': name, 'done': i, 'total': len(jobs), 'errors': errors})
             try:
                 fn()
             except Exception as e:
-                print(f'[sync_all] {fn.__name__} failed: {e}', flush=True)
+                errors += 1
+                print(f'[sync_all] {name} failed: {e}', flush=True)
+        _write_state({'running': False, 'current': '', 'done': len(jobs), 'total': len(jobs), 'errors': errors})
 
     threading.Thread(target=run_all, daemon=True).start()
     return JsonResponse({'status': 'started'})
+
+
+@login_required
+def sync_all_status(request):
+    """Return current sync-all progress."""
+    state_file = os.path.join(os.path.dirname(__file__), '..', 'sync_all_state.json')
+    try:
+        with open(state_file) as f:
+            return JsonResponse(json.load(f))
+    except Exception:
+        return JsonResponse({'running': False})
 
 
 # ── Power BI Embed ────────────────────────────────────────────────────────────

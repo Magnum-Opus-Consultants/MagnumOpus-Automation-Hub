@@ -624,35 +624,52 @@ function pollSyncAll() {
     var msg = document.getElementById('sync-msg');
     var btn = document.getElementById('sync-all-btn');
 
-    fetch('{% url "sync_monitor_api" %}')
+    fetch('{% url "sync_all_status" %}')
     .then(function(r) { return r.json(); })
     .then(function(data) {
-        var stations = data.stations || [];
-        var syncing = stations.filter(function(s) { return s.status === 'syncing'; }).length;
-        var done = stations.filter(function(s) { return s.status === 'synced' || s.status === 'error'; }).length;
-        var total = stations.length;
-
-        if (syncing > 0) {
-            msg.textContent = 'Syncing... (' + done + '/' + total + ' stations complete)';
+        if (data.running) {
+            status.className = 'sync-status-bar visible';
+            spinner.style.display = 'block';
+            btn.disabled = true;
+            msg.textContent = 'Syncing ' + data.current + '... (' + data.done + '/' + data.total + ' complete)';
             setTimeout(pollSyncAll, 2000);
-        } else {
-            var errors = stations.filter(function(s) { return s.status === 'error'; }).length;
-            if (errors > 0) {
-                status.className = 'sync-status-bar visible error';
-                msg.textContent = 'Sync complete — ' + errors + ' station(s) had errors';
-            } else {
-                status.className = 'sync-status-bar visible success';
-                msg.textContent = 'All stations synced successfully';
-            }
+        } else if (data.total) {
             spinner.style.display = 'none';
             btn.disabled = false;
-            setTimeout(function() { location.reload(); }, 2000);
+            if (data.errors > 0) {
+                status.className = 'sync-status-bar visible error';
+                msg.textContent = 'Sync complete — ' + data.errors + ' station(s) had errors';
+            } else {
+                status.className = 'sync-status-bar visible success';
+                msg.textContent = 'All ' + data.total + ' stations synced successfully';
+            }
+            setTimeout(function() { location.reload(); }, 3000);
         }
     })
     .catch(function() {
         setTimeout(pollSyncAll, 3000);
     });
 }
+
+// Resume sync-all status on page load
+(function() {
+    fetch('{% url "sync_all_status" %}')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.running) {
+            var status = document.getElementById('sync-status');
+            var spinner = document.getElementById('sync-spinner');
+            var msg = document.getElementById('sync-msg');
+            var btn = document.getElementById('sync-all-btn');
+            status.className = 'sync-status-bar visible';
+            spinner.style.display = 'block';
+            btn.disabled = true;
+            msg.textContent = 'Syncing ' + data.current + '... (' + data.done + '/' + data.total + ' complete)';
+            pollSyncAll();
+        }
+    })
+    .catch(function() {});
+})();
 
 function cardSync(btn, event) {
     event.preventDefault();
