@@ -861,7 +861,7 @@ window.showToast = function(message, opts) {
             {% elif tp.sent > 0 and tp.remaining == 0 %}
             <span class="tp-stat-card-badge done">Complete</span>
             {% elif tp.sent > 0 %}
-            <span class="tp-stat-card-badge done">Sent</span>
+            <span class="tp-stat-card-badge none">In Progress</span>
             {% else %}
             <span class="tp-stat-card-badge none">Not Started</span>
             {% endif %}
@@ -964,6 +964,7 @@ window.showToast = function(message, opts) {
                     <th data-col="4">Phone <span class="sort-arrow">&#9650;</span></th>
                     <th data-col="5">Status <span class="sort-arrow">&#9650;</span></th>
                     <th data-col="6">Last Touchpoint <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="27">Deal Lost Reason <span class="sort-arrow">&#9650;</span></th>
                     <th data-col="7" class="tp-header">TP1 <span class="sort-arrow">&#9650;</span></th>
                     <th data-col="8" class="tp-header">TP1 Sent <span class="sort-arrow">&#9650;</span></th>
                     <th data-col="9" class="tp-header">TP2 <span class="sort-arrow">&#9650;</span></th>
@@ -984,7 +985,6 @@ window.showToast = function(message, opts) {
                     <th data-col="24" class="tp-header">TP9 Sent <span class="sort-arrow">&#9650;</span></th>
                     <th data-col="25" class="tp-header">TP10 <span class="sort-arrow">&#9650;</span></th>
                     <th data-col="26" class="tp-header">TP10 Sent <span class="sort-arrow">&#9650;</span></th>
-                    <th data-col="27">Deal Lost Reason <span class="sort-arrow">&#9650;</span></th>
                 </tr>
             </thead>
             <tbody id="tableBody"></tbody>
@@ -1279,7 +1279,9 @@ window.showToast = function(message, opts) {
             const tr = document.createElement('tr');
             tr.setAttribute('data-id', r[0]);
 
-            for (let c = 1; c <= TOTAL_COLS; c++) {
+            // Render columns in display order: 1-6, 27(deal_lost_reason), 7-26
+            const COL_ORDER = [1,2,3,4,5,6,27,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26];
+            for (const c of COL_ORDER) {
                 const td = document.createElement('td');
 
                 if (DBLCLICK_COLS.includes(c)) {
