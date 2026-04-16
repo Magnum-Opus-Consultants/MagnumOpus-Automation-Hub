@@ -187,7 +187,7 @@
 <span class="kw">FROM</span> import_ops
 <span class="kw">ORDER BY</span> shipment_id;</code>
         </div>
-        <button class="btn" onclick="copyQuery()">
+        <button class="btn" id="copyQueryBtn" onclick="copyQuery()">
             <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
             Copy
         </button>
@@ -206,7 +206,7 @@ function copyQuery() {
 FROM import_ops
 ORDER BY shipment_id;`;
     navigator.clipboard.writeText(query).then(() => {
-        const btn = document.querySelectorAll('.btn')[0];
+        const btn = document.getElementById('copyQueryBtn');
         btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Copied';
         setTimeout(() => {
             btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg> Copy';

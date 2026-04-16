@@ -321,7 +321,7 @@
 <span class="kw">FROM</span> condor_dor_pnl
 <span class="kw">ORDER BY</span> branch, department, budget_actual, date, account_name;</code>
         </div>
-        <button class="btn" onclick="copyQuery()">
+        <button class="btn" id="copyQueryBtn" onclick="copyQuery()">
             <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
             Copy
         </button>
@@ -350,7 +350,7 @@
 in
     #"Added Custom2"</code>{% endverbatim %}
         </div>
-        <button class="btn" onclick="copyMCode()">
+        <button class="btn" id="copyMCodeBtn" onclick="copyMCode()">
             <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
             Copy
         </button>
@@ -421,7 +421,7 @@ function getCookie(name) {
 function copyQuery() {
     var query = 'SELECT *\nFROM condor_dor_pnl\nORDER BY branch, department, budget_actual, date, account_name;';
     navigator.clipboard.writeText(query).then(function() {
-        var btn = document.querySelectorAll('.btn')[0];
+        var btn = document.getElementById('copyQueryBtn');
         btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Copied';
         setTimeout(function() {
             btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg> Copy';
@@ -432,7 +432,7 @@ function copyQuery() {
 function copyMCode() {
     var mcode = document.getElementById('mcode').innerText;
     navigator.clipboard.writeText(mcode).then(function() {
-        var btn = document.querySelectorAll('.btn')[1];
+        var btn = document.getElementById('copyMCodeBtn');
         btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Copied';
         setTimeout(function() {
             btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg> Copy';
