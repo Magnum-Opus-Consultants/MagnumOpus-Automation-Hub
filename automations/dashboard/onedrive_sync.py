@@ -580,31 +580,29 @@ def calculate_week_number(report_date, month_yyyymm):
     # Same month as report - calculate based on report date day
     day = report_date.day
 
-    # Days 1-7 = Week 1 (early in month, but data exists)
-    if day <= 7:
-        return 1
-
-    # February: only 4 weeks (no 29th), Week 1=8, Week 2=15, Week 3=22, Week 4=28 (final)
+    # February: 4 weeks only
     if data_month == 2:
-        if day <= 14:
+        if day <= 7:
             return 1
-        elif day <= 21:
+        elif day <= 14:
             return 2
-        elif day <= 27:
+        elif day <= 21:
             return 3
         else:
             return 4
 
-    # All other months: fixed 7-day intervals
-    # Week 1: 8-14, Week 2: 15-21, Week 3: 22-28, Week 4: 29+
-    if day <= 14:
+    # All other months: 7-day intervals
+    # Week 1: day 1-7, Week 2: 8-14, Week 3: 15-21, Week 4: 22-28, Week 5: 29+
+    if day <= 7:
         return 1
-    elif day <= 21:
+    elif day <= 14:
         return 2
-    elif day <= 28:
+    elif day <= 21:
         return 3
-    else:
+    elif day <= 28:
         return 4
+    else:
+        return 5
 
 
 def process_ppg_excel_file(file_content, filename):
