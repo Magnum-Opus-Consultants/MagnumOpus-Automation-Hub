@@ -570,11 +570,12 @@ def calculate_week_number(report_date, month_yyyymm):
     report_year = report_date.year
     report_month = report_date.month
 
-    # If the data month is BEFORE the report month, skip it entirely.
-    # Only process the current month — older months were already captured
-    # by earlier weekly reports with correct week labels.
+    # If the data month is BEFORE the report month, it's past the month end
+    # Feb only has 4 weeks, so final week = Week 4. All other months = Week 5.
     if (data_year < report_year) or (data_year == report_year and data_month < report_month):
-        return None  # Skip previous months
+        if data_month == 2:
+            return 4  # Feb final week is Week 4
+        return 5  # Final week for previous month
 
     # Same month as report - calculate based on report date day
     day = report_date.day

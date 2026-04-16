@@ -205,6 +205,8 @@ def _run_station_email_sync(key):
 
         # Insert. Row shape: (division, account_name, value, date, date_fixed,
         # budget_actual, week, report_date). DELETE-then-INSERT per (date, week).
+        # Also create "Total" rows per month (latest week value wins).
+        from collections import defaultdict
         with connection.cursor() as cur:
             for date_val, week in set((r[3], r[6]) for r in rows):
                 cur.execute(
@@ -215,6 +217,22 @@ def _run_station_email_sync(key):
                 cur,
                 f"INSERT INTO {table} (division, account_name, value, date, date_fixed, budget_actual, week, report_date) VALUES %s",
                 rows,
+            )
+            # Create Total rows: one per (division, account_name, date) with latest value
+            total_dedup = {}
+            for r in rows:
+                key = (r[0], r[1], r[3], r[5])  # division, account_name, date, budget_actual
+                total_dedup[key] = (r[0], r[1], r[2], r[3], r[4], r[5], 'Total', r[7])
+            total_rows = list(total_dedup.values())
+            for date_val in set(r[3] for r in rows):
+                cur.execute(
+                    f"DELETE FROM {table} WHERE date = %s AND week = 'Total' AND budget_actual = 'Actual'",
+                    (date_val,),
+                )
+            execute_values(
+                cur,
+                f"INSERT INTO {table} (division, account_name, value, date, date_fixed, budget_actual, week, report_date) VALUES %s",
+                total_rows,
             )
 
         with open(STATE_FILE, 'w') as f:
