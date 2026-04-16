@@ -16,4 +16,4 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
-            cd "/var/www/Magnum Opus Consultants/Automation-Platform" && git pull && systemctl restart moc-gunicorn
+            cd "/var/www/Magnum Opus Consultants/Automation-Platform" && git stash && git pull && git stash pop || true && systemctl restart moc-gunicorn
