@@ -1852,7 +1852,9 @@ def sync_all(request):
             run_hou_email_sync_job, run_ics_email_sync_job, run_ord_email_sync_job,
             run_imp_email_sync_job, run_lax_email_sync_job, run_fax_email_sync_job,
             run_atl_email_sync_job, run_dfw_email_sync_job, run_con_email_sync_job,
-            run_dor_email_sync_job,
+            run_dor_email_sync_job, run_turnover_email_sync_job,
+            run_wip_email_sync_job, run_import_ops_email_sync_job,
+            run_creditor_email_sync_job, run_condor_dor_email_sync_job,
         )
         fns = [
             run_ppg_email_sync_job, run_ccc_email_sync_job, run_ccd_email_sync_job,
@@ -1860,7 +1862,9 @@ def sync_all(request):
             run_hou_email_sync_job, run_ics_email_sync_job, run_ord_email_sync_job,
             run_imp_email_sync_job, run_lax_email_sync_job, run_fax_email_sync_job,
             run_atl_email_sync_job, run_dfw_email_sync_job, run_con_email_sync_job,
-            run_dor_email_sync_job,
+            run_dor_email_sync_job, run_turnover_email_sync_job,
+            run_wip_email_sync_job, run_import_ops_email_sync_job,
+            run_creditor_email_sync_job, run_condor_dor_email_sync_job,
         ]
         for fn in fns:
             try:

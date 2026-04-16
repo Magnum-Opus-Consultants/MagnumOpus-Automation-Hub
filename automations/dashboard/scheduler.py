@@ -249,6 +249,451 @@ def run_con_email_sync_job():  _run_station_email_sync('con')
 def run_dor_email_sync_job():  _run_station_email_sync('dor')
 
 
+def _run_turnover_email_sync():
+    """Fetch latest turnover emails (one per branch) and insert into turnover_data."""
+    import os, json, io, base64, requests, re
+    from django.db import connection
+    from psycopg2.extras import execute_values
+    from .views import _get_graph_token
+    from . import onedrive_sync
+
+    try:
+        token = _get_graph_token()
+        if not token:
+            raise RuntimeError('Graph token unavailable')
+        headers = {'Authorization': f'Bearer {token}'}
+
+        # Paginate all turnover emails
+        url = (f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages'
+               f'?$top=100&$orderby=receivedDateTime desc'
+               f'&$select=id,subject,receivedDateTime,from,hasAttachments')
+        msgs = []
+        while url:
+            r = requests.get(url, headers=headers, timeout=30); r.raise_for_status()
+            j = r.json()
+            for m in j.get('value', []):
+                if (m.get('hasAttachments')
+                    and 'turnover by debtor' in m.get('subject', '').lower()
+                    and m.get('from', {}).get('emailAddress', {}).get('address', '').lower() == 'data.analysis@intelligentscm.com'):
+                    msgs.append(m)
+            url = j.get('@odata.nextLink')
+
+        if not msgs:
+            update_sync_health('turnover', 'success', 'No turnover emails found', 0)
+            return
+
+        # Only process the latest email
+        msg = msgs[0]
+        STATE_FILE = os.path.join(os.path.dirname(__file__), '..', 'turnover_email_last.json')
+        try:
+            last = json.load(open(STATE_FILE))
+            if last.get('message_id') == msg['id']:
+                update_sync_health('turnover', 'success', f'Already processed', last.get('rows', 0))
+                return
+        except Exception:
+            pass
+
+        ar = requests.get(
+            f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages/{msg["id"]}/attachments',
+            headers=headers, timeout=60)
+        ar.raise_for_status()
+        xlsx = next((a for a in ar.json().get('value', [])
+                     if a.get('name', '').lower().endswith(('.xlsx', '.xls'))), None)
+        if not xlsx:
+            update_sync_health('turnover', 'error', 'No Excel attachment', 0)
+            return
+
+        fname = xlsx['name']
+        fbytes = base64.b64decode(xlsx['contentBytes'])
+        file_content = io.BytesIO(fbytes)
+
+        # Use existing turnover parser (process_excel_file)
+        rows = onedrive_sync.process_excel_file(file_content, fname)
+        if not rows:
+            update_sync_health('turnover', 'success', 'Parsed 0 rows', 0)
+            return
+
+        with connection.cursor() as cur:
+            # Turnover uses DELETE all + INSERT (snapshot replacement)
+            cur.execute("DELETE FROM turnover_data")
+            execute_values(cur,
+                "INSERT INTO turnover_data (debtor, debtor_name, value, date, date_fixed, branch, report_date) VALUES %s",
+                rows)
+
+        with open(STATE_FILE, 'w') as f:
+            json.dump({'message_id': msg['id'], 'subject': msg['subject'],
+                       'received': msg['receivedDateTime'], 'rows': len(rows)}, f)
+        update_sync_health('turnover', 'success', f'Email {msg["receivedDateTime"][:10]}: {len(rows)} rows', len(rows))
+        logger.info(f'[turnover] email sync: {len(rows)} rows from {fname}')
+
+    except Exception as e:
+        logger.exception('[turnover] email sync failed')
+        update_sync_health('turnover', 'error', str(e))
+
+
+def _run_wip_email_sync():
+    """Fetch latest WIP email and insert into wip_accrual."""
+    import os, json, io, base64, requests
+    from django.db import connection
+    from psycopg2.extras import execute_values
+    from .views import _get_graph_token
+    import openpyxl
+
+    try:
+        token = _get_graph_token()
+        if not token:
+            raise RuntimeError('Graph token unavailable')
+        headers = {'Authorization': f'Bearer {token}'}
+
+        url = (f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages'
+               f'?$top=100&$orderby=receivedDateTime desc'
+               f'&$select=id,subject,receivedDateTime,from,hasAttachments')
+        msgs = []
+        while url:
+            r = requests.get(url, headers=headers, timeout=30); r.raise_for_status()
+            j = r.json()
+            for m in j.get('value', []):
+                if (m.get('hasAttachments')
+                    and 'wip rev and accrued costs' in m.get('subject', '').lower()):
+                    msgs.append(m)
+            url = j.get('@odata.nextLink')
+
+        if not msgs:
+            update_sync_health('wip_accrual', 'success', 'No WIP emails found', 0)
+            return
+
+        msg = msgs[0]
+        STATE_FILE = os.path.join(os.path.dirname(__file__), '..', 'wip_email_last.json')
+        try:
+            last = json.load(open(STATE_FILE))
+            if last.get('message_id') == msg['id']:
+                update_sync_health('wip_accrual', 'success', 'Already processed', last.get('rows', 0))
+                return
+        except Exception:
+            pass
+
+        ar = requests.get(
+            f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages/{msg["id"]}/attachments',
+            headers=headers, timeout=60)
+        ar.raise_for_status()
+        xlsx = next((a for a in ar.json().get('value', [])
+                     if a.get('name', '').lower().endswith(('.xlsx', '.xls'))), None)
+        if not xlsx:
+            update_sync_health('wip_accrual', 'error', 'No Excel attachment', 0)
+            return
+
+        fb = base64.b64decode(xlsx['contentBytes'])
+        wb = openpyxl.load_workbook(io.BytesIO(fb), read_only=True, data_only=True)
+        ws = wb['Detailed Listing of Outstanding']
+        rows = []
+        for row in ws.iter_rows(min_row=22, values_only=False):
+            cells = [c.value for c in row]
+            vals = cells[2:25] if len(cells) > 24 else cells[2:] + [None] * (23 - max(0, len(cells) - 2))
+            if not vals[0]:
+                continue
+            rows.append(tuple(str(v).strip() if v is not None else '' for v in vals))
+        wb.close()
+
+        with connection.cursor() as cur:
+            cur.execute('DELETE FROM wip_accrual')
+            execute_values(cur,
+                'INSERT INTO wip_accrual (type,branch,dept,charge_code,job,local_ref,wip,accrual,net_total,added,age,debtor_creditor,stat,job_branch,controlling_agent,controlling_customer,management_group,exp_group,orig,eta,etd,posted_by,posted_by_fullname) VALUES %s',
+                rows)
+
+        with open(STATE_FILE, 'w') as f:
+            json.dump({'message_id': msg['id'], 'received': msg['receivedDateTime'], 'rows': len(rows)}, f)
+        update_sync_health('wip_accrual', 'success', f'Email {msg["receivedDateTime"][:10]}: {len(rows)} rows', len(rows))
+
+    except Exception as e:
+        logger.exception('[wip_accrual] email sync failed')
+        update_sync_health('wip_accrual', 'error', str(e))
+
+
+def _run_import_ops_email_sync():
+    """Fetch latest import ops email and insert into import_ops."""
+    import os, json, io, base64, requests
+    from django.db import connection
+    from psycopg2.extras import execute_values
+    from .views import _get_graph_token
+    import openpyxl
+
+    try:
+        token = _get_graph_token()
+        if not token:
+            raise RuntimeError('Graph token unavailable')
+        headers = {'Authorization': f'Bearer {token}'}
+
+        url = (f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages'
+               f'?$top=100&$orderby=receivedDateTime desc'
+               f'&$select=id,subject,receivedDateTime,from,hasAttachments')
+        msgs = []
+        while url:
+            r = requests.get(url, headers=headers, timeout=30); r.raise_for_status()
+            j = r.json()
+            for m in j.get('value', []):
+                if (m.get('hasAttachments')
+                    and 'import operational report moc' in m.get('subject', '').lower()):
+                    msgs.append(m)
+            url = j.get('@odata.nextLink')
+
+        if not msgs:
+            update_sync_health('import_ops', 'success', 'No import ops emails found', 0)
+            return
+
+        msg = msgs[0]
+        STATE_FILE = os.path.join(os.path.dirname(__file__), '..', 'import_ops_email_last.json')
+        try:
+            last = json.load(open(STATE_FILE))
+            if last.get('message_id') == msg['id']:
+                update_sync_health('import_ops', 'success', 'Already processed', last.get('rows', 0))
+                return
+        except Exception:
+            pass
+
+        ar = requests.get(
+            f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages/{msg["id"]}/attachments',
+            headers=headers, timeout=60)
+        ar.raise_for_status()
+        xlsx = next((a for a in ar.json().get('value', [])
+                     if a.get('name', '').lower().endswith(('.xlsx', '.xls'))), None)
+        if not xlsx:
+            update_sync_health('import_ops', 'error', 'No Excel attachment', 0)
+            return
+
+        fb = base64.b64decode(xlsx['contentBytes'])
+        wb = openpyxl.load_workbook(io.BytesIO(fb), read_only=True, data_only=True)
+        ws = wb['Shipment Profile']
+        rows = []
+        for row in ws.iter_rows(min_row=15, values_only=False):
+            cells = [c.value for c in row]
+            vals = cells[2:25] if len(cells) > 24 else cells[2:] + [None] * (23 - max(0, len(cells) - 2))
+            if not vals[0]:
+                continue
+            rows.append(tuple(str(v).strip() if v is not None else '' for v in vals))
+        wb.close()
+
+        with connection.cursor() as cur:
+            cur.execute('DELETE FROM import_ops')
+            execute_values(cur,
+                'INSERT INTO import_ops (shipment_id,shipment_direction,report_date,trans,customs_info,mode,origin,origin_country,destination,destination_country,consignor_code,consignor_name,consignee_code,consignee_name,house_ref,incoterm,additional_terms,ppd_ccx,goods_description,origin_etd,destination_eta,weight,weight_unit) VALUES %s',
+                rows)
+
+        with open(STATE_FILE, 'w') as f:
+            json.dump({'message_id': msg['id'], 'received': msg['receivedDateTime'], 'rows': len(rows)}, f)
+        update_sync_health('import_ops', 'success', f'Email {msg["receivedDateTime"][:10]}: {len(rows)} rows', len(rows))
+
+    except Exception as e:
+        logger.exception('[import_ops] email sync failed')
+        update_sync_health('import_ops', 'error', str(e))
+
+
+def _run_creditor_email_sync():
+    """Fetch latest creditor emails (one per group) and insert into creditor_transactions."""
+    import os, json, io, base64, re, requests
+    from decimal import Decimal
+    from django.db import connection
+    from psycopg2.extras import execute_values
+    from .views import _get_graph_token
+    import openpyxl, xlrd
+
+    try:
+        token = _get_graph_token()
+        if not token:
+            raise RuntimeError('Graph token unavailable')
+        headers = {'Authorization': f'Bearer {token}'}
+
+        url = (f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages'
+               f'?$top=100&$orderby=receivedDateTime desc'
+               f'&$select=id,subject,receivedDateTime,from,hasAttachments')
+        all_msgs = []
+        while url:
+            r = requests.get(url, headers=headers, timeout=30); r.raise_for_status()
+            j = r.json()
+            for m in j.get('value', []):
+                if (m.get('hasAttachments')
+                    and 'creditor transaction report - moc' in m.get('subject', '').lower()):
+                    all_msgs.append(m)
+            url = j.get('@odata.nextLink')
+
+        if not all_msgs:
+            update_sync_health('creditor', 'success', 'No creditor emails found', 0)
+            return
+
+        # Group by creditor group (last word of subject)
+        from collections import defaultdict
+        per_group = defaultdict(list)
+        for m in all_msgs:
+            mm = re.search(r'MOC\s+(\w+)\s*$', m.get('subject', '').strip())
+            if mm:
+                per_group[mm.group(1).upper()].append(m)
+
+        grand = 0
+        with connection.cursor() as cur:
+            cur.execute('DELETE FROM creditor_transactions')
+
+        for group, gmsgs in per_group.items():
+            gmsgs.sort(key=lambda m: m['receivedDateTime'], reverse=True)
+            try:
+                ar = requests.get(
+                    f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages/{gmsgs[0]["id"]}/attachments',
+                    headers=headers, timeout=60)
+                ar.raise_for_status()
+                x = next((a for a in ar.json().get('value', [])
+                          if a.get('name', '').lower().endswith(('.xlsx', '.xls'))), None)
+                if not x:
+                    continue
+                raw_bytes = base64.b64decode(x['contentBytes'])
+
+                ws = None
+                wsx = None
+                try:
+                    wb = openpyxl.load_workbook(io.BytesIO(raw_bytes), data_only=True)
+                    ws = wb.active
+                    max_row, max_col = ws.max_row, ws.max_column
+                except Exception:
+                    wbx = xlrd.open_workbook(file_contents=raw_bytes)
+                    wsx = wbx.sheet_by_index(0)
+                    max_row, max_col = wsx.nrows, wsx.ncols
+
+                def cell(r, c):
+                    if ws is not None:
+                        return ws.cell(row=r, column=c).value
+                    if r - 1 < wsx.nrows and c - 1 < wsx.ncols:
+                        v = wsx.cell_value(r - 1, c - 1)
+                        return v if v != '' else None
+                    return None
+
+                periods = []
+                for ci in range(5, max_col + 1):
+                    v = cell(8, ci)
+                    if v is not None:
+                        vs = str(v).strip().split('.')[0]
+                        if re.match(r'^\d{6}$', vs):
+                            periods.append((ci, vs))
+
+                if not periods:
+                    continue
+
+                cur_branch = ''
+                rs = []
+                for ri in range(9, max_row + 1):
+                    cb = cell(ri, 2)
+                    if cb is None:
+                        continue
+                    cb = str(cb).strip()
+                    if cb.startswith('Organization Branch:'):
+                        mm2 = re.search(r'\(([^)]*)\)', cb)
+                        cur_branch = mm2.group(1) if mm2 else ''
+                        continue
+                    if 'Total' in cb or 'Grand' in cb or cb == '':
+                        continue
+                    cn = str(cell(ri, 3) or '').strip()
+                    if not cn:
+                        continue
+                    for ci, period in periods:
+                        val = cell(ri, ci)
+                        if val is not None and str(val).strip() != '':
+                            try:
+                                v = Decimal(str(val).replace(',', ''))
+                            except Exception:
+                                continue
+                            rs.append((cb, cn, period, v, group, cur_branch))
+
+                if rs:
+                    with connection.cursor() as cur:
+                        execute_values(cur,
+                            'INSERT INTO creditor_transactions (creditor, creditor_name, period, value, creditor_group, branch) VALUES %s',
+                            rs)
+                    grand += len(rs)
+            except Exception as e:
+                logger.warning(f'[creditor] {group} failed: {e}')
+
+        update_sync_health('creditor', 'success', f'{len(per_group)} groups, {grand} rows', grand)
+
+    except Exception as e:
+        logger.exception('[creditor] email sync failed')
+        update_sync_health('creditor', 'error', str(e))
+
+
+def _run_condor_dor_email_sync():
+    """Fetch latest CON + DOR BRK/FEA/TRX emails and insert into condor_dor_pnl."""
+    import os, json, io, base64, requests
+    from django.db import connection
+    from psycopg2.extras import execute_values
+    from .views import _get_graph_token
+    from . import onedrive_sync
+
+    CONDOR_DOR_FILES = {
+        'CON Financial Analysis':     ('CON', 'CON'),
+        'DOR BRK Financial Analysis': ('BRK', 'DOR'),
+        'DOR FEA Financial Analysis': ('FEA', 'DOR'),
+        'DOR TRX Financial Analysis': ('TRX', 'DOR'),
+    }
+
+    try:
+        token = _get_graph_token()
+        if not token:
+            raise RuntimeError('Graph token unavailable')
+        headers = {'Authorization': f'Bearer {token}'}
+
+        url = (f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages'
+               f'?$top=100&$orderby=receivedDateTime desc'
+               f'&$select=id,subject,receivedDateTime,from,hasAttachments')
+        all_msgs = []
+        while url:
+            r = requests.get(url, headers=headers, timeout=30); r.raise_for_status()
+            j = r.json()
+            all_msgs.extend(j.get('value', []))
+            url = j.get('@odata.nextLink')
+
+        grand = 0
+        for subj_kw, (department, branch) in CONDOR_DOR_FILES.items():
+            matches = [m for m in all_msgs
+                       if m.get('hasAttachments')
+                       and subj_kw.lower() in m.get('subject', '').lower()]
+            if not matches:
+                continue
+            matches.sort(key=lambda m: m['receivedDateTime'], reverse=True)
+            msg = matches[0]
+
+            ar = requests.get(
+                f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages/{msg["id"]}/attachments',
+                headers=headers, timeout=60)
+            ar.raise_for_status()
+            xlsx = next((a for a in ar.json().get('value', [])
+                         if a.get('name', '').lower().endswith(('.xlsx', '.xls'))), None)
+            if not xlsx:
+                continue
+
+            fb = base64.b64decode(xlsx['contentBytes'])
+            # Parse using PPG parser (same GL PL Period Analysis format)
+            pnl_rows = onedrive_sync.process_ppg_excel_file(io.BytesIO(fb), xlsx['name'])
+            if not pnl_rows:
+                continue
+            # Convert to condor_dor_pnl schema: (department, account_name, value, date, date_fixed, branch, budget_actual)
+            rows = [(department, r[1], r[2], str(r[3]), r[4], branch, r[5]) for r in pnl_rows]
+
+            with connection.cursor() as cur:
+                cur.execute("DELETE FROM condor_dor_pnl WHERE department = %s", (department,))
+                execute_values(cur,
+                    "INSERT INTO condor_dor_pnl (department, account_name, value, date, date_fixed, branch, budget_actual) VALUES %s",
+                    rows)
+            grand += len(rows)
+
+        update_sync_health('condor_dor', 'success', f'{grand} rows across 4 files', grand)
+
+    except Exception as e:
+        logger.exception('[condor_dor] email sync failed')
+        update_sync_health('condor_dor', 'error', str(e))
+
+
+def run_turnover_email_sync_job():  _run_turnover_email_sync()
+def run_wip_email_sync_job():       _run_wip_email_sync()
+def run_import_ops_email_sync_job(): _run_import_ops_email_sync()
+def run_creditor_email_sync_job():  _run_creditor_email_sync()
+def run_condor_dor_email_sync_job(): _run_condor_dor_email_sync()
+
+
 def run_dor_sync_job():
     """Run the DOR sync job"""
     from . import onedrive_sync
@@ -807,6 +1252,11 @@ def start_scheduler():
         ('dfw', run_dfw_email_sync_job, 'Ingest weekly DFW email attachment'),
         ('con', run_con_email_sync_job, 'Ingest weekly CON email attachment'),
         ('dor', run_dor_email_sync_job, 'Ingest weekly DOR email attachment'),
+        ('turnover', run_turnover_email_sync_job, 'Ingest turnover email attachment'),
+        ('wip_accrual', run_wip_email_sync_job, 'Ingest WIP & Accrual email attachment'),
+        ('import_ops', run_import_ops_email_sync_job, 'Ingest Import Ops email attachment'),
+        ('creditor', run_creditor_email_sync_job, 'Ingest Creditor email attachments'),
+        ('condor_dor', run_condor_dor_email_sync_job, 'Ingest Condor+DOR email attachments'),
     ]
     for _key, _fn, _desc in _EMAIL_JOBS:
         scheduler.add_job(
