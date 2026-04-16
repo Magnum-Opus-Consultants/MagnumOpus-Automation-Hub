@@ -1841,32 +1841,32 @@ def sync_monitor_api(request):
 
 @login_required
 def sync_all(request):
-    """Trigger a manual sync of all stations"""
+    """Trigger a manual sync of all stations via email inbox"""
     if request.method != 'POST':
         return JsonResponse({'status': 'error', 'message': 'POST required'}, status=405)
 
-    if not onedrive_sync.get_access_token():
-        return JsonResponse({'status': 'error', 'message': 'OneDrive not connected'})
-
     def run_all():
         from .scheduler import (
-            run_sync_job, run_ppg_sync_job, run_dor_sync_job,
-            run_con_sync_job, run_ccd_sync_job, run_atl_sync_job,
-            run_ccc_sync_job, run_hnl_sync_job, run_jfk_sync_job,
-            run_fax_sync_job, run_hou_sync_job, run_ics_sync_job,
-            run_imp_sync_job, run_lax_sync_job, run_lcl_sync_job,
-            run_ord_sync_job, run_creditor_sync_job, run_condor_dor_sync_job,
+            run_ppg_email_sync_job, run_ccc_email_sync_job, run_ccd_email_sync_job,
+            run_hnl_email_sync_job, run_jfk_email_sync_job, run_lcl_email_sync_job,
+            run_hou_email_sync_job, run_ics_email_sync_job, run_ord_email_sync_job,
+            run_imp_email_sync_job, run_lax_email_sync_job, run_fax_email_sync_job,
+            run_atl_email_sync_job, run_dfw_email_sync_job, run_con_email_sync_job,
+            run_dor_email_sync_job,
         )
         fns = [
-            run_sync_job, run_ppg_sync_job, run_dor_sync_job,
-            run_con_sync_job, run_ccd_sync_job, run_atl_sync_job,
-            run_ccc_sync_job, run_hnl_sync_job, run_jfk_sync_job,
-            run_fax_sync_job, run_hou_sync_job, run_ics_sync_job,
-            run_imp_sync_job, run_lax_sync_job, run_lcl_sync_job,
-            run_ord_sync_job, run_creditor_sync_job, run_condor_dor_sync_job,
+            run_ppg_email_sync_job, run_ccc_email_sync_job, run_ccd_email_sync_job,
+            run_hnl_email_sync_job, run_jfk_email_sync_job, run_lcl_email_sync_job,
+            run_hou_email_sync_job, run_ics_email_sync_job, run_ord_email_sync_job,
+            run_imp_email_sync_job, run_lax_email_sync_job, run_fax_email_sync_job,
+            run_atl_email_sync_job, run_dfw_email_sync_job, run_con_email_sync_job,
+            run_dor_email_sync_job,
         ]
         for fn in fns:
-            threading.Thread(target=fn, daemon=True).start()
+            try:
+                fn()
+            except Exception as e:
+                print(f'[sync_all] {fn.__name__} failed: {e}', flush=True)
 
     threading.Thread(target=run_all, daemon=True).start()
     return JsonResponse({'status': 'started'})
@@ -2420,10 +2420,8 @@ def send_all_touchpoint(request):
     if not contacts:
         return JsonResponse({'ok': False, 'error': 'No eligible contacts found'}, status=400)
 
-    # In test mode, only send to 1 contact to avoid spamming
-    test_override = getattr(django_settings, 'TEST_EMAIL_OVERRIDE', None)
-    if test_override:
-        contacts = contacts[:1]
+    # TEST_EMAIL_OVERRIDE redirects all emails to the test address
+    # but still sends to all eligible contacts so you can test the full flow
 
     # Get template
     try:
@@ -2531,17 +2529,20 @@ def stop_sending(request):
 def send_all_progress(request):
     """Poll progress of a send-all job."""
     job_id = request.GET.get('job_id', '')
-    progress = _send_all_progress.get(job_id)
 
-    # Fallback: read from the subprocess job file (survives gunicorn restarts)
+    # Always prefer the job file (written by the subprocess worker in real-time)
+    progress = None
+    _job_file = os.path.join(os.path.dirname(__file__), '..', f'send_job_{job_id}.json')
+    if os.path.exists(_job_file):
+        try:
+            with open(_job_file) as _f:
+                progress = json.load(_f)
+        except Exception:
+            pass
+
+    # Fallback to in-memory dict (only before worker starts writing)
     if not progress:
-        _job_file = os.path.join(os.path.dirname(__file__), '..', f'send_job_{job_id}.json')
-        if os.path.exists(_job_file):
-            try:
-                with open(_job_file) as _f:
-                    progress = json.load(_f)
-            except Exception:
-                pass
+        progress = _send_all_progress.get(job_id)
 
     if not progress:
         return JsonResponse({'ok': False, 'error': 'Job not found'}, status=404)
