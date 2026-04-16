@@ -201,9 +201,11 @@ def run_campaign(tp_num, job_id, job_file):
                     if any(kw in error_lower for kw in [
                         'mailboxdoesnotexist', 'mailbox does not exist',
                         'addressnotverified', 'invalidparametervalue',
+                        'messagerejected', 'message rejected',
                         'bounce', 'permanent failure', 'no such user',
                         'recipient address rejected', 'user unknown',
-                        'domain not found', 'suppressed',
+                        'domain not found', 'suppressed', 'blacklisted',
+                        'account is in the suppression list',
                     ]):
                         # Mark contact as Undeliverable only — do NOT mark as sent
                         contact.status = 'Undeliverable'
