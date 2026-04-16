@@ -576,7 +576,7 @@ def run_scheduled_touchpoints():
     import subprocess
     import sys as _sys
 
-    today = datetime.now(ZoneInfo('Africa/Johannesburg')).date()
+    today = datetime.now(ZoneInfo('America/New_York')).date()
     today_str = today.strftime('%d-%m-%Y')
     logger.info(f"Checking scheduled touchpoints for {today_str}...")
 

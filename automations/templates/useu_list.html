@@ -876,9 +876,9 @@ window.showToast = function(message, opts) {
         <div class="tp-stat-row"><span>Last sent</span><span>{{ tp.last_sent }}</span></div>
         {% endif %}
         <div class="tp-card-schedule">
-            <label class="tp-card-schedule-label">Scheduled date &amp; time (SAST)</label>
+            <label class="tp-card-schedule-label">Scheduled date &amp; time (EST)</label>
             <div style="display:flex;gap:6px;align-items:center;">
-                <input type="text" class="tp-datepicker tp-card-datepicker" id="schedDate{{ tp.num }}" data-tp="{{ tp.num }}" placeholder="Pick date &amp; time (SAST)...">
+                <input type="text" class="tp-datepicker tp-card-datepicker" id="schedDate{{ tp.num }}" data-tp="{{ tp.num }}" placeholder="Pick date &amp; time (EST)...">
                 <button class="sched-clear-btn" onclick="clearSchedule({{ tp.num }})" title="Clear">&times;</button>
             </div>
             <span class="schedule-status pending" id="schedStatus{{ tp.num }}"></span>
@@ -1899,7 +1899,7 @@ window.showToast = function(message, opts) {
         minuteIncrement: 15,
         defaultHour: 9,
         defaultMinute: 0,
-        // South African Standard Time (UTC+2, no DST) — labels are local SAST
+        // South African Standard Time (UTC+2, no DST) — labels are local EST
         allowInput: false,
         disable: [
             function(date) {
