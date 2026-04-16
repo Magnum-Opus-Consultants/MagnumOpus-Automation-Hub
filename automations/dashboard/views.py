@@ -2072,6 +2072,7 @@ def useu_list(request):
     # A job file is "stale" if it hasn't been touched in 2 minutes — the worker
     # writes progress every contact, so a lack of updates means the process died.
     _active_tp = None
+    _active_job_id = None
     _base_dir = os.path.join(os.path.dirname(__file__), '..')
     _stale_cutoff = time.time() - 120  # 2 minutes
     for _jf in os.listdir(_base_dir):
@@ -2083,7 +2084,6 @@ def useu_list(request):
                     _jdata = json.load(_f)
                 _done = _jdata.get('done', True)
                 if not _done and _mtime < _stale_cutoff:
-                    # Mark as done and move on — the worker is gone.
                     _jdata['done'] = True
                     _jdata['stopped'] = True
                     try:
@@ -2091,7 +2091,6 @@ def useu_list(request):
                             json.dump(_jdata, _fw)
                     except Exception:
                         pass
-                    # Also reset touchpoint_progress.json so the banner clears
                     try:
                         _tpm = re.search(r'tp(\d+)', _jf)
                         if _tpm:
@@ -2103,6 +2102,8 @@ def useu_list(request):
                     _tp_match = re.search(r'tp(\d+)', _jf)
                     if _tp_match:
                         _active_tp = int(_tp_match.group(1))
+                    # Extract job_id from filename: send_job_{job_id}.json
+                    _active_job_id = _jf[len('send_job_'):-len('.json')]
             except Exception:
                 pass
 
@@ -2145,6 +2146,8 @@ def useu_list(request):
         'current_page': page,
         'per_page': per_page,
         'search': search,
+        'active_job_id': _active_job_id or '',
+        'active_tp_num': _active_tp or 0,
     })
 
 

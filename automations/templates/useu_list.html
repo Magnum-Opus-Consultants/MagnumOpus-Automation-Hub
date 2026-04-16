@@ -1446,14 +1446,28 @@ window.showToast = function(message, opts) {
     let sendJobId = null;
     let pollLastIdx = 0;
 
-    // Reset buttons on page load (in case of stale state from previous session)
-    console.log('[SEND] Page load reset — sendAllBtn:', document.getElementById('sendAllBtn'), 'stopSendBtn:', document.getElementById('stopSendBtn'));
-    document.getElementById('sendAllBtn').disabled = false;
-    { const _l = document.getElementById('sendAllBtnLabel'); if (_l) _l.textContent = 'Send All'; }
-    document.getElementById('stopSendBtn').style.display = 'none';
-    document.getElementById('stopSendBtn').disabled = false;
-    { const _l = document.getElementById('stopSendBtnLabel'); if (_l) _l.textContent = 'Stop Sending'; }
-    console.log('[SEND] Page load reset complete. sendJobId:', sendJobId);
+    // Check for active job on page load (survives refresh)
+    const _resumeJobId = '{{ active_job_id|escapejs }}';
+    const _resumeTpNum = {{ active_tp_num }};
+    if (_resumeJobId) {
+        // Resume polling for the active send job
+        sendJobId = _resumeJobId;
+        pollLastIdx = 0;
+        document.getElementById('sendAllBtn').disabled = true;
+        { const _l = document.getElementById('sendAllBtnLabel'); if (_l) _l.textContent = 'Sending...'; }
+        document.getElementById('stopSendBtn').style.display = 'inline-block';
+        document.getElementById('stopSendBtn').disabled = false;
+        document.getElementById('progressPanel').style.display = 'inline-flex';
+        document.getElementById('sendSpinner').style.display = 'inline-block';
+        document.getElementById('progCurrent').textContent = 'Resuming...';
+        if (_resumeTpNum) document.getElementById('tpSelect').value = _resumeTpNum;
+        setTimeout(pollProgress, 500);
+    } else {
+        document.getElementById('sendAllBtn').disabled = false;
+        { const _l = document.getElementById('sendAllBtnLabel'); if (_l) _l.textContent = 'Send All'; }
+        document.getElementById('stopSendBtn').style.display = 'none';
+        document.getElementById('stopSendBtn').disabled = false;
+    }
 
     window.startSendAll = function() {
         const tpNum = document.getElementById('tpSelect').value;
