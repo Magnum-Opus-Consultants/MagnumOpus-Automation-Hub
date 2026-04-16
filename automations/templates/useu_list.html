@@ -1460,7 +1460,16 @@ window.showToast = function(message, opts) {
         document.getElementById('progressPanel').style.display = 'inline-flex';
         document.getElementById('sendSpinner').style.display = 'inline-block';
         document.getElementById('progCurrent').textContent = 'Resuming...';
-        if (_resumeTpNum) document.getElementById('tpSelect').value = _resumeTpNum;
+        if (_resumeTpNum) {
+            document.getElementById('tpSelect').value = _resumeTpNum;
+            document.querySelector('[data-tp-type]').setAttribute('data-tp-type', 'tp' + _resumeTpNum);
+        }
+        // Show the blue status bar
+        const _statusBar = document.querySelector('.tp-status');
+        if (_statusBar) {
+            _statusBar.style.display = 'block';
+            _statusBar.innerHTML = '<strong>TP' + _resumeTpNum + ' sending...</strong> Resuming progress — please wait.';
+        }
         setTimeout(pollProgress, 500);
     } else {
         document.getElementById('sendAllBtn').disabled = false;
@@ -1483,6 +1492,7 @@ window.showToast = function(message, opts) {
         document.getElementById('progressPanel').style.display = 'inline-flex';
         document.getElementById('sendSpinner').style.display = 'inline-block';
         document.getElementById('progCurrent').textContent = 'Starting...';
+        { const _sb = document.querySelector('.tp-status'); if (_sb) { _sb.style.display = 'block'; _sb.innerHTML = '<strong>TP' + tpNum + ' starting...</strong> Preparing to send.'; } }
         console.log('[SEND] UI set to Sending. Posting to server...');
 
         // Update data-tp-type when touchpoint changes
@@ -1580,6 +1590,10 @@ window.showToast = function(message, opts) {
             });
             pollLastIdx = data.next_idx;
 
+            // Update blue status bar
+            const _sb = document.querySelector('.tp-status');
+            const _tpN = document.getElementById('tpSelect').value;
+
             if (data.done) {
                 console.log('[POLL] Job DONE. stopped:', data.stopped, 'sent:', data.sent, 'total:', data.total);
                 document.getElementById('sendAllBtn').disabled = false;
@@ -1588,9 +1602,12 @@ window.showToast = function(message, opts) {
                 const _sp = document.getElementById('sendSpinner'); if(_sp) _sp.style.display = 'none';
                 if (data.stopped) {
                     const _pc = document.getElementById('progCurrent'); if(_pc) _pc.textContent = 'Stopped. Sent ' + data.sent + ' of ' + data.total + '.';
+                    if (_sb) _sb.innerHTML = '<strong>TP' + _tpN + ' stopped.</strong> Sent ' + data.sent + ' of ' + data.total + '. Failed: ' + data.failed;
                 } else {
                     const _pc = document.getElementById('progCurrent'); if(_pc) _pc.textContent = 'Complete! Sent ' + data.sent + ' of ' + data.total + '.';
+                    if (_sb) _sb.innerHTML = '<strong>TP' + _tpN + ' complete!</strong> Sent ' + data.sent + ' of ' + data.total + '. Failed: ' + data.failed;
                 }
+                if (_sb) setTimeout(() => { _sb.style.display = 'none'; }, 5000);
                 sendJobId = null;
                 updateEligibleCount();
                 setTimeout(() => {
@@ -1599,6 +1616,10 @@ window.showToast = function(message, opts) {
                 }, 4000);
             } else {
                 console.log('[POLL] Not done yet. sent:', data.sent, '/', data.total, 'current:', data.current);
+                if (_sb) {
+                    _sb.style.display = 'block';
+                    _sb.innerHTML = '<strong>TP' + _tpN + ' sending...</strong> Sent ' + data.sent + ' of ' + data.total + (data.failed ? ' (Failed: ' + data.failed + ')' : '') + (data.current ? ' — ' + data.current : '');
+                }
                 const progEl = document.getElementById('progCurrent');
                 if (progEl) {
                     if (data.current) {
