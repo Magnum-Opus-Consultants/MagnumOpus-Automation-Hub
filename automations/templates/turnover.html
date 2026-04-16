@@ -296,7 +296,7 @@
             </div>
             <div class="info-row">
                 <span class="info-label">Database</span>
-                <span class="info-value">turnover_data</span>
+                <span class="info-value">automation_platform</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Table</span>
@@ -327,7 +327,7 @@
         </button>
 
         <div class="conn-string">
-            Host=workspace.moc-pty.com;Port=5432;Database=turnover_data;Username=powerbi;Password=your_secure_password;SSLMode=require
+            Host=workspace.moc-pty.com;Port=5432;Database=automation_platform;Username=powerbi;Password=your_secure_password;SSLMode=require
         </div>
     </div>
 </div>
@@ -340,7 +340,7 @@
     <div class="card-body">
         <div class="query-box">
             {% verbatim %}<code class="query-code" id="mcode">let
-    Source = PostgreSQL.Database("workspace.moc-pty.com", "turnover_data"),
+    Source = PostgreSQL.Database("workspace.moc-pty.com", "automation_platform"),
     turnover_data = Source{[Schema="public",Item="turnover_data"]}[Data],
     #"Renamed Columns" = Table.RenameColumns(turnover_data,{{"id", "ID"}, {"debtor", "Debtor"}, {"debtor_name", "Debtor Name"}, {"value", "Value"}, {"date", "Date"}, {"date_fixed", "Date Fixed"}, {"branch", "Branch"}, {"report_date", "Report Date"}}),
     #"Changed Type" = Table.TransformColumnTypes(#"Renamed Columns",{{"ID", Int64.Type}, {"Debtor", type text}, {"Debtor Name", type text}, {"Value", type number}, {"Date", type date}, {"Date Fixed", type text}, {"Branch", type text}, {"Report Date", type date}}),

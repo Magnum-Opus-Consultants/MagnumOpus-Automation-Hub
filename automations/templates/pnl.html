@@ -226,7 +226,7 @@
             </div>
             <div class="info-row">
                 <span class="info-label">Database</span>
-                <span class="info-value">turnover_data</span>
+                <span class="info-value">automation_platform</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Table</span>
@@ -267,7 +267,7 @@
     <div class="card-body">
         <div class="query-box">
             {% verbatim %}<code class="query-code" id="mcode">let
-    Source = PostgreSQL.Database("workspace.moc-pty.com", "turnover_data"),
+    Source = PostgreSQL.Database("workspace.moc-pty.com", "automation_platform"),
     pnl_data = Source{[Schema="public",Item="pnl_data"]}[Data],
     #"Renamed Columns" = Table.RenameColumns(pnl_data,{{"division", "Division"}, {"account_name", "Account name"}, {"value", "Value"}, {"date", "Date"}, {"date_fixed", "Date Fixed"}, {"budget_actual", "Budget/Actual"}, {"week", "Week"}, {"actual_only", "Actual Only"}, {"budget_only", "Budget Only"}}),
     #"Changed Type" = Table.TransformColumnTypes(#"Renamed Columns",{{"Division", type text}, {"Account name", type text}, {"Value", type number}, {"Date", type date}, {"Date Fixed", type text}, {"Budget/Actual", type text}, {"Week", type text}, {"Null", Int64.Type}, {"Actual Only", type number}, {"Budget Only", type number}}),

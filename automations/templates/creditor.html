@@ -232,7 +232,7 @@
             </div>
             <div class="info-row">
                 <span class="info-label">Database</span>
-                <span class="info-value">turnover_data</span>
+                <span class="info-value">automation_platform</span>
             </div>
             <div class="info-row">
                 <span class="info-label">Table</span>
@@ -263,7 +263,7 @@
         </button>
 
         <div class="conn-string">
-            Host=workspace.moc-pty.com;Port=5432;Database=turnover_data;Username=powerbi;Password=your_secure_password;SSLMode=require
+            Host=workspace.moc-pty.com;Port=5432;Database=automation_platform;Username=powerbi;Password=your_secure_password;SSLMode=require
         </div>
     </div>
 </div>
@@ -276,7 +276,7 @@
     <div class="card-body">
         <div class="query-box">
             {% verbatim %}<code class="query-code" id="mcode">let
-    Source = PostgreSQL.Database("workspace.moc-pty.com", "turnover_data"),
+    Source = PostgreSQL.Database("workspace.moc-pty.com", "automation_platform"),
     creditor_transactions = Source{[Schema="public",Item="creditor_transactions"]}[Data],
     #"Renamed Columns" = Table.RenameColumns(creditor_transactions,{{"creditor", "Creditor"}, {"creditor_name", "Creditor Name"}, {"period", "Attribute"}, {"value", "Value"}, {"creditor_group", "Creditor Groups Code"}, {"branch", "Branch"}}),
     #"Changed Type" = Table.TransformColumnTypes(#"Renamed Columns",{{"Creditor", type text}, {"Creditor Name", type text}, {"Attribute", Int64.Type}, {"Value", type number}}),

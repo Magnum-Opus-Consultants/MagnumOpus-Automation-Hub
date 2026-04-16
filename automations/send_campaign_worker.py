@@ -144,6 +144,11 @@ def run_campaign(tp_num, job_id, job_file):
             if not email_addr:
                 return
 
+            # Override recipient for testing
+            test_override = getattr(django_settings, 'TEST_EMAIL_OVERRIDE', None)
+            if test_override:
+                email_addr = test_override
+
             # ── Daily limit check ──
             with _progress_lock:
                 if state['sent'] >= DAILY_SEND_LIMIT:

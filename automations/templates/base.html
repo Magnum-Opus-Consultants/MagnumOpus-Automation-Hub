@@ -598,22 +598,19 @@
         });
     });
 
-    // Touchpoint Progress Auto-Update
+    // Touchpoint Progress Auto-Update (only on pages without their own poll)
     function updateTouchpointProgress() {
-        // Get current TP type from the page
+        // Skip if useu_list page has its own polling (indicated by sendAllBtn existing)
+        if (document.getElementById('sendAllBtn')) return;
+
         const currentTP = document.querySelector('[data-tp-type]')?.dataset.tpType || 'tp1';
-        
         fetch(`/api/tp-progress/?tp_type=${currentTP}`)
             .then(response => response.json())
             .then(data => {
-                console.log('Progress update:', data); // Debug log
                 const statusElement = document.querySelector('.tp-status');
-                
-                // Treat failed emails as sent (undeliverable = successfully dispatched)
+                if (!statusElement) return;
                 const actualSent = data.sent_count + data.failed_count;
-                const actualFailed = 0; // Don't show any failures since undeliverable = sent
-                
-                if (statusElement && data.status === 'sending') {
+                if (data.status === 'sending') {
                     statusElement.style.display = 'block';
                     const pct = data.total_contacts > 0 ? Math.round((actualSent / data.total_contacts) * 100) : 0;
                     statusElement.innerHTML = `
@@ -630,34 +627,15 @@
                             ${data.current_email ? ` &mdash; ${data.current_email}` : ''}
                         </div>
                     `;
-                } else if (statusElement) {
-                    console.log('Hiding status element, conditions not met');
+                } else {
                     statusElement.style.display = 'none';
                 }
             })
-            .catch(err => {
-                console.error('Progress update error:', err);
-                // Force display with error message
-                const statusElement = document.querySelector('.tp-status');
-                if (statusElement) {
-                    statusElement.style.display = 'block';
-                    statusElement.innerHTML = '<strong>⚠️ Unable to load progress status</strong>';
-                }
-            });
+            .catch(() => {});
     }
 
-    // Auto-refresh every 2 seconds if sending or has data
-    setInterval(() => {
-        const statusElement = document.querySelector('.tp-status');
-        // Always update to check for new data
-        updateTouchpointProgress();
-    }, 3000);
-
-    // Load progress on page load  
-    document.addEventListener('DOMContentLoaded', () => {
-        console.log('DOM loaded, starting progress update');
-        updateTouchpointProgress();
-    });
+    setInterval(updateTouchpointProgress, 3000);
+    document.addEventListener('DOMContentLoaded', updateTouchpointProgress);
     
     </script>
 </body>
