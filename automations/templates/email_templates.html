@@ -263,12 +263,6 @@
     <div class="banner-subtitle">Configure the email content, signature, and attachment for each touchpoint (1–10)</div>
 </div>
 
-<div class="schedule-card">
-    <div class="schedule-title">Touchpoint Schedule</div>
-    <div class="schedule-subtitle">Set the date each touchpoint will be sent out. This updates all contacts' scheduled date for that touchpoint.</div>
-    <div class="schedule-grid" id="scheduleGrid"></div>
-</div>
-
 <div class="tp-tabs" id="tpTabs"></div>
 
 <div class="variables-hint">
@@ -303,6 +297,21 @@
         <textarea class="sig-textarea" id="tpSignature" placeholder="Email signature (appended to every email for this touchpoint)..."></textarea>
     </div>
     <div class="editor-row">
+        <div class="editor-label">Signature Image (inline) <span style="font-weight:400;color:var(--text-secondary);">— referenced as <code>cid:signature_tpN</code> in HTML</span></div>
+        <div class="attach-area" id="sigImgArea">
+            <label class="attach-btn" id="sigImgBtn">
+                <svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                Upload signature image
+                <input type="file" id="sigImgInput" accept="image/*" style="display:none">
+            </label>
+            <div class="attach-file" id="sigImgInfo" style="display:none">
+                <img id="sigImgPreview" src="" alt="" style="height:28px;vertical-align:middle;border:1px solid var(--border);border-radius:4px;margin-right:8px;">
+                <a id="sigImgLink" href="#" target="_blank">filename.png</a>
+                <button class="attach-remove" onclick="clearSignatureImage()" title="Remove signature image">&times;</button>
+            </div>
+        </div>
+    </div>
+    <div class="editor-row">
         <div class="editor-label">Attachment</div>
         <div class="attach-area" id="attachArea">
             <label class="attach-btn" id="attachBtn">
@@ -317,16 +326,13 @@
         </div>
     </div>
     <div class="editor-footer">
-        <div class="days-input-wrap" id="daysWrap">
-            <span>Send</span>
-            <input type="number" class="days-input" id="tpDays" min="1" max="365" value="7">
-            <span>days after previous touchpoint</span>
-        </div>
+        <div style="font-size:12px;color:var(--text-secondary);">Sends on its scheduled date (set per contact on the US-EU List page).</div>
         <div style="display:flex;align-items:center;gap:12px;">
             <span class="save-status" id="saveStatus">Saved &#10003;</span>
             <button class="save-btn" id="saveBtn" onclick="saveTemplate()">Save Template</button>
         </div>
     </div>
+    <input type="hidden" id="tpDays" value="0">
 </div>
 {% endblock %}
 
@@ -338,13 +344,15 @@
     let activeTP = 1;
     let pendingFile = null;
     let clearAttach = false;
+    let pendingSigImg = null;
+    let clearSigImg = false;
 
     const tabsEl = document.getElementById('tpTabs');
     const subjectEl = document.getElementById('tpSubject');
     const bodyEl = document.getElementById('tpBody');
     const sigEl = document.getElementById('tpSignature');
     const daysEl = document.getElementById('tpDays');
-    const daysWrap = document.getElementById('daysWrap');
+    const daysWrap = null;
     const saveBtnEl = document.getElementById('saveBtn');
     const saveStatusEl = document.getElementById('saveStatus');
     const attachInput = document.getElementById('attachInput');
@@ -352,6 +360,11 @@
     const attachLink = document.getElementById('attachLink');
     const attachBtn = document.getElementById('attachBtn');
     const bodyHtmlEl = document.getElementById('tpBodyHtml');
+    const sigImgInput = document.getElementById('sigImgInput');
+    const sigImgInfo = document.getElementById('sigImgInfo');
+    const sigImgLink = document.getElementById('sigImgLink');
+    const sigImgBtn = document.getElementById('sigImgBtn');
+    const sigImgPreview = document.getElementById('sigImgPreview');
 
     function getTemplate(num) {
         return templates.find(t => t.touchpoint_number === num) || {
@@ -373,8 +386,7 @@
         subjectEl.value = t.subject || '';
         bodyEl.value = t.body || '';
         sigEl.value = t.signature || '';
-        daysEl.value = t.days_after_previous || 7;
-        daysWrap.style.display = num === 1 ? 'none' : '';
+        if (daysEl) daysEl.value = t.days_after_previous || 7;
         bodyHtmlEl.value = t.body_html || '';
         pendingFile = null;
         clearAttach = false;
@@ -388,6 +400,20 @@
         } else {
             attachInfo.style.display = 'none';
             attachBtn.style.display = '';
+        }
+        pendingSigImg = null;
+        clearSigImg = false;
+        if (sigImgInput) sigImgInput.value = '';
+        if (t.signature_image_name) {
+            sigImgInfo.style.display = '';
+            sigImgBtn.style.display = 'none';
+            sigImgLink.textContent = t.signature_image_name;
+            sigImgLink.href = t.signature_image_url || '#';
+            sigImgPreview.src = t.signature_image_url || '';
+        } else if (sigImgInfo) {
+            sigImgInfo.style.display = 'none';
+            sigImgBtn.style.display = '';
+            sigImgPreview.src = '';
         }
         saveStatusEl.classList.remove('show');
     }
@@ -409,6 +435,29 @@
         attachInput.value = '';
         attachInfo.style.display = 'none';
         attachBtn.style.display = '';
+    };
+
+    if (sigImgInput) sigImgInput.addEventListener('change', function() {
+        if (this.files && this.files[0]) {
+            pendingSigImg = this.files[0];
+            clearSigImg = false;
+            sigImgInfo.style.display = '';
+            sigImgBtn.style.display = 'none';
+            sigImgLink.textContent = pendingSigImg.name;
+            sigImgLink.href = '#';
+            const reader = new FileReader();
+            reader.onload = e => { sigImgPreview.src = e.target.result; };
+            reader.readAsDataURL(pendingSigImg);
+        }
+    });
+
+    window.clearSignatureImage = function() {
+        pendingSigImg = null;
+        clearSigImg = true;
+        if (sigImgInput) sigImgInput.value = '';
+        sigImgInfo.style.display = 'none';
+        sigImgBtn.style.display = '';
+        sigImgPreview.src = '';
     };
 
     window.previewHtml = function() {
@@ -455,6 +504,12 @@
         if (clearAttach) {
             fd.append('clear_attachment', '1');
         }
+        if (pendingSigImg) {
+            fd.append('signature_image', pendingSigImg);
+        }
+        if (clearSigImg) {
+            fd.append('clear_signature_image', '1');
+        }
         fd.append('body_html', bodyHtmlEl.value);
 
         fetch('{% url "email_template_save" %}', {
@@ -476,6 +531,8 @@
                     signature: sigEl.value,
                     attachment_name: data.attachment_name || '',
                     attachment_url: data.attachment_url || '',
+                    signature_image_name: data.signature_image_name || '',
+                    signature_image_url: data.signature_image_url || '',
                     days_after_previous: parseInt(daysEl.value) || 7
                 };
                 if (existing) Object.assign(existing, updated);
@@ -531,6 +588,7 @@
     const schedules = {};
 
     function renderScheduleGrid() {
+        if (!scheduleGrid) return;
         let html = '';
         for (let i = 2; i <= 10; i++) {
             const val = schedules[i] || '';
@@ -616,7 +674,6 @@
         });
     };
 
-    loadSchedules();
 })();
 </script>
 {% endblock %}

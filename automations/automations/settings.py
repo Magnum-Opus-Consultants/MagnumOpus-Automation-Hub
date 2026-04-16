@@ -6,7 +6,7 @@ load_dotenv()
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'dev-key')
-DEBUG = False
+DEBUG = os.getenv('DJANGO_DEBUG', 'False') == 'True'
 ALLOWED_HOSTS = ['workspace.moc-pty.com', '137.184.229.140', '*']
 
 INSTALLED_APPS = [
@@ -86,7 +86,7 @@ TEST_EMAIL_OVERRIDE = None
 AWS_SES_ACCESS_KEY_ID = os.getenv('AWS_SES_ACCESS_KEY_ID', '')
 AWS_SES_SECRET_ACCESS_KEY = os.getenv('AWS_SES_SECRET_ACCESS_KEY', '')
 AWS_SES_REGION = 'eu-west-1'
-AWS_SES_FROM_EMAIL = 'ethan.sevenster@moc-pty.com'
+AWS_SES_FROM_EMAIL = 'waldogaybba@moc-pty.com'
 
 GOOGLE_DRIVE_FOLDER_ID = '1xPGTc8320el4HXmZ3tNsHcavGtZ4asIY'
 GOOGLE_CLIENT_SECRET_FILE = str(BASE_DIR.parent / 'Turn over GABE tuesday update' / 'client_secret_929057555993-c86mkjhf08suobk6olcca6sgmudeg8l0.apps.googleusercontent.com.json')
@@ -97,7 +97,7 @@ ONEDRIVE_CLIENT_ID = '43fbe5a9-6b5b-4c81-9067-7aff9ac3ed5a'
 ONEDRIVE_TENANT_ID = 'b1504b1d-d096-409a-a0f0-6cc546dde993'
 ONEDRIVE_CLIENT_SECRET = os.getenv('ONEDRIVE_CLIENT_SECRET', '')
 ONEDRIVE_REDIRECT_URI = 'http://localhost:8000/onedrive/callback'
-ONEDRIVE_SCOPES = ['Files.Read.All', 'Files.ReadWrite.All']
+ONEDRIVE_SCOPES = ['Files.Read.All', 'Files.ReadWrite.All', 'Mail.Read', 'Mail.Send']
 ONEDRIVE_FOLDER_PATH = '/Automation Platform/Turn Over Automation Report'
 ONEDRIVE_PPG_FOLDER_PATH = '/Automation Platform/PPG Financial Analysis Report'
 ONEDRIVE_DOR_FOLDER_PATH = '/Automation Platform/DOR Financial Analysis Report'

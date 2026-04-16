@@ -66,7 +66,7 @@ def run_sync_job():
 
 
 def run_ppg_sync_job():
-    """Run the PPG sync job"""
+    """PAUSED — old OneDrive PPG sync. Kept callable for manual fallback button."""
     from . import onedrive_sync
     from .views import update_ppg_progress
     try:
@@ -80,6 +80,173 @@ def run_ppg_sync_job():
         logger.error(f"Scheduled PPG sync error: {e}")
         update_ppg_progress('error', f'Scheduled sync error: {str(e)}', 0, 100)
         update_sync_health('ppg', 'error', str(e))
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Email-based sync framework
+# All stations now ingest from ethan.sevenster@moc-pty.com mailbox instead
+# of OneDrive. Scheduled to check every 3 hours.
+# ═══════════════════════════════════════════════════════════════════════
+
+EMAIL_MAILBOX = 'ethan.sevenster@moc-pty.com'
+
+# key -> (sender, subject-contains, parser function name, pnl table name)
+# All financial-analysis stations share the same {table}_pnl schema:
+#   (division, account_name, value, date, date_fixed, budget_actual, week, report_date)
+STATION_EMAIL_CONFIG = {
+    'ppg':        ('gerald.lowe@awaship.com',          'PPG Financial Analysis',   'process_ppg_excel_file', 'ppg_pnl'),
+    'ccc':        ('gerald.lowe@awaship.com',          'CCC Financial Analysis',   'process_ccc_excel_file', 'ccc_pnl'),
+    'ccd':        ('gerald.lowe@awaship.com',          'CCD Financial Analysis',   'process_ccd_excel_file', 'ccd_pnl'),
+    'hnl':        ('gerald.lowe@awaship.com',          'HNL Financial Analysis',   'process_hnl_excel_file', 'hnl_pnl'),
+    'jfk':        ('gerald.lowe@awaship.com',          'JFK Financial Analysis',   'process_jfk_excel_file', 'jfk_pnl'),
+    'lcl':        ('gerald.lowe@awaship.com',          'LCL Financial Analysis',   'process_lcl_excel_file', 'lcl_pnl'),
+    'hou':        ('gerald.lowe@awaship.com',          'HOU Financial Analysis',   'process_hou_excel_file', 'hou_pnl'),
+    'ics':        ('gerald.lowe@awaship.com',          'ICS Financial Analysis',   'process_ics_excel_file', 'ics_pnl'),
+    'ord':        ('gerald.lowe@awaship.com',          'ORD Financial Analysis',   'process_ord_excel_file', 'ord_pnl'),
+    'imp':        ('gerald.lowe@awaship.com',          'IMP Financial Analysis',   'process_imp_excel_file', 'imp_pnl'),
+    'lax':        ('gerald.lowe@awaship.com',          'LAX Financial Analysis',   'process_lax_excel_file', 'lax_pnl'),
+    'fax':        ('anthony.penzes@intelligentscm.com', 'FAX Financial Analysis',  'process_fax_excel_file', 'fax_pnl'),
+    'atl':        ('anthony.penzes@intelligentscm.com', 'ATL Financial Analysis',  'process_atl_excel_file', 'atl_pnl'),
+    'dfw':        ('anthony.penzes@intelligentscm.com', 'DFW Financial Analysis',  'process_dfw_excel_file', 'dfw_pnl'),
+    'con':        ('anthony.penzes@intelligentscm.com', 'CON Financial Analysis',  'process_con_excel_file', 'con_pnl'),
+    'dor':        ('anthony.penzes@intelligentscm.com', 'DOR Combined Financial Analysis', 'process_dor_excel_file', 'dor_pnl'),
+}
+
+
+def _fetch_latest_station_email(key, sender, subject_kw):
+    """Return (msg_id, subject, received, xlsx_name, xlsx_bytes) or (None,...)"""
+    import base64, requests
+    from .views import _get_graph_token
+
+    token = _get_graph_token()
+    if not token:
+        raise RuntimeError('Graph token unavailable')
+    headers = {'Authorization': f'Bearer {token}'}
+
+    # Inbox scan (recent 100 messages is plenty for 3-hourly run; older ones we already processed)
+    r = requests.get(
+        f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages',
+        headers=headers,
+        params={'$top': 100, '$orderby': 'receivedDateTime desc',
+                '$select': 'id,subject,receivedDateTime,from,hasAttachments'},
+        timeout=30,
+    )
+    r.raise_for_status()
+    msgs = [
+        m for m in r.json().get('value', [])
+        if m.get('hasAttachments')
+        and m.get('from', {}).get('emailAddress', {}).get('address', '').lower() == sender.lower()
+        and subject_kw.lower() in (m.get('subject', '').lower())
+    ]
+    if not msgs:
+        return (None, None, None, None, None)
+    msg = msgs[0]
+    ar = requests.get(
+        f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages/{msg["id"]}/attachments',
+        headers=headers, timeout=60,
+    )
+    ar.raise_for_status()
+    xlsx = next((a for a in ar.json().get('value', [])
+                 if a.get('name', '').lower().endswith(('.xlsx', '.xls'))), None)
+    if not xlsx:
+        return (msg['id'], msg['subject'], msg['receivedDateTime'], None, None)
+    return (msg['id'], msg['subject'], msg['receivedDateTime'],
+            xlsx['name'], base64.b64decode(xlsx['contentBytes']))
+
+
+def _run_station_email_sync(key):
+    """Fetch the latest email attachment for a station, parse it with the station's
+    Excel parser, and insert into {key}_pnl. Idempotent via messageId tracking."""
+    import os, json, io
+    from django.db import connection
+    from psycopg2.extras import execute_values
+    from . import onedrive_sync
+
+    cfg = STATION_EMAIL_CONFIG.get(key)
+    if not cfg:
+        logger.error(f'No email config for station {key!r}')
+        return
+    sender, subject_kw, parser_fn_name, table = cfg
+    parser_fn = getattr(onedrive_sync, parser_fn_name, None)
+    if not parser_fn:
+        logger.error(f'Parser {parser_fn_name} not found')
+        return
+
+    STATE_FILE = os.path.join(os.path.dirname(__file__), '..', f'{key}_email_last.json')
+
+    try:
+        logger.info(f'[{key}] email sync: checking mailbox...')
+        msg_id, subject, received, fname, fbytes = _fetch_latest_station_email(key, sender, subject_kw)
+        if not msg_id:
+            update_sync_health(key, 'success', f'No {key.upper()} email found yet', 0)
+            return
+        if not fbytes:
+            update_sync_health(key, 'error', f'{key.upper()} email had no Excel attachment', 0)
+            return
+
+        # Idempotency
+        try:
+            last = json.load(open(STATE_FILE))
+            if last.get('message_id') == msg_id:
+                update_sync_health(key, 'success',
+                                   f'Already processed: {received[:10]}', last.get('rows', 0))
+                return
+        except Exception:
+            pass
+
+        # Parse — all station parsers accept a file-like object
+        rows = parser_fn(io.BytesIO(fbytes), fname)
+        if not rows:
+            update_sync_health(key, 'success', f'Email parsed but 0 rows: {received[:10]}', 0)
+            with open(STATE_FILE, 'w') as f:
+                json.dump({'message_id': msg_id, 'subject': subject,
+                           'received': received, 'rows': 0}, f)
+            return
+
+        # Insert. Row shape: (division, account_name, value, date, date_fixed,
+        # budget_actual, week, report_date). DELETE-then-INSERT per (date, week).
+        with connection.cursor() as cur:
+            for date_val, week in set((r[3], r[6]) for r in rows):
+                cur.execute(
+                    f"DELETE FROM {table} WHERE date = %s AND week = %s AND budget_actual = 'Actual'",
+                    (date_val, week),
+                )
+            execute_values(
+                cur,
+                f"INSERT INTO {table} (division, account_name, value, date, date_fixed, budget_actual, week, report_date) VALUES %s",
+                rows,
+            )
+
+        with open(STATE_FILE, 'w') as f:
+            json.dump({'message_id': msg_id, 'subject': subject,
+                       'received': received, 'rows': len(rows)}, f)
+
+        update_sync_health(key, 'success',
+                           f'Email {received[:10]}: {len(rows)} rows', len(rows))
+        logger.info(f'[{key}] email sync complete: {len(rows)} rows from {fname}')
+
+    except Exception as e:
+        logger.exception(f'[{key}] email sync failed')
+        update_sync_health(key, 'error', str(e))
+
+
+# Convenience functions for APScheduler (it needs a plain callable per job id)
+def run_ppg_email_sync_job():  _run_station_email_sync('ppg')
+def run_ccc_email_sync_job():  _run_station_email_sync('ccc')
+def run_ccd_email_sync_job():  _run_station_email_sync('ccd')
+def run_hnl_email_sync_job():  _run_station_email_sync('hnl')
+def run_jfk_email_sync_job():  _run_station_email_sync('jfk')
+def run_lcl_email_sync_job():  _run_station_email_sync('lcl')
+def run_hou_email_sync_job():  _run_station_email_sync('hou')
+def run_ics_email_sync_job():  _run_station_email_sync('ics')
+def run_ord_email_sync_job():  _run_station_email_sync('ord')
+def run_imp_email_sync_job():  _run_station_email_sync('imp')
+def run_lax_email_sync_job():  _run_station_email_sync('lax')
+def run_fax_email_sync_job():  _run_station_email_sync('fax')
+def run_atl_email_sync_job():  _run_station_email_sync('atl')
+def run_dfw_email_sync_job():  _run_station_email_sync('dfw')
+def run_con_email_sync_job():  _run_station_email_sync('con')
+def run_dor_email_sync_job():  _run_station_email_sync('dor')
 
 
 def run_dor_sync_job():
@@ -608,149 +775,64 @@ def start_scheduler():
         replace_existing=True
     )
 
-    # Run PPG sync every hour
-    scheduler.add_job(
-        run_ppg_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='ppg_sync',
-        name='Sync PPG data every hour',
-        replace_existing=True
-    )
+    # ── PPG OneDrive sync PAUSED ─ now ingesting from weekly Sunday email via Graph.
+    # Keep the handler wired so Sync Monitor's manual button still works as a fallback.
+    # scheduler.add_job(
+    #     run_ppg_sync_job,
+    #     trigger=IntervalTrigger(hours=1),
+    #     id='ppg_sync',
+    #     name='Sync PPG data every hour',
+    #     replace_existing=True
+    # )
 
-    # Run DOR sync every hour
-    scheduler.add_job(
-        run_dor_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='dor_sync',
-        name='Sync DOR data every hour',
-        replace_existing=True
-    )
+    # ═══════════════════════════════════════════════════════════════════
+    # Email-based station syncs — every 3 hours
+    # Old OneDrive hourly jobs are disabled below; handlers remain callable
+    # from the manual Sync button as a fallback if the email stream breaks.
+    # ═══════════════════════════════════════════════════════════════════
+    _EMAIL_JOBS = [
+        ('ppg', run_ppg_email_sync_job, 'Ingest weekly PPG email attachment'),
+        ('ccc', run_ccc_email_sync_job, 'Ingest weekly CCC email attachment'),
+        ('ccd', run_ccd_email_sync_job, 'Ingest weekly CCD email attachment'),
+        ('hnl', run_hnl_email_sync_job, 'Ingest weekly HNL email attachment'),
+        ('jfk', run_jfk_email_sync_job, 'Ingest weekly JFK email attachment'),
+        ('lcl', run_lcl_email_sync_job, 'Ingest weekly LCL email attachment'),
+        ('hou', run_hou_email_sync_job, 'Ingest weekly HOU email attachment'),
+        ('ics', run_ics_email_sync_job, 'Ingest weekly ICS email attachment'),
+        ('ord', run_ord_email_sync_job, 'Ingest weekly ORD email attachment'),
+        ('imp', run_imp_email_sync_job, 'Ingest weekly IMP email attachment'),
+        ('lax', run_lax_email_sync_job, 'Ingest weekly LAX email attachment'),
+        ('fax', run_fax_email_sync_job, 'Ingest weekly FAX email attachment'),
+        ('atl', run_atl_email_sync_job, 'Ingest weekly ATL email attachment'),
+        ('dfw', run_dfw_email_sync_job, 'Ingest weekly DFW email attachment'),
+        ('con', run_con_email_sync_job, 'Ingest weekly CON email attachment'),
+        ('dor', run_dor_email_sync_job, 'Ingest weekly DOR email attachment'),
+    ]
+    for _key, _fn, _desc in _EMAIL_JOBS:
+        scheduler.add_job(
+            _fn,
+            trigger=IntervalTrigger(hours=3),
+            id=f'{_key}_email_sync',
+            name=_desc,
+            replace_existing=True,
+        )
 
-    # Run CON sync every hour
-    scheduler.add_job(
-        run_con_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='con_sync',
-        name='Sync CON data every hour',
-        replace_existing=True
-    )
-
-    # Run CCD sync every hour
-    scheduler.add_job(
-        run_ccd_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='ccd_sync',
-        name='Sync CCD data every hour',
-        replace_existing=True
-    )
-
-    # Run ATL sync every hour
-    scheduler.add_job(
-        run_atl_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='atl_sync',
-        name='Sync ATL data every hour',
-        replace_existing=True
-    )
-
-    # Run CCC sync every hour
-    scheduler.add_job(
-        run_ccc_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='ccc_sync',
-        name='Sync CCC data every hour',
-        replace_existing=True
-    )
-
-    # Run HNL sync every hour
-    scheduler.add_job(
-        run_hnl_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='hnl_sync',
-        name='Sync HNL data every hour',
-        replace_existing=True
-    )
-
-    # Run JFK sync every hour
-    scheduler.add_job(
-        run_jfk_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='jfk_sync',
-        name='Sync JFK data every hour',
-        replace_existing=True
-    )
-
-    # Run FAX sync every hour
-    scheduler.add_job(
-        run_fax_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='fax_sync',
-        name='Sync FAX data every hour',
-        replace_existing=True
-    )
-
-    # Run HOU sync every hour
-    scheduler.add_job(
-        run_hou_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='hou_sync',
-        name='Sync HOU data every hour',
-        replace_existing=True
-    )
-
-    # Run ICS sync every hour
-    scheduler.add_job(
-        run_ics_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='ics_sync',
-        name='Sync ICS data every hour',
-        replace_existing=True
-    )
-
-    # Run IMP sync every hour
-    scheduler.add_job(
-        run_imp_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='imp_sync',
-        name='Sync IMP data every hour',
-        replace_existing=True
-    )
-
-    # Run LAX sync every hour
-    scheduler.add_job(
-        run_lax_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='lax_sync',
-        name='Sync LAX data every hour',
-        replace_existing=True
-    )
-
-    # Run LCL sync every hour
-    scheduler.add_job(
-        run_lcl_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='lcl_sync',
-        name='Sync LCL data every hour',
-        replace_existing=True
-    )
-
-    # Run ORD sync every hour
-    scheduler.add_job(
-        run_ord_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='ord_sync',
-        name='Sync ORD data every hour',
-        replace_existing=True
-    )
-
-    # Run DFW sync every hour
-    scheduler.add_job(
-        run_dfw_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='dfw_sync',
-        name='Sync DFW data every hour',
-        replace_existing=True
-    )
+    # ── Old OneDrive hourly jobs (paused — now email-driven) ──
+    # scheduler.add_job(run_dor_sync_job, IntervalTrigger(hours=1), id='dor_sync', ...)
+    # scheduler.add_job(run_con_sync_job, IntervalTrigger(hours=1), id='con_sync', ...)
+    # scheduler.add_job(run_ccd_sync_job, IntervalTrigger(hours=1), id='ccd_sync', ...)
+    # scheduler.add_job(run_atl_sync_job, IntervalTrigger(hours=1), id='atl_sync', ...)
+    # scheduler.add_job(run_ccc_sync_job, IntervalTrigger(hours=1), id='ccc_sync', ...)
+    # scheduler.add_job(run_hnl_sync_job, IntervalTrigger(hours=1), id='hnl_sync', ...)
+    # scheduler.add_job(run_jfk_sync_job, IntervalTrigger(hours=1), id='jfk_sync', ...)
+    # scheduler.add_job(run_fax_sync_job, IntervalTrigger(hours=1), id='fax_sync', ...)
+    # scheduler.add_job(run_hou_sync_job, IntervalTrigger(hours=1), id='hou_sync', ...)
+    # scheduler.add_job(run_ics_sync_job, IntervalTrigger(hours=1), id='ics_sync', ...)
+    # scheduler.add_job(run_imp_sync_job, IntervalTrigger(hours=1), id='imp_sync', ...)
+    # scheduler.add_job(run_lax_sync_job, IntervalTrigger(hours=1), id='lax_sync', ...)
+    # scheduler.add_job(run_lcl_sync_job, IntervalTrigger(hours=1), id='lcl_sync', ...)
+    # scheduler.add_job(run_ord_sync_job, IntervalTrigger(hours=1), id='ord_sync', ...)
+    # scheduler.add_job(run_dfw_sync_job, IntervalTrigger(hours=1), id='dfw_sync', ...)
 
     # Run Import Ops sync every hour
     scheduler.add_job(

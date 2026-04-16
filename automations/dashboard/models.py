@@ -131,6 +131,8 @@ class TouchpointTemplate(models.Model):
     body_html = models.TextField(default='', blank=True)
     signature = models.TextField(default='', blank=True)
     attachment = models.FileField(upload_to='touchpoint_attachments/', blank=True, null=True)
+    signature_image = models.FileField(upload_to='touchpoint_signatures/', blank=True, null=True,
+                                       help_text='Inline signature image (referenced via cid:signature_tpN).')
     days_after_previous = models.IntegerField(default=7, help_text='Days after previous touchpoint to send this one')
     scheduled_date = models.DateField(null=True, blank=True, help_text='Fixed date to automatically send this touchpoint')
     updated_at = models.DateTimeField(auto_now=True)
@@ -223,3 +225,41 @@ class TurnoverData(models.Model):
 
     def __str__(self):
         return f"{self.debtor} - {self.branch}"
+
+
+class EmailSendLog(models.Model):
+    """Records every touchpoint email dispatch for auditing and delivery tracking."""
+    STATUS_CHOICES = [
+        ('sent', 'Sent'),
+        ('delivered', 'Delivered'),
+        ('bounced', 'Bounced'),
+        ('complained', 'Complained'),
+        ('rejected', 'Rejected'),
+        ('failed', 'Failed'),
+        ('dry_run', 'Dry Run'),
+    ]
+    PROVIDER_CHOICES = [
+        ('ses', 'AWS SES'),
+        ('graph', 'Microsoft Graph'),
+        ('dry_run', 'Dry Run'),
+    ]
+
+    contact = models.ForeignKey('USEUContact', null=True, blank=True, on_delete=models.SET_NULL, related_name='email_logs')
+    to_address = models.EmailField()
+    from_address = models.EmailField(blank=True, default='')
+    touchpoint_number = models.IntegerField(null=True, blank=True)
+    subject = models.CharField(max_length=998, blank=True, default='')
+    provider = models.CharField(max_length=16, choices=PROVIDER_CHOICES, default='ses')
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default='sent')
+    message_id = models.CharField(max_length=255, blank=True, default='', db_index=True)
+    error_message = models.TextField(blank=True, default='')
+    sent_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    status_updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'email_send_log'
+        ordering = ['-sent_at']
+        indexes = [models.Index(fields=['to_address', 'sent_at'])]
+
+    def __str__(self):
+        return f"{self.to_address} TP{self.touchpoint_number} {self.status}"

@@ -1,173 +1,321 @@
 {% extends 'base.html' %}
 
-{% block title %}Automations Panel{% endblock %}
+{% block title %}Automations{% endblock %}
 
 {% block extra_styles %}
-.auto-page { padding: 24px; }
-.auto-header { margin-bottom: 24px; }
-.auto-header h1 { font-size: 22px; font-weight: 700; color: var(--text-primary); margin: 0 0 4px; }
-.auto-header p { font-size: 13px; color: var(--text-secondary); margin: 0; }
+/* Microsoft Fluent-inspired theme */
+.auto-page { padding: 0; max-width: 1400px; margin: 0 auto; font-family: 'Segoe UI', 'Segoe UI Web (West European)', system-ui, sans-serif; }
 
-.auto-actions { display: flex; gap: 10px; margin-bottom: 24px; flex-wrap: wrap; }
-.auto-btn { padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
-.auto-btn-danger { background: #dc3545; color: #fff; }
-.auto-btn-danger:hover { background: #c82333; }
-.auto-btn-success { background: #28a745; color: #fff; }
-.auto-btn-success:hover { background: #1e7e34; }
-.auto-btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text-primary); }
-.auto-btn-outline:hover { background: var(--surface2, #f5f5f5); }
+/* Title bar */
+.fluent-titlebar { padding: 20px 28px 8px; }
+.fluent-title { font-size: 28px; font-weight: 600; color: var(--text-primary, #242424); letter-spacing: -0.3px; margin: 0; }
+.fluent-subtitle { font-size: 13px; color: var(--text-secondary, #616161); margin: 4px 0 0; }
 
-.auto-section { margin-bottom: 28px; }
-.auto-section-title { font-size: 14px; font-weight: 700; color: var(--text-primary); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
-.auto-section-title .badge { font-size: 11px; background: #054B70; color: #fff; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+/* Command bar */
+.fluent-commandbar {
+    display: flex; align-items: center; gap: 2px;
+    padding: 4px 20px; border-bottom: 1px solid var(--border, #e1dfdd);
+    background: var(--surface, #faf9f8);
+}
+.fluent-cmd {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 14px; border: none; background: transparent;
+    font-family: inherit; font-size: 13px; color: var(--text-primary, #242424);
+    cursor: pointer; border-radius: 4px; transition: background 0.08s;
+    white-space: nowrap;
+}
+.fluent-cmd:hover { background: rgba(0,0,0,0.06); }
+.fluent-cmd:active { background: rgba(0,0,0,0.12); }
+.fluent-cmd.primary { color: #0078d4; font-weight: 600; }
+.fluent-cmd.primary:hover { background: rgba(0,120,212,0.12); }
+.fluent-cmd.danger { color: #d13438; }
+.fluent-cmd.danger:hover { background: rgba(209,52,56,0.1); }
+.fluent-cmd.success { color: #107c10; }
+.fluent-cmd.success:hover { background: rgba(16,124,16,0.1); }
+.fluent-cmd svg { width: 14px; height: 14px; }
+.fluent-cmd-sep { width: 1px; height: 20px; background: var(--border, #e1dfdd); margin: 0 4px; }
 
-.auto-card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
-.auto-row { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); gap: 12px; transition: background 0.15s; }
-.auto-row:last-child { border-bottom: none; }
-.auto-row:hover { background: var(--surface2, rgba(5,75,112,0.03)); }
+/* Search + filter in command bar */
+.fluent-search {
+    flex: 0 0 auto; padding: 7px 12px 7px 32px;
+    border: 1px solid var(--border, #e1dfdd); border-radius: 4px;
+    font-family: inherit; font-size: 13px; width: 240px; background: #fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 24 24' fill='%23616161'><path d='M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z'/></svg>") no-repeat 10px center;
+    color: var(--text-primary);
+    transition: border-color 0.12s;
+}
+.fluent-search:focus { outline: none; border-color: #0078d4; border-width: 2px; padding: 6px 11px 6px 31px; }
+.fluent-select {
+    padding: 7px 10px; border: 1px solid var(--border, #e1dfdd); border-radius: 4px;
+    font-family: inherit; font-size: 13px; background: #fff; color: var(--text-primary);
+    cursor: pointer;
+}
+.fluent-spacer { flex: 1; }
+.fluent-result-count { font-size: 12px; color: var(--text-secondary, #616161); padding: 0 8px; }
 
-.auto-row-info { flex: 1; min-width: 0; }
-.auto-row-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
-.auto-row-meta { font-size: 11px; color: var(--text-secondary); margin-top: 2px; }
+/* Sub-navigation tabs (like Fluent Pivot) */
+.fluent-subnav {
+    display: flex; gap: 6px; padding: 12px 20px 0;
+    border-bottom: 1px solid var(--border, #e1dfdd);
+    background: var(--surface, #faf9f8);
+    flex-wrap: wrap;
+}
+.fluent-pivot {
+    padding: 12px 18px 13px; font-size: 14px; font-weight: 600;
+    color: var(--text-secondary, #616161); cursor: pointer;
+    border: 1px solid transparent; border-bottom: 2px solid transparent;
+    border-radius: 6px 6px 0 0;
+    transition: all 0.12s;
+    display: inline-flex; align-items: center; gap: 10px;
+    background: transparent;
+    margin-bottom: -1px;
+}
+.fluent-pivot:hover { color: var(--text-primary); background: rgba(0,0,0,0.04); }
+.fluent-pivot.active {
+    color: #0078d4; background: var(--surface, #fff);
+    border-color: var(--border, #e1dfdd);
+    border-bottom-color: var(--surface, #fff);
+}
+.fluent-pivot .pivot-count {
+    background: rgba(0,0,0,0.08); color: var(--text-secondary);
+    padding: 2px 10px; border-radius: 12px; font-size: 11px; font-weight: 700;
+    min-width: 22px; text-align: center;
+}
+.fluent-pivot.active .pivot-count { background: #0078d4; color: #fff; }
+.fluent-pivot-icon { width: 18px; height: 18px; display: inline-flex; }
 
-.auto-status { padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
-.auto-status-active { background: #d4edda; color: #155724; }
-.auto-status-paused { background: #fff3cd; color: #856404; }
+/* Card grid */
+.fluent-list-wrap { padding: 12px 20px 32px; }
+.fluent-list-header { display: none; }
+.fluent-grid {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+}
+@media (max-width: 1200px) { .fluent-grid { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 900px)  { .fluent-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 600px)  { .fluent-grid { grid-template-columns: 1fr; } }
+.fluent-card {
+    background: var(--surface, #fff); border: 1px solid var(--border, #e1dfdd);
+    border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column;
+    gap: 10px; transition: box-shadow 0.12s, transform 0.12s, border-color 0.12s;
+    position: relative; overflow: hidden;
+}
+.fluent-card::before {
+    content: ''; position: absolute; top: 0; left: 0; bottom: 0; width: 3px;
+    background: #0078d4;
+}
+.fluent-card[data-kind="sync"]::before { background: #107c10; }
+.fluent-card[data-kind="system"]::before { background: #5c2d91; }
+.fluent-card[data-status="paused"]::before { background: #d97706; }
+.fluent-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); border-color: #c7c6c4; }
+.fluent-card.hidden { display: none; }
 
-[data-theme="dark"] .auto-status-active { background: #1b3a1b; color: #6fcf6f; }
-[data-theme="dark"] .auto-status-paused { background: #3a3a1b; color: #cfcf6f; }
+.fluent-card-head { display: flex; align-items: center; justify-content: space-between; }
+.fluent-card-icon {
+    width: 36px; height: 36px; border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    background: #deecf9; color: #0078d4;
+}
+.fluent-card-icon.sync { background: #dff6dd; color: #107c10; }
+.fluent-card-icon.system { background: #f3e6ff; color: #5c2d91; }
 
-.auto-row-actions { display: flex; gap: 6px; }
-.auto-row-actions button { padding: 5px 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 11px; cursor: pointer; background: var(--surface); color: var(--text-primary); transition: all 0.15s; }
-.auto-row-actions button:hover { background: var(--surface2, #f0f0f0); }
-.auto-row-actions .btn-pause { border-color: #ffc107; color: #856404; }
-.auto-row-actions .btn-pause:hover { background: #fff3cd; }
-.auto-row-actions .btn-resume { border-color: #28a745; color: #155724; }
-.auto-row-actions .btn-resume:hover { background: #d4edda; }
-.auto-row-actions .btn-run { border-color: #054B70; color: #054B70; }
-.auto-row-actions .btn-run:hover { background: rgba(5,75,112,0.08); }
-.auto-row-actions .btn-remove { border-color: #dc3545; color: #dc3545; }
-.auto-row-actions .btn-remove:hover { background: #fdecea; }
+.fluent-card-name { font-size: 14px; font-weight: 600; color: var(--text-primary, #242424); line-height: 1.35; }
+.fluent-card-id { font-size: 11px; color: var(--text-secondary, #616161); margin-top: 3px; font-family: ui-monospace, Consolas, monospace; }
 
-.auto-empty { padding: 24px; text-align: center; color: var(--text-secondary); font-size: 13px; }
+.fluent-card-meta { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; font-size: 11px; }
+.fluent-card-meta .meta-row { display: flex; justify-content: space-between; gap: 8px; }
+.fluent-card-meta .meta-k { color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.4px; font-weight: 600; }
+.fluent-card-meta .meta-v { font-family: ui-monospace, Consolas, monospace; color: var(--text-primary); text-align: right; }
 
-.toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; color: #fff; z-index: 9999; opacity: 0; transform: translateY(10px); transition: all 0.3s; }
+.fluent-status {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600;
+}
+.fluent-status .dot { width: 8px; height: 8px; border-radius: 50%; }
+.fluent-status.active { color: #107c10; }
+.fluent-status.active .dot { background: #107c10; box-shadow: 0 0 0 3px rgba(16,124,16,0.15); }
+.fluent-status.paused { color: #d97706; }
+.fluent-status.paused .dot { background: #d97706; box-shadow: 0 0 0 3px rgba(217,119,6,0.15); }
+
+.fluent-card-foot { display: flex; gap: 4px; padding-top: 10px; border-top: 1px solid var(--border, #edebe9); flex-wrap: wrap; }
+.fluent-action {
+    flex: 1; min-width: fit-content; padding: 6px 10px; border: 1px solid var(--border, #e1dfdd);
+    background: var(--surface, #fff); border-radius: 4px;
+    font-family: inherit; font-size: 12px; font-weight: 600; color: var(--text-primary);
+    cursor: pointer; transition: all 0.1s; text-align: center;
+}
+.fluent-action:hover { background: var(--surface2, #f3f2f1); border-color: #0078d4; }
+.fluent-action:active { background: var(--border, #edebe9); }
+.fluent-action.primary { color: #fff; background: #0078d4; border-color: #0078d4; }
+.fluent-action.primary:hover { background: #106ebe; border-color: #106ebe; color: #fff; }
+.fluent-action.danger { color: #d13438; border-color: rgba(209,52,56,0.35); background: var(--surface, #fff); }
+.fluent-action.danger:hover { background: rgba(209,52,56,0.12); color: #ff6b6f; }
+
+/* ── Dark mode overrides ─────────────────────── */
+[data-theme="dark"] .fluent-card { background: var(--surface); border-color: var(--border); color: var(--text-primary); }
+[data-theme="dark"] .fluent-card-name { color: var(--text-primary); }
+[data-theme="dark"] .fluent-card-id, [data-theme="dark"] .fluent-card-meta .meta-k { color: var(--text-secondary); }
+[data-theme="dark"] .fluent-card-meta .meta-v { color: var(--text-primary); }
+[data-theme="dark"] .fluent-card-foot { border-color: var(--border); }
+[data-theme="dark"] .fluent-action { background: var(--surface2); border-color: var(--border); color: var(--text-primary); }
+[data-theme="dark"] .fluent-action:hover { background: rgba(108,180,216,0.15); border-color: #6cb4d8; color: #6cb4d8; }
+[data-theme="dark"] .fluent-action.primary { background: #0078d4; border-color: #0078d4; color: #fff; }
+[data-theme="dark"] .fluent-action.primary:hover { background: #106ebe; color: #fff; }
+[data-theme="dark"] .fluent-action.danger { background: var(--surface2); border-color: rgba(255,107,111,0.45); color: #ff6b6f; }
+[data-theme="dark"] .fluent-action.danger:hover { background: rgba(255,107,111,0.12); color: #ff8c90; }
+[data-theme="dark"] .fluent-card-icon { background: rgba(108,180,216,0.18); color: #6cb4d8; }
+[data-theme="dark"] .fluent-card-icon.sync { background: rgba(30,168,110,0.18); color: #3ec89a; }
+[data-theme="dark"] .fluent-card-icon.system { background: rgba(142,119,245,0.18); color: #a99bff; }
+[data-theme="dark"] .fluent-titlebar, [data-theme="dark"] .fluent-commandbar, [data-theme="dark"] .fluent-subnav { background: var(--surface); }
+[data-theme="dark"] .fluent-title { color: var(--text-primary); }
+[data-theme="dark"] .fluent-subtitle { color: var(--text-secondary); }
+[data-theme="dark"] .fluent-cmd { color: var(--text-primary); }
+[data-theme="dark"] .fluent-cmd:hover { background: rgba(255,255,255,0.08); }
+[data-theme="dark"] .fluent-cmd-sep { background: var(--border); }
+[data-theme="dark"] .fluent-search, [data-theme="dark"] .fluent-select { background: var(--surface2); border-color: var(--border); color: var(--text-primary); }
+[data-theme="dark"] .fluent-search { background-color: var(--surface2); }
+[data-theme="dark"] .fluent-pivot { color: var(--text-secondary); }
+[data-theme="dark"] .fluent-pivot:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
+[data-theme="dark"] .fluent-pivot.active { background: var(--surface); border-color: var(--border); color: #6cb4d8; border-bottom-color: var(--surface); }
+[data-theme="dark"] .fluent-pivot .pivot-count { background: rgba(255,255,255,0.1); color: var(--text-secondary); }
+[data-theme="dark"] .fluent-pivot.active .pivot-count { background: #0078d4; color: #fff; }
+
+.fluent-empty { padding: 32px 20px; text-align: center; color: var(--text-secondary); font-size: 13px; }
+
+/* Section divider when multiple categories visible */
+.fluent-section-label {
+    display: none; /* pivot shows section identity — label redundant */
+}
+.fluent-section-label .pill {
+    background: rgba(0,0,0,0.06); color: var(--text-secondary);
+    padding: 1px 8px; border-radius: 10px; font-size: 10px;
+}
+
+/* Toast */
+.toast { position: fixed; bottom: 24px; right: 24px; padding: 12px 18px; border-radius: 4px; font-size: 13px; font-weight: 600; color: #fff; z-index: 9999; opacity: 0; transform: translateY(10px); transition: all 0.2s; box-shadow: 0 6.4px 14.4px rgba(0,0,0,0.13), 0 1.2px 3.6px rgba(0,0,0,0.11); font-family: 'Segoe UI', sans-serif; }
 .toast.show { opacity: 1; transform: translateY(0); }
-.toast-success { background: #28a745; }
-.toast-error { background: #dc3545; }
+.toast-success { background: #107c10; }
+.toast-error { background: #d13438; }
+
+@media (max-width: 900px) {
+    .fluent-list-header { display: none; }
+    .fluent-row { grid-template-columns: 32px 1fr; grid-auto-rows: auto; }
+    .fluent-row > :nth-child(n+3) { grid-column: 2; }
+}
 {% endblock %}
 
 {% block content %}
 <div class="auto-page">
-    <div class="auto-header">
-        <h1>Automations</h1>
-        <p>Manage scheduled jobs, email campaigns, and data syncs. {{ total_jobs }} automations running.</p>
+    <div class="fluent-titlebar">
+        <h1 class="fluent-title">Automations</h1>
+        <p class="fluent-subtitle">{{ total_jobs }} scheduled jobs · manage email campaigns and data syncs</p>
     </div>
 
-    <div class="auto-actions">
-        <button class="auto-btn auto-btn-danger" onclick="stopAllEmails()">Stop All Email Sending</button>
-        <button class="auto-btn auto-btn-success" onclick="resumeAllEmails()">Resume Email Sending</button>
-        <button class="auto-btn auto-btn-outline" onclick="location.reload()">Refresh Status</button>
+    <div class="fluent-commandbar">
+        <button class="fluent-cmd danger" onclick="stopAllEmails()">
+            <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1"/></svg>
+            Stop email sending
+        </button>
+        <button class="fluent-cmd success" onclick="resumeAllEmails()">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            Resume email sending
+        </button>
+        <div class="fluent-cmd-sep"></div>
+        <button class="fluent-cmd" onclick="location.reload()">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08A5.99 5.99 0 0 1 12 18c-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+            Refresh
+        </button>
+        <div class="fluent-spacer"></div>
+        <input type="text" class="fluent-search" id="searchBox" placeholder="Search name or ID">
+        <div class="fluent-cmd-sep"></div>
+        <select class="fluent-select" id="statusFilter">
+            <option value="">All statuses</option>
+            <option value="active">Active</option>
+            <option value="paused">Paused</option>
+        </select>
     </div>
 
-    <!-- Email Automations -->
-    <div class="auto-section">
-        <div class="auto-section-title">
-            Email Automations <span class="badge">{{ email_jobs|length }}</span>
+    <div class="fluent-subnav">
+        <div class="fluent-pivot active" data-pivot="email">
+            <span class="fluent-pivot-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg></span>
+            Email Automations <span class="pivot-count">{{ email_jobs|length }}</span>
         </div>
-        <div class="auto-card">
-            {% for job in email_jobs %}
-            <div class="auto-row" data-job-id="{{ job.id }}">
-                <div class="auto-row-info">
-                    <div class="auto-row-name">{{ job.name }}</div>
-                    <div class="auto-row-meta">ID: {{ job.id }} &mdash; {{ job.trigger }} &mdash; Next: {{ job.next_run }}</div>
-                </div>
-                <span class="auto-status {% if job.is_paused %}auto-status-paused{% else %}auto-status-active{% endif %}">
-                    {% if job.is_paused %}Paused{% else %}Active{% endif %}
-                </span>
-                <div class="auto-row-actions">
-                    {% if job.is_paused %}
-                    <button class="btn-resume" onclick="toggleJob('{{ job.id }}', 'resume')">Resume</button>
-                    {% else %}
-                    <button class="btn-pause" onclick="toggleJob('{{ job.id }}', 'pause')">Pause</button>
-                    {% endif %}
-                    <button class="btn-run" onclick="toggleJob('{{ job.id }}', 'run_now')">Run Now</button>
-                    <button class="btn-remove" onclick="removeJob('{{ job.id }}', '{{ job.name }}')">Remove</button>
-                </div>
-            </div>
-            {% empty %}
-            <div class="auto-empty">No email automations configured.</div>
-            {% endfor %}
+        <div class="fluent-pivot" data-pivot="sync">
+            <span class="fluent-pivot-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74A7.93 7.93 0 0 0 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg></span>
+            Data Sync <span class="pivot-count">{{ sync_jobs|length }}</span>
         </div>
+        <div class="fluent-pivot" data-pivot="system">
+            <span class="fluent-pivot-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M19.14 12.94a7.36 7.36 0 0 0 0-1.88l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.08 7.08 0 0 0-1.63-.94l-.36-2.54a.5.5 0 0 0-.5-.42h-3.84a.5.5 0 0 0-.5.42l-.36 2.54c-.59.24-1.14.55-1.63.94l-2.39-.96a.5.5 0 0 0-.61.22L2.74 8.84a.5.5 0 0 0 .12.64l2.03 1.58a7.36 7.36 0 0 0 0 1.88L2.86 14.5a.5.5 0 0 0-.12.64l1.92 3.32a.5.5 0 0 0 .61.22l2.39-.96c.49.39 1.04.7 1.63.94l.36 2.54c.05.25.26.42.5.42h3.84c.25 0 .46-.17.5-.42l.36-2.54a7.08 7.08 0 0 0 1.63-.94l2.39.96a.5.5 0 0 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z"/></svg></span>
+            System <span class="pivot-count">{{ system_jobs|length }}</span>
+        </div>
+        <div class="fluent-spacer"></div>
+        <span class="fluent-result-count" id="visibleCount" style="padding: 14px 16px 0;"></span>
     </div>
 
-    <!-- Data Sync Automations -->
-    <div class="auto-section">
-        <div class="auto-section-title">
-            Data Sync Automations <span class="badge">{{ sync_jobs|length }}</span>
+    <div class="fluent-list-wrap">
+        {% if email_jobs %}
+        <div class="fluent-section-label" data-kind-label="email">Email <span class="pill">{{ email_jobs|length }}</span></div>
+        <div class="fluent-grid">
+            {% for job in email_jobs %}{% include 'partials/automation_row.html' with job=job kind='email' %}{% endfor %}
         </div>
-        <div class="auto-card">
-            {% for job in sync_jobs %}
-            <div class="auto-row" data-job-id="{{ job.id }}">
-                <div class="auto-row-info">
-                    <div class="auto-row-name">{{ job.name }}</div>
-                    <div class="auto-row-meta">ID: {{ job.id }} &mdash; {{ job.trigger }} &mdash; Next: {{ job.next_run }}</div>
-                </div>
-                <span class="auto-status {% if job.is_paused %}auto-status-paused{% else %}auto-status-active{% endif %}">
-                    {% if job.is_paused %}Paused{% else %}Active{% endif %}
-                </span>
-                <div class="auto-row-actions">
-                    {% if job.is_paused %}
-                    <button class="btn-resume" onclick="toggleJob('{{ job.id }}', 'resume')">Resume</button>
-                    {% else %}
-                    <button class="btn-pause" onclick="toggleJob('{{ job.id }}', 'pause')">Pause</button>
-                    {% endif %}
-                    <button class="btn-run" onclick="toggleJob('{{ job.id }}', 'run_now')">Run Now</button>
-                    <button class="btn-remove" onclick="removeJob('{{ job.id }}', '{{ job.name }}')">Remove</button>
-                </div>
-            </div>
-            {% empty %}
-            <div class="auto-empty">No data sync automations configured.</div>
-            {% endfor %}
-        </div>
-    </div>
+        {% endif %}
 
-    <!-- System Automations -->
-    {% if system_jobs %}
-    <div class="auto-section">
-        <div class="auto-section-title">
-            System <span class="badge">{{ system_jobs|length }}</span>
+        {% if sync_jobs %}
+        <div class="fluent-section-label" data-kind-label="sync">Data Sync <span class="pill">{{ sync_jobs|length }}</span></div>
+        <div class="fluent-grid">
+            {% for job in sync_jobs %}{% include 'partials/automation_row.html' with job=job kind='sync' %}{% endfor %}
         </div>
-        <div class="auto-card">
-            {% for job in system_jobs %}
-            <div class="auto-row" data-job-id="{{ job.id }}">
-                <div class="auto-row-info">
-                    <div class="auto-row-name">{{ job.name }}</div>
-                    <div class="auto-row-meta">ID: {{ job.id }} &mdash; {{ job.trigger }} &mdash; Next: {{ job.next_run }}</div>
-                </div>
-                <span class="auto-status {% if job.is_paused %}auto-status-paused{% else %}auto-status-active{% endif %}">
-                    {% if job.is_paused %}Paused{% else %}Active{% endif %}
-                </span>
-                <div class="auto-row-actions">
-                    {% if job.is_paused %}
-                    <button class="btn-resume" onclick="toggleJob('{{ job.id }}', 'resume')">Resume</button>
-                    {% else %}
-                    <button class="btn-pause" onclick="toggleJob('{{ job.id }}', 'pause')">Pause</button>
-                    {% endif %}
-                    <button class="btn-run" onclick="toggleJob('{{ job.id }}', 'run_now')">Run Now</button>
-                    <button class="btn-remove" onclick="removeJob('{{ job.id }}', '{{ job.name }}')">Remove</button>
-                </div>
-            </div>
-            {% endfor %}
+        {% endif %}
+
+        {% if system_jobs %}
+        <div class="fluent-section-label" data-kind-label="system">System <span class="pill">{{ system_jobs|length }}</span></div>
+        <div class="fluent-grid">
+            {% for job in system_jobs %}{% include 'partials/automation_row.html' with job=job kind='system' %}{% endfor %}
         </div>
+        {% endif %}
     </div>
-    {% endif %}
 </div>
 
 <div id="toast" class="toast"></div>
 
 <script>
 const CSRF = '{{ csrf_token }}';
+let activePivot = 'email';
+
+function applyFilter() {
+    const q = (document.getElementById('searchBox').value || '').toLowerCase();
+    const st = document.getElementById('statusFilter').value;
+    let visible = 0;
+    document.querySelectorAll('.fluent-card').forEach(r => {
+        const kind = r.dataset.kind;
+        const matchesKind = activePivot === 'all' || kind === activePivot;
+        const txt = r.textContent.toLowerCase();
+        const matchesQ = !q || txt.includes(q);
+        const matchesSt = !st || r.dataset.status === st;
+        const ok = matchesKind && matchesQ && matchesSt;
+        r.classList.toggle('hidden', !ok);
+        if (ok) visible++;
+    });
+    document.getElementById('visibleCount').textContent = visible + ' item' + (visible === 1 ? '' : 's');
+    document.querySelectorAll('.fluent-section-label').forEach(lbl => {
+        const kind = lbl.dataset.kindLabel;
+        const any = document.querySelectorAll(`.fluent-card[data-kind="${kind}"]:not(.hidden)`).length > 0;
+        const grid = lbl.nextElementSibling;
+        if (grid) grid.style.display = any ? '' : 'none';
+        lbl.style.display = any ? '' : 'none';
+    });
+}
+
+document.querySelectorAll('.fluent-pivot').forEach(p => {
+    p.addEventListener('click', () => {
+        document.querySelectorAll('.fluent-pivot').forEach(x => x.classList.remove('active'));
+        p.classList.add('active');
+        activePivot = p.dataset.pivot;
+        applyFilter();
+    });
+});
+document.getElementById('searchBox').addEventListener('input', applyFilter);
+document.getElementById('statusFilter').addEventListener('change', applyFilter);
+applyFilter();
 
 function showToast(msg, type) {
     const t = document.getElementById('toast');
@@ -175,53 +323,29 @@ function showToast(msg, type) {
     t.className = 'toast toast-' + type + ' show';
     setTimeout(() => t.classList.remove('show'), 3000);
 }
-
 function toggleJob(jobId, action) {
     fetch('{% url "automation_toggle" %}', {
         method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
         body: JSON.stringify({job_id: jobId, action: action})
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.ok) {
-            showToast(jobId + ' ' + data.status, 'success');
-            setTimeout(() => location.reload(), 800);
-        } else {
-            showToast('Error: ' + data.error, 'error');
-        }
-    })
-    .catch(() => showToast('Network error', 'error'));
+    }).then(r => r.json()).then(data => {
+        if (data.ok) { showToast(jobId + ' ' + data.status, 'success'); setTimeout(() => location.reload(), 800); }
+        else showToast('Error: ' + data.error, 'error');
+    }).catch(() => showToast('Network error', 'error'));
 }
-
 function removeJob(jobId, jobName) {
-    if (!confirm('Remove "' + jobName + '"? This will stop the automation until the server restarts.')) return;
+    if (!confirm('Remove "' + jobName + '"? This stops the automation until the server restarts.')) return;
     toggleJob(jobId, 'remove');
 }
-
 function stopAllEmails() {
-    if (!confirm('Stop ALL email sending? This pauses scheduled touchpoints and bounce checking.')) return;
+    if (!confirm('Stop ALL email sending?')) return;
     fetch('{% url "automation_stop_all_emails" %}', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
-        body: '{}'
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.ok) {
-            showToast('All email automations stopped', 'success');
-            setTimeout(() => location.reload(), 800);
-        } else {
-            showToast('Error: ' + data.error, 'error');
-        }
-    })
-    .catch(() => showToast('Network error', 'error'));
+        method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF}, body: '{}'
+    }).then(r => r.json()).then(data => {
+        if (data.ok) { showToast('All email automations stopped', 'success'); setTimeout(() => location.reload(), 800); }
+        else showToast('Error: ' + data.error, 'error');
+    }).catch(() => showToast('Network error', 'error'));
 }
-
-function resumeAllEmails() {
-    ['scheduled_touchpoints', 'bounce_check'].forEach(id => {
-        toggleJob(id, 'resume');
-    });
-}
+function resumeAllEmails() { ['scheduled_touchpoints', 'bounce_check'].forEach(id => toggleJob(id, 'resume')); }
 </script>
 {% endblock %}

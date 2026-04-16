@@ -84,23 +84,29 @@ def run_campaign(tp_num, job_id, job_file):
     content_type = 'HTML' if template.body_html else 'Text'
 
     sig_inline = None
-    if content_type == 'HTML':
-        body_content = re.sub(
-            r'https://drive\.google\.com/thumbnail\?id=[^"\'&]+(?:&amp;[^"\']*|&[^"\']*)*',
-            r'cid:signature_waldo',
-            body_content,
-            flags=re.IGNORECASE
-        )
-        sig_path = os.path.join(django_settings.BASE_DIR, 'static', 'signature_waldo.png')
-        if os.path.isfile(sig_path):
+    if content_type == 'HTML' and template.signature_image:
+        try:
+            sig_path = template.signature_image.path
+            sig_name = os.path.basename(sig_path)
+            ext = os.path.splitext(sig_name)[1].lower().lstrip('.') or 'png'
+            cid = f'signature_tp{tp_num}'
+            # Rewrite any existing Drive-thumbnail placeholder to our cid
+            body_content = re.sub(
+                r'https://drive\.google\.com/thumbnail\?id=[^"\'&]+(?:&amp;[^"\']*|&[^"\']*)*',
+                f'cid:{cid}',
+                body_content,
+                flags=re.IGNORECASE,
+            )
             with open(sig_path, 'rb') as sf:
                 sig_inline = {
-                    'name': 'signature_waldo.png',
-                    'contentType': 'image/png',
+                    'name': sig_name,
+                    'contentType': f'image/{ext if ext!="jpg" else "jpeg"}',
                     'contentBytes': base64.b64encode(sf.read()).decode('utf-8'),
-                    'contentId': 'signature_waldo',
+                    'contentId': cid,
                     'isInline': True,
                 }
+        except Exception as e:
+            print(f'[WORKER] signature_image load failed: {e}', flush=True)
 
     att_data = None
     if template.attachment:
@@ -194,6 +200,9 @@ def run_campaign(tp_num, job_id, job_file):
                     if any(kw in error_lower for kw in [
                         'mailboxdoesnotexist', 'mailbox does not exist',
                         'addressnotverified', 'invalidparametervalue',
+                        'bounce', 'permanent failure', 'no such user',
+                        'recipient address rejected', 'user unknown',
+                        'domain not found', 'suppressed',
                     ]):
                         # Mark contact as Undeliverable
                         state['failed'] += 1

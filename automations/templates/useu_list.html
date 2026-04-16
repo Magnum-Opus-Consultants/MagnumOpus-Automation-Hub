@@ -4,43 +4,76 @@
 
 {% block extra_styles %}
 .page-banner {
-    background: linear-gradient(135deg, #054B70 0%, #0a7ab5 100%);
-    border-radius: 12px;
+    background: linear-gradient(135deg, #054B70 0%, #076a9e 55%, #0a82c4 100%);
+    border-radius: 14px;
     padding: 28px 32px;
-    margin-bottom: 24px;
+    margin-bottom: 22px;
     color: #fff;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+    box-shadow: 0 10px 30px rgba(5,75,112,0.22);
 }
+.page-banner::before {
+    content: ''; position: absolute; top: -60px; right: -40px;
+    width: 220px; height: 220px; border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+}
+.page-banner::after {
+    content: ''; position: absolute; bottom: -80px; right: 120px;
+    width: 160px; height: 160px; border-radius: 50%;
+    background: rgba(255,255,255,0.05);
+}
+.page-banner > * { position: relative; z-index: 1; }
 .banner-eyebrow {
     font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 1.5px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.55);
-    margin-bottom: 4px;
+    color: rgba(255,255,255,0.75);
+    margin-bottom: 6px;
 }
 .banner-title {
-    font-size: 22px;
+    font-size: 28px;
     font-weight: 700;
+    letter-spacing: -0.3px;
 }
 .banner-subtitle {
     font-size: 13px;
-    color: rgba(255,255,255,0.65);
-    margin-top: 2px;
+    color: rgba(255,255,255,0.85);
+    margin-top: 4px;
+    max-width: 500px;
 }
 .banner-stats {
     display: flex;
-    gap: 32px;
-    margin-top: 16px;
+    gap: 10px;
+    align-items: stretch;
+    flex-wrap: wrap;
+}
+.banner-stats > div {
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 10px;
+    padding: 12px 18px;
+    min-width: 92px;
+    backdrop-filter: blur(4px);
 }
 .banner-stat-value {
-    font-size: 22px;
+    font-size: 26px;
     font-weight: 700;
+    line-height: 1.1;
 }
 .banner-stat-label {
-    font-size: 11px;
-    color: rgba(255,255,255,0.55);
+    font-size: 10px;
+    color: rgba(255,255,255,0.85);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.8px;
+    margin-top: 2px;
+    font-weight: 600;
 }
 .list-card {
     background: var(--surface);
@@ -283,17 +316,28 @@
     color: var(--text-primary);
 }
 .send-all-btn {
-    padding: 8px 20px;
-    background: #054B70;
+    padding: 9px 22px;
+    background: linear-gradient(135deg, #054B70 0%, #0770a5 100%);
     color: #fff;
     border: none;
-    border-radius: 6px;
+    border-radius: 8px;
     font-size: 13px;
     font-weight: 600;
     cursor: pointer;
+    box-shadow: 0 2px 6px rgba(5,75,112,0.25);
+    transition: transform 0.08s, box-shadow 0.15s, background 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
 }
-.send-all-btn:hover { background: #043d5c; }
-.send-all-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.send-all-btn:hover { background: linear-gradient(135deg, #043d5c 0%, #065d8b 100%); box-shadow: 0 4px 10px rgba(5,75,112,0.35); transform: translateY(-1px); }
+.send-all-btn:active { transform: translateY(0); }
+.send-all-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }
+.send-all-btn.stop {
+    background: linear-gradient(135deg, #c0392b 0%, #e14836 100%);
+    box-shadow: 0 2px 6px rgba(192,57,43,0.25);
+}
+.send-all-btn.stop:hover { background: linear-gradient(135deg, #a02820 0%, #c0392b 100%); box-shadow: 0 4px 10px rgba(192,57,43,0.35); }
 
 /* Schedule Touchpoints */
 .tp-schedule-bar {
@@ -378,6 +422,40 @@
     transition: all 0.15s;
 }
 .sched-clear-btn:hover { background: #fdecea; border-color: #c0392b; color: #c0392b; }
+
+.tp-card-schedule {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border, #edebe9);
+}
+.tp-card-schedule-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary, #797775);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 6px;
+}
+.tp-card-datepicker {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 10px;
+    border: 1px solid var(--border, #edebe9);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-primary, #1b1a19);
+    background: var(--surface, #fff);
+    outline: none;
+    transition: border-color 0.15s;
+}
+.tp-card-datepicker:focus {
+    border-color: #054B70;
+    box-shadow: 0 0 0 2px rgba(5,75,112,0.12);
+}
+.tp-card-datepicker::placeholder { color: #b8b6b4; }
+.tp-card-schedule .sched-clear-btn { width: 28px; height: 28px; font-size: 13px; }
+.tp-card-schedule .schedule-status { display: block; margin-top: 4px; font-size: 11px; }
 
 /* Sending spinner */
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -550,7 +628,7 @@
 /* TP Stats Summary */
 .tp-stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    grid-template-columns: repeat(5, 1fr);
     gap: 10px;
     margin-bottom: 20px;
 }
@@ -565,6 +643,8 @@
     align-items: center;
     justify-content: space-between;
     margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border, #edebe9);
 }
 .tp-stat-card-title {
     font-size: 13px;
@@ -665,18 +745,96 @@
 .ctx-menu-item:hover { background: var(--surface2, #f3f2f1); }
 .ctx-menu-item.danger { color: #c0392b; }
 .ctx-menu-item.danger:hover { background: #fdecea; }
+
+/* Toast notifications */
+.toast-container {
+    position: fixed; top: 20px; right: 20px; z-index: 9999;
+    display: flex; flex-direction: column; gap: 10px;
+    pointer-events: none;
+}
+.toast {
+    min-width: 300px; max-width: 440px; padding: 14px 16px;
+    border-radius: 10px; font-size: 13px; line-height: 1.4;
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #edebe9);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.15);
+    display: flex; gap: 12px; align-items: flex-start;
+    pointer-events: auto;
+    animation: toastSlideIn 0.25s ease-out;
+    border-left: 4px solid #054B70;
+}
+.toast.error { border-left-color: #c0392b; }
+.toast.warning { border-left-color: #d78f08; }
+.toast.success { border-left-color: #1e7e34; }
+.toast-icon {
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 13px; flex-shrink: 0; color: #fff;
+    background: #054B70;
+}
+.toast.error .toast-icon { background: #c0392b; }
+.toast.warning .toast-icon { background: #d78f08; }
+.toast.success .toast-icon { background: #1e7e34; }
+.toast-body { flex: 1; }
+.toast-title { font-weight: 700; color: var(--text-primary); margin-bottom: 2px; }
+.toast-msg { color: var(--text-secondary); }
+.toast-close {
+    background: none; border: none; font-size: 16px; color: var(--text-secondary);
+    cursor: pointer; padding: 0; margin-left: 8px; line-height: 1;
+}
+.toast-close:hover { color: var(--text-primary); }
+.toast.hiding { animation: toastSlideOut 0.2s ease-in forwards; }
+@keyframes toastSlideIn {
+    from { transform: translateX(110%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+@keyframes toastSlideOut {
+    to { transform: translateX(110%); opacity: 0; }
+}
 {% endblock %}
 
 {% block content %}
+<div class="toast-container" id="toastContainer"></div>
+<script>
+window.showToast = function(message, opts) {
+    opts = opts || {};
+    const type = opts.type || 'info';
+    const title = opts.title || ({info:'Notice', error:'Error', warning:'Heads up', success:'Done'})[type];
+    const duration = opts.duration == null ? 5000 : opts.duration;
+    const iconChar = ({info:'i', error:'!', warning:'!', success:'✓'})[type];
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+    const el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.innerHTML = `
+        <div class="toast-icon">${iconChar}</div>
+        <div class="toast-body">
+            <div class="toast-title"></div>
+            <div class="toast-msg"></div>
+        </div>
+        <button class="toast-close" aria-label="Close">&times;</button>`;
+    el.querySelector('.toast-title').textContent = title;
+    el.querySelector('.toast-msg').textContent = message;
+    const remove = () => {
+        el.classList.add('hiding');
+        setTimeout(() => el.remove(), 250);
+    };
+    el.querySelector('.toast-close').onclick = remove;
+    container.appendChild(el);
+    if (duration > 0) setTimeout(remove, duration);
+};
+</script>
 <div class="page-nav-tabs">
     <a href="{% url 'useu_list' %}" class="page-nav-tab active">US-EU List</a>
     <a href="{% url 'email_templates' %}" class="page-nav-tab">Email Templates</a>
 </div>
 
 <div class="page-banner">
-    <div class="banner-eyebrow">Database</div>
-    <div class="banner-title">US-EU Contact List</div>
-    <div class="banner-subtitle">Organizational contacts with touchpoint tracking</div>
+    <div style="flex:1; min-width:260px;">
+        <div class="banner-eyebrow">Database · Organizational contacts</div>
+        <div class="banner-title">US-EU Contact List</div>
+        <div class="banner-subtitle">Track every contact's touchpoint journey, scheduled sends and delivery status in one place.</div>
+    </div>
     <div class="banner-stats">
         <div>
             <div class="banner-stat-value">{{ total_rows|default:"0" }}</div>
@@ -717,6 +875,14 @@
         {% if tp.last_sent %}
         <div class="tp-stat-row"><span>Last sent</span><span>{{ tp.last_sent }}</span></div>
         {% endif %}
+        <div class="tp-card-schedule">
+            <label class="tp-card-schedule-label">Scheduled date &amp; time (SAST)</label>
+            <div style="display:flex;gap:6px;align-items:center;">
+                <input type="text" class="tp-datepicker tp-card-datepicker" id="schedDate{{ tp.num }}" data-tp="{{ tp.num }}" placeholder="Pick date &amp; time (SAST)...">
+                <button class="sched-clear-btn" onclick="clearSchedule({{ tp.num }})" title="Clear">&times;</button>
+            </div>
+            <span class="schedule-status pending" id="schedStatus{{ tp.num }}"></span>
+        </div>
     </div>
     {% endfor %}
 </div>
@@ -737,8 +903,14 @@
             <option value="9">TP 9</option>
             <option value="10">TP 10</option>
         </select>
-        <button class="send-all-btn" id="sendAllBtn" onclick="startSendAll()">Send All</button>
-        <button class="send-all-btn" id="stopSendBtn" onclick="stopSending()" style="display:none;background:#dc3545;">Stop Sending</button>
+        <button class="send-all-btn" id="sendAllBtn" onclick="startSendAll()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            <span id="sendAllBtnLabel">Send All</span>
+        </button>
+        <button class="send-all-btn stop" id="stopSendBtn" onclick="stopSending()" style="display:none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+            <span id="stopSendBtnLabel">Stop Sending</span>
+        </button>
         <span class="eligible-count" id="eligibleCount"></span>
         <div id="progressPanel" style="display:none;margin-left:12px;font-size:13px;color:var(--text-secondary);align-items:center;gap:8px;">
             <span class="send-spinner" id="sendSpinner"></span>
@@ -746,33 +918,6 @@
         </div>
     </div>
     
-    <!-- Schedule Touchpoints -->
-    <div class="tp-schedule-bar">
-        <div class="tp-schedule-toggle" onclick="toggleSchedule()">
-            <span class="arrow" id="scheduleArrow">&#9654;</span>
-            Schedule Touchpoint Dates (applies to all contacts)
-        </div>
-        <div class="tp-schedule-grid" id="scheduleGrid">
-            {% for tp_num in "23456789" %}
-            <div class="tp-schedule-item">
-                <label>Touchpoint {{ tp_num }}</label>
-                <div style="display:flex;gap:8px;align-items:center;">
-                    <input type="text" class="tp-datepicker" id="schedDate{{ tp_num }}" data-tp="{{ tp_num }}" placeholder="Pick a date..." style="flex:1;">
-                    <button class="sched-clear-btn" onclick="clearSchedule({{ tp_num }})" title="Clear">&times;</button>
-                </div>
-                <span class="schedule-status pending" id="schedStatus{{ tp_num }}"></span>
-            </div>
-            {% endfor %}
-            <div class="tp-schedule-item">
-                <label>Touchpoint 10</label>
-                <div style="display:flex;gap:8px;align-items:center;">
-                    <input type="text" class="tp-datepicker" id="schedDate10" data-tp="10" placeholder="Pick a date..." style="flex:1;">
-                    <button class="sched-clear-btn" onclick="clearSchedule(10)" title="Clear">&times;</button>
-                </div>
-                <span class="schedule-status pending" id="schedStatus10"></span>
-            </div>
-        </div>
-    </div>
 
     <!-- Persistent Progress Status -->
     <div class="tp-status" data-tp-type="tp1" style="margin: 10px 0; padding: 14px 18px; background: linear-gradient(135deg, #054B70 0%, #076a9e 100%); color: #fff; border-radius: 8px; font-size: 14px; display: none; box-shadow: 0 2px 8px rgba(5,75,112,0.3);"></div>
@@ -1302,10 +1447,10 @@
     // Reset buttons on page load (in case of stale state from previous session)
     console.log('[SEND] Page load reset — sendAllBtn:', document.getElementById('sendAllBtn'), 'stopSendBtn:', document.getElementById('stopSendBtn'));
     document.getElementById('sendAllBtn').disabled = false;
-    document.getElementById('sendAllBtn').textContent = 'Send All';
+    { const _l = document.getElementById('sendAllBtnLabel'); if (_l) _l.textContent = 'Send All'; }
     document.getElementById('stopSendBtn').style.display = 'none';
     document.getElementById('stopSendBtn').disabled = false;
-    document.getElementById('stopSendBtn').textContent = 'Stop Sending';
+    { const _l = document.getElementById('stopSendBtnLabel'); if (_l) _l.textContent = 'Stop Sending'; }
     console.log('[SEND] Page load reset complete. sendJobId:', sendJobId);
 
     window.startSendAll = function() {
@@ -1316,7 +1461,8 @@
         if (!confirm('Send TP' + tpNum + ' to all eligible contacts?')) return;
 
         btn.disabled = true;
-        btn.textContent = 'Sending...';
+        const sendLbl = document.getElementById('sendAllBtnLabel');
+        if (sendLbl) sendLbl.textContent = 'Sending...';
         document.getElementById('stopSendBtn').style.display = 'inline-block';
         document.getElementById('progressPanel').style.display = 'inline-flex';
         document.getElementById('sendSpinner').style.display = 'inline-block';
@@ -1338,9 +1484,18 @@
         .then(data => {
             console.log('[SEND] Server response data:', JSON.stringify(data));
             if (!data.ok) {
-                alert('Error: ' + data.error);
+                const err = data.error || '';
+                if (/template/i.test(err) && /not found/i.test(err)) {
+                    const m = err.match(/TP(\d+)/i);
+                    const tpN = m ? m[1] : '?';
+                    showToast(`You haven't created the email template for TP${tpN} yet. Go to Email Templates and add one, then try again.`, {type:'warning', title:`Template for TP${tpN} missing`, duration: 7000});
+                } else if (/no eligible/i.test(err)) {
+                    showToast('No contacts match the criteria (Active, has email, not already sent).', {type:'info', title:'Nothing to send'});
+                } else {
+                    showToast(err, {type:'error'});
+                }
                 btn.disabled = false;
-                btn.textContent = 'Send All';
+                { const _l = document.getElementById('sendAllBtnLabel'); if (_l) _l.textContent = 'Send All'; }
                 document.getElementById('stopSendBtn').style.display = 'none';
                 const _pp = document.getElementById('progressPanel'); if(_pp) _pp.style.display = 'none';
                 return;
@@ -1352,7 +1507,7 @@
         })
         .catch(err => {
             console.error('[SEND] Error starting send:', err);
-            alert('Error: ' + err.message);
+            showToast('Network error: ' + err.message, {type:'error'});
             btn.disabled = false;
             btn.textContent = 'Send All';
             document.getElementById('stopSendBtn').style.display = 'none';
@@ -1412,7 +1567,7 @@
             if (data.done) {
                 console.log('[POLL] Job DONE. stopped:', data.stopped, 'sent:', data.sent, 'total:', data.total);
                 document.getElementById('sendAllBtn').disabled = false;
-                document.getElementById('sendAllBtn').textContent = 'Send All';
+                { const _l = document.getElementById('sendAllBtnLabel'); if (_l) _l.textContent = 'Send All'; }
                 document.getElementById('stopSendBtn').style.display = 'none';
                 const _sp = document.getElementById('sendSpinner'); if(_sp) _sp.style.display = 'none';
                 if (data.stopped) {
@@ -1422,6 +1577,10 @@
                 }
                 sendJobId = null;
                 updateEligibleCount();
+                setTimeout(() => {
+                    const _pp = document.getElementById('progressPanel'); if(_pp) _pp.style.display = 'none';
+                    const _pc = document.getElementById('progCurrent'); if(_pc) _pc.textContent = '';
+                }, 4000);
             } else {
                 console.log('[POLL] Not done yet. sent:', data.sent, '/', data.total, 'current:', data.current);
                 const progEl = document.getElementById('progCurrent');
@@ -1441,14 +1600,24 @@
     function resetSendUI(message) {
         sendJobId = null;
         const sendBtn = document.getElementById('sendAllBtn');
+        const sendLbl = document.getElementById('sendAllBtnLabel');
         const stopBtn = document.getElementById('stopSendBtn');
+        const stopLbl = document.getElementById('stopSendBtnLabel');
         const progPanel = document.getElementById('progressPanel');
         const progCur = document.getElementById('progCurrent');
-        if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Send All'; }
-        if (stopBtn) { stopBtn.style.display = 'none'; stopBtn.disabled = false; stopBtn.textContent = 'Stop Sending'; }
+        if (sendBtn) { sendBtn.disabled = false; }
+        if (sendLbl) sendLbl.textContent = 'Send All';
+        if (stopBtn) { stopBtn.style.display = 'none'; stopBtn.disabled = false; }
+        if (stopLbl) stopLbl.textContent = 'Stop Sending';
         if (progCur && message) { progCur.textContent = message; }
         if (progPanel && message) { progPanel.style.display = 'inline-block'; }
         updateEligibleCount();
+        if (message) {
+            setTimeout(() => {
+                if (progPanel) progPanel.style.display = 'none';
+                if (progCur) progCur.textContent = '';
+            }, 4000);
+        }
     }
 
     window.stopSending = function() {
@@ -1461,8 +1630,9 @@
         if (!confirm('Stop sending? Emails already sent will not be undone.')) return;
 
         const btn = document.getElementById('stopSendBtn');
+        const lbl = document.getElementById('stopSendBtnLabel');
         btn.disabled = true;
-        btn.textContent = 'Stopping...';
+        if (lbl) lbl.textContent = 'Stopping...';
         console.log('[STOP] Sending stop request for job:', sendJobId);
 
         fetch('{% url "stop_sending" %}', {
@@ -1481,9 +1651,9 @@
                 resetSendUI('Stopped.');
             } else {
                 console.error('[STOP] Stop failed:', data.error);
-                alert('Error: ' + data.error);
+                showToast(data.error, {type:'error', title:'Stop failed'});
                 btn.disabled = false;
-                btn.textContent = 'Stop Sending';
+                if (lbl) lbl.textContent = 'Stop Sending';
             }
         })
         .catch(err => {
@@ -1641,10 +1811,10 @@
                 closeModal();
                 location.reload();
             } else {
-                alert('Error: ' + (data.error || 'Unknown'));
+                showToast(data.error || 'Unknown error', {type:'error'});
             }
         })
-        .catch(() => alert('Network error'));
+        .catch(() => showToast('Network error', {type:'error'}));
     };
 
     window.deleteContact = function(contactId) {
@@ -1658,10 +1828,10 @@
             if (data.ok) {
                 location.reload();
             } else {
-                alert('Error: ' + (data.error || 'Unknown'));
+                showToast(data.error || 'Unknown error', {type:'error'});
             }
         })
-        .catch(() => alert('Network error'));
+        .catch(() => showToast('Network error', {type:'error'}));
     };
 
     // ── Schedule Touchpoints ─────────────────────────────────────
@@ -1719,9 +1889,16 @@
     }
 
     const fpConfig = {
-        dateFormat: 'Y-m-d',
+        dateFormat: 'Y-m-d H:i',
         altInput: true,
-        altFormat: 'm/d/Y',
+        altFormat: 'd M Y, H:i',
+        enableTime: true,
+        time_24hr: true,
+        minuteIncrement: 15,
+        defaultHour: 9,
+        defaultMinute: 0,
+        // South African Standard Time (UTC+2, no DST) — labels are local SAST
+        allowInput: false,
         disable: [
             function(date) {
                 const day = date.getDay();

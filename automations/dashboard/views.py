@@ -9,7 +9,8 @@ from django.views.decorators.http import require_http_methods
 from django.db.models import Sum, Count
 from django.db.models.functions import ExtractYear
 from django.db import OperationalError, ProgrammingError, connection
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponse
+from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings as django_settings
 from .models import TurnoverData, ProjectTask, UserProfile, USEUContact, TouchpointTemplate
 from django.contrib.auth.models import User
@@ -2067,18 +2068,41 @@ def useu_list(request):
     active_with_email = contacts.filter(status='Active').exclude(email='').exclude(email__isnull=True)
     undeliverable_contacts = contacts.filter(status='Undeliverable')
 
-    # Check if any send job is currently running
+    # Check if any send job is currently running.
+    # A job file is "stale" if it hasn't been touched in 2 minutes — the worker
+    # writes progress every contact, so a lack of updates means the process died.
     _active_tp = None
-    for _jf in os.listdir(os.path.dirname(__file__) + '/..'):
+    _base_dir = os.path.join(os.path.dirname(__file__), '..')
+    _stale_cutoff = time.time() - 120  # 2 minutes
+    for _jf in os.listdir(_base_dir):
         if _jf.startswith('send_job_') and _jf.endswith('.json'):
+            _jpath = os.path.join(_base_dir, _jf)
             try:
-                with open(os.path.join(os.path.dirname(__file__), '..', _jf)) as _f:
+                _mtime = os.path.getmtime(_jpath)
+                with open(_jpath) as _f:
                     _jdata = json.load(_f)
-                    if not _jdata.get('done', True):
-                        # Extract tp num from filename like send_job_tp1_xxx.json
-                        _tp_match = re.search(r'tp(\d+)', _jf)
-                        if _tp_match:
-                            _active_tp = int(_tp_match.group(1))
+                _done = _jdata.get('done', True)
+                if not _done and _mtime < _stale_cutoff:
+                    # Mark as done and move on — the worker is gone.
+                    _jdata['done'] = True
+                    _jdata['stopped'] = True
+                    try:
+                        with open(_jpath, 'w') as _fw:
+                            json.dump(_jdata, _fw)
+                    except Exception:
+                        pass
+                    # Also reset touchpoint_progress.json so the banner clears
+                    try:
+                        _tpm = re.search(r'tp(\d+)', _jf)
+                        if _tpm:
+                            update_touchpoint_progress(f'tp{_tpm.group(1)}', status='idle')
+                    except Exception:
+                        pass
+                    continue
+                if not _done:
+                    _tp_match = re.search(r'tp(\d+)', _jf)
+                    if _tp_match:
+                        _active_tp = int(_tp_match.group(1))
             except Exception:
                 pass
 
@@ -2380,10 +2404,15 @@ def send_all_touchpoint(request):
 
     tp_field = f'touchpoint_{tp_num}'
     tp_sent_field = f'tp{tp_num}_sent_on'
+    force_resend = bool(data.get('force_resend'))
 
-    # Find eligible contacts: Active, has email, TP sent date is empty
-    filters = {'status': 'Active', tp_sent_field: ''}
-    contacts = list(USEUContact.objects.filter(**filters).exclude(email='').exclude(email__isnull=True))
+    # Find eligible contacts: Active, has email. If force_resend, include already-sent ones.
+    if force_resend:
+        contacts = list(USEUContact.objects.filter(status='Active').exclude(email='').exclude(email__isnull=True))
+        # Clear tp_sent_on so worker treats them as eligible (and re-sends)
+        USEUContact.objects.filter(status='Active').exclude(email='').exclude(email__isnull=True).update(**{tp_sent_field: ''})
+    else:
+        contacts = list(USEUContact.objects.filter(status='Active', **{tp_sent_field: ''}).exclude(email='').exclude(email__isnull=True))
 
     if not contacts:
         return JsonResponse({'ok': False, 'error': 'No eligible contacts found'}, status=400)
@@ -2532,6 +2561,201 @@ def send_all_progress(request):
     })
 
 
+# ── Emails Sent & Status ──────────────────────────────────────────────────────
+
+@login_required
+def emails_sent(request):
+    """Flat log of every email dispatched (SES, Graph, dry-run) with delivery status."""
+    from dashboard.models import EmailSendLog
+    logs = EmailSendLog.objects.select_related('contact').all()[:2000]
+    rows = []
+    status_counts = {'sent': 0, 'delivered': 0, 'bounced': 0, 'complained': 0,
+                     'rejected': 0, 'failed': 0, 'dry_run': 0}
+    provider_counts = {'ses': 0, 'graph': 0, 'dry_run': 0}
+    for l in logs:
+        status_counts[l.status] = status_counts.get(l.status, 0) + 1
+        provider_counts[l.provider] = provider_counts.get(l.provider, 0) + 1
+        rows.append({
+            'id': l.id,
+            'sent_at': l.sent_at.strftime('%Y-%m-%d %H:%M:%S'),
+            'to_address': l.to_address,
+            'from_address': l.from_address,
+            'contact_name': l.contact.contact_name if l.contact else '—',
+            'org_name': l.contact.org_name if l.contact else '—',
+            'tp_num': l.touchpoint_number or '',
+            'subject': l.subject,
+            'provider': l.provider,
+            'status': l.status,
+            'message_id': l.message_id,
+            'error_message': l.error_message,
+        })
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    return render(request, 'emails_sent.html', {
+        'rows': rows,
+        'total': len(rows),
+        'status_counts': status_counts,
+        'provider_counts': provider_counts,
+        'dark_mode': profile.dark_mode,
+    })
+
+
+_SES_BASELINE_FILE = os.path.join(os.path.dirname(__file__), '..', 'ses_counter_baseline.json')
+
+
+def _ses_load_baseline():
+    try:
+        with open(_SES_BASELINE_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _ses_save_baseline(baseline):
+    try:
+        with open(_SES_BASELINE_FILE, 'w') as f:
+            json.dump(baseline, f)
+    except Exception as e:
+        print(f'[SES baseline save failed] {e}', flush=True)
+
+
+def _ses_compute_stats():
+    """Returns totals across the 14-day SES statistics window."""
+    ses = _get_ses_client()
+    q = ses.get_send_quota()
+    stats = ses.get_send_statistics().get('SendDataPoints', [])
+    totals = {'attempts': 0, 'bounces': 0, 'complaints': 0, 'rejects': 0}
+    for s in stats:
+        totals['attempts'] += s.get('DeliveryAttempts', 0)
+        totals['bounces'] += s.get('Bounces', 0)
+        totals['complaints'] += s.get('Complaints', 0)
+        totals['rejects'] += s.get('Rejects', 0)
+    return q, totals
+
+
+@login_required
+def emails_sent_refresh_stats(request):
+    """Pull AWS SES stats. Subtract a baseline captured on first load so counters start from 0."""
+    try:
+        q, totals = _ses_compute_stats()
+        baseline = _ses_load_baseline()
+        if baseline is None:
+            # First ever call — freeze current totals as baseline
+            baseline = {
+                'captured_at': __import__('datetime').datetime.utcnow().isoformat(),
+                **totals,
+            }
+            _ses_save_baseline(baseline)
+
+        # Deltas since baseline (never negative)
+        deltas = {k: max(0, totals.get(k, 0) - baseline.get(k, 0)) for k in ('attempts', 'bounces', 'complaints', 'rejects')}
+        delivered = max(0, deltas['attempts'] - deltas['bounces'] - deltas['complaints'] - deltas['rejects'])
+
+        return JsonResponse({
+            'ok': True,
+            'quota_max_24h': q['Max24HourSend'],
+            'quota_sent_24h': q['SentLast24Hours'],
+            'quota_rate_per_sec': q['MaxSendRate'],
+            'last_24h': {
+                'delivery_attempts': deltas['attempts'],
+                'bounces': deltas['bounces'],
+                'complaints': deltas['complaints'],
+                'rejects': deltas['rejects'],
+                'delivered': delivered,
+            },
+            'baseline_captured_at': baseline.get('captured_at'),
+        })
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+
+@login_required
+def emails_sent_reset_baseline(request):
+    """Reset the SES counter baseline to NOW so displayed Sent/Delivered/Bounced start at 0."""
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST required'}, status=405)
+    try:
+        _, totals = _ses_compute_stats()
+        baseline = {
+            'captured_at': __import__('datetime').datetime.utcnow().isoformat(),
+            **totals,
+        }
+        _ses_save_baseline(baseline)
+        return JsonResponse({'ok': True, 'baseline': baseline})
+    except Exception as e:
+        return JsonResponse({'ok': False, 'error': str(e)}, status=500)
+
+
+@csrf_exempt
+def ses_webhook(request):
+    """Receive SNS notifications from SES event publishing (delivery/bounce/complaint)
+    and update matching EmailSendLog rows by MessageId.
+    Subscribe this endpoint to the SNS topic: /webhooks/ses/
+    """
+    if request.method != 'POST':
+        return HttpResponse(status=405)
+    try:
+        body = json.loads(request.body.decode('utf-8') or '{}')
+    except Exception:
+        return HttpResponse(status=400)
+
+    msg_type = body.get('Type') or request.headers.get('x-amz-sns-message-type', '')
+
+    # Auto-confirm SNS subscription
+    if msg_type == 'SubscriptionConfirmation':
+        try:
+            import urllib.request
+            urllib.request.urlopen(body['SubscribeURL'], timeout=10).read()
+            return HttpResponse('confirmed')
+        except Exception as e:
+            return HttpResponse(f'confirm failed: {e}', status=500)
+
+    if msg_type == 'Notification':
+        from dashboard.models import EmailSendLog
+        try:
+            payload = json.loads(body.get('Message', '{}'))
+        except Exception:
+            payload = {}
+        event_type = (payload.get('eventType') or payload.get('notificationType') or '').lower()
+        mail = payload.get('mail', {})
+        message_id = mail.get('messageId', '')
+        if not message_id:
+            return HttpResponse('no messageId', status=200)
+
+        status_map = {
+            'delivery': 'delivered',
+            'bounce': 'bounced',
+            'complaint': 'complained',
+            'reject': 'rejected',
+            'rendering failure': 'failed',
+            'deliverydelay': 'sent',
+        }
+        new_status = status_map.get(event_type)
+        if not new_status:
+            return HttpResponse(f'ignored {event_type}', status=200)
+
+        err = ''
+        if event_type == 'bounce':
+            b = payload.get('bounce', {})
+            recips = b.get('bouncedRecipients', [{}])[0]
+            err = f"{b.get('bounceType', '')}/{b.get('bounceSubType', '')}: {recips.get('diagnosticCode', '')}"
+        elif event_type == 'complaint':
+            err = payload.get('complaint', {}).get('complaintFeedbackType', '')
+
+        logs = list(EmailSendLog.objects.filter(message_id=message_id))
+        for log in logs:
+            log.status = new_status
+            log.error_message = err or ''
+            log.save(update_fields=['status', 'error_message', 'status_updated_at'])
+            # Propagate hard-fail statuses to the contact
+            if new_status in ('bounced', 'complained', 'rejected') and log.contact:
+                log.contact.status = 'Undeliverable'
+                log.contact.save(update_fields=['status'])
+                print(f'[SNS] Marked {log.to_address} as Undeliverable ({new_status})', flush=True)
+        return HttpResponse('ok')
+
+    return HttpResponse(status=200)
+
+
 # ── Email Templates ────────────────────────────────────────────────────────────
 
 @login_required
@@ -2547,6 +2771,8 @@ def email_templates(request):
             'signature': t.signature,
             'attachment_name': t.attachment.name.split('/')[-1] if t.attachment else '',
             'attachment_url': t.attachment.url if t.attachment else '',
+            'signature_image_name': t.signature_image.name.split('/')[-1] if t.signature_image else '',
+            'signature_image_url': t.signature_image.url if t.signature_image else '',
             'days_after_previous': t.days_after_previous,
         })
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
@@ -2590,10 +2816,24 @@ def email_template_save(request):
             template.attachment = None
             template.save(update_fields=['attachment'])
 
+    # Handle signature image upload (separate file input)
+    if 'signature_image' in request.FILES:
+        template.signature_image = request.FILES['signature_image']
+        template.save(update_fields=['signature_image'])
+    elif request.POST.get('clear_signature_image') == '1':
+        if template.signature_image:
+            template.signature_image.delete(save=False)
+            template.signature_image = None
+            template.save(update_fields=['signature_image'])
+
     att_name = template.attachment.name.split('/')[-1] if template.attachment else ''
     att_url = template.attachment.url if template.attachment else ''
+    sig_name = template.signature_image.name.split('/')[-1] if template.signature_image else ''
+    sig_url = template.signature_image.url if template.signature_image else ''
     return JsonResponse({
         'ok': True,
+        'signature_image_name': sig_name,
+        'signature_image_url': sig_url,
         'attachment_name': att_name,
         'attachment_url': att_url,
         'body_html': template.body_html,
@@ -2614,19 +2854,24 @@ def set_touchpoint_schedule(request):
     except (json.JSONDecodeError, ValueError, TypeError):
         return JsonResponse({'ok': False, 'error': 'Invalid data'}, status=400)
 
-    if tp_num < 2 or tp_num > 10:
-        return JsonResponse({'ok': False, 'error': 'Invalid touchpoint number (2-10 only)'}, status=400)
+    if tp_num < 1 or tp_num > 10:
+        return JsonResponse({'ok': False, 'error': 'Invalid touchpoint number (1-10 only)'}, status=400)
 
     tp_field = f'touchpoint_{tp_num}'
 
     if date_str:
-        # Parse and format as DD-MM-YYYY for the contacts field
+        # Accept either 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM' (SAST). Store date+time on contacts.
         from datetime import datetime as dt
-        try:
-            parsed = dt.strptime(date_str, '%Y-%m-%d')
-            display_date = parsed.strftime('%d-%m-%Y')
-        except ValueError:
+        parsed = None
+        for fmt in ('%Y-%m-%d %H:%M', '%Y-%m-%d'):
+            try:
+                parsed = dt.strptime(date_str, fmt)
+                break
+            except ValueError:
+                continue
+        if parsed is None:
             return JsonResponse({'ok': False, 'error': 'Invalid date format'}, status=400)
+        display_date = parsed.strftime('%d-%m-%Y %H:%M') if parsed.hour or parsed.minute else parsed.strftime('%d-%m-%Y')
 
         # Update all contacts' touchpoint_X field to this date
         updated = USEUContact.objects.all().update(**{tp_field: display_date})
@@ -2657,7 +2902,7 @@ def get_touchpoint_schedules(request):
     # Get from templates
     for t in TouchpointTemplate.objects.all():
         if t.scheduled_date:
-            schedules[t.touchpoint_number] = t.scheduled_date.strftime('%Y-%m-%d')
+            schedules[t.touchpoint_number] = t.scheduled_date.strftime('%Y-%m-%d 09:00')
 
     # Also check what's actually set on contacts for each TP
     from django.db import connection
@@ -2678,6 +2923,127 @@ GRAPH_CLIENT_ID = '43fbe5a9-6b5b-4c81-9067-7aff9ac3ed5a'
 GRAPH_TENANT_ID = 'b1504b1d-d096-409a-a0f0-6cc546dde993'
 GRAPH_CLIENT_SECRET = os.getenv('GRAPH_CLIENT_SECRET', '')
 GRAPH_MAILBOX = 'waldogaybba@moc-pty.com'
+
+
+def _gmail_send_mail(to_address, subject, body_html=None, body_text=None,
+                     from_address=None, from_name='Magnum Opus Consultants',
+                     attachments=None):
+    """Send via Gmail SMTP (fallback when SES is quota-blocked)."""
+    import smtplib, base64
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+    from email.mime.base import MIMEBase
+    from email.mime.image import MIMEImage
+    from email import encoders
+    user = os.getenv('GMAIL_USER', '')
+    pw = os.getenv('GMAIL_APP_PASSWORD', '').replace(' ', '')
+    if not user or not pw:
+        err = 'Gmail: GMAIL_USER / GMAIL_APP_PASSWORD not set'
+        _log_email_send(to_address, subject, provider='ses', status='failed', error_message=err)
+        return False, err
+
+    src = f'{from_name} <{user}>' if from_name else user
+    msg = MIMEMultipart('mixed')
+    msg['Subject'] = subject
+    msg['From'] = src
+    msg['To'] = to_address
+
+    if body_html:
+        related = MIMEMultipart('related')
+        related.attach(MIMEText(body_html, 'html', 'utf-8'))
+        for att in (attachments or []):
+            if att.get('isInline'):
+                img = MIMEImage(base64.b64decode(att.get('contentBytes', '')))
+                img.add_header('Content-ID', f"<{att.get('contentId','')}>")
+                img.add_header('Content-Disposition', 'inline', filename=att.get('name', 'image.png'))
+                related.attach(img)
+        msg.attach(related)
+    elif body_text:
+        msg.attach(MIMEText(body_text, 'plain', 'utf-8'))
+
+    for att in (attachments or []):
+        if att.get('isInline'):
+            continue
+        part = MIMEBase('application', 'octet-stream')
+        part.set_payload(base64.b64decode(att.get('contentBytes', '')))
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition', 'attachment', filename=att.get('name', 'attachment'))
+        msg.attach(part)
+
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465, timeout=30) as s:
+            s.login(user, pw)
+            s.sendmail(user, [to_address], msg.as_string())
+        _log_email_send(to_address, subject, provider='ses', status='sent',
+                        message_id=f'gmail-{int(__import__("time").time())}',
+                        from_address=user)
+        return True, 'gmail-sent'
+    except Exception as e:
+        err = f'Gmail SMTP: {e}'
+        _log_email_send(to_address, subject, provider='ses', status='failed', error_message=err)
+        return False, err
+
+
+def _log_email_send(to_address, subject, provider='ses', status='sent',
+                    message_id='', error_message='', from_address='', tp_num=None):
+    """Write an EmailSendLog row. Never raises — logging failures must not break sends."""
+    try:
+        from dashboard.models import EmailSendLog, USEUContact
+        contact = USEUContact.objects.filter(email__iexact=to_address).first()
+        EmailSendLog.objects.create(
+            contact=contact,
+            to_address=to_address,
+            from_address=from_address or django_settings.AWS_SES_FROM_EMAIL,
+            touchpoint_number=tp_num,
+            subject=(subject or '')[:998],
+            provider=provider,
+            status=status,
+            message_id=message_id,
+            error_message=error_message,
+        )
+    except Exception as _e:
+        print(f"[LOG] EmailSendLog write failed: {_e}", flush=True)
+
+
+def _graph_send_simple(to_address, subject, body_html=None, body_text=None, attachments=None):
+    """Minimal Graph send helper — builds payload and sends via sendMail.
+    Returns (success, message_id_or_error) matching the _ses_send_mail signature.
+    """
+    token = _get_graph_token()
+    if not token:
+        return False, 'Graph: no access token'
+    content_type = 'HTML' if body_html else 'Text'
+    content = body_html if body_html else (body_text or '')
+    msg_attachments = []
+    for att in (attachments or []):
+        msg_attachments.append({
+            '@odata.type': '#microsoft.graph.fileAttachment',
+            'name': att.get('name', 'attachment'),
+            'contentType': att.get('contentType', 'application/octet-stream'),
+            'contentBytes': att.get('contentBytes', ''),
+            'isInline': bool(att.get('isInline')),
+            'contentId': att.get('contentId', ''),
+        })
+    payload = {
+        'message': {
+            'subject': subject,
+            'body': {'contentType': content_type, 'content': content},
+            'toRecipients': [{'emailAddress': {'address': to_address}}],
+            'attachments': msg_attachments,
+        },
+        'saveToSentItems': True,
+    }
+    try:
+        ok, status = _graph_send_mail(token, payload)
+        if ok:
+            _log_email_send(to_address, subject, provider='graph', status='sent', message_id=f'graph-{status}')
+            return True, f'graph-{status}'
+        err = f'Graph status {status}'
+        _log_email_send(to_address, subject, provider='graph', status='failed', error_message=err)
+        return False, err
+    except Exception as e:
+        _log_email_send(to_address, subject, provider='graph', status='failed', error_message=str(e))
+        return False, f'Graph exception: {e}'
 
 
 def _get_graph_token():
@@ -2709,6 +3075,19 @@ def _ses_send_mail(to_address, subject, body_html=None, body_text=None,
 
     Returns (success: bool, message_id_or_error: str).
     """
+    if os.getenv('SES_DRY_RUN') == '1':
+        real_list = [e.strip().lower() for e in (os.getenv('SES_DRY_RUN_EXCEPT') or '').split(',') if e.strip()]
+        if to_address.lower() not in real_list:
+            att_info = ''
+            if attachments:
+                names = [a.get('name', '?') for a in attachments]
+                att_info = f" | attachments={names}"
+            body_len = len(body_html or body_text or '')
+            print(f"[DRY-RUN] TO={to_address} | subject={subject!r} | body_len={body_len}{att_info}", flush=True)
+            _log_email_send(to_address, subject, provider='dry_run', status='dry_run', message_id='dry-run')
+            return True, 'dry-run-message-id'
+        print(f"[DRY-RUN] Real send (exception list) to {to_address}", flush=True)
+
     if not from_address:
         from_address = django_settings.AWS_SES_FROM_EMAIL
 
@@ -2741,13 +3120,18 @@ def _ses_send_mail(to_address, subject, body_html=None, body_text=None,
                     'Body': body,
                 },
             )
+            _log_email_send(to_address, subject, provider='ses', status='sent',
+                            message_id=response['MessageId'], from_address=from_address)
             return True, response['MessageId']
         except ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == 'Throttling':
                 time.sleep(2 * (attempt + 1))
                 continue
-            return False, f"{error_code}: {e.response['Error']['Message']}"
+            err_msg = f"{error_code}: {e.response['Error']['Message']}"
+            _log_email_send(to_address, subject, provider='ses', status='failed',
+                            error_message=err_msg, from_address=from_address)
+            return False, err_msg
         except Exception as e:
             if attempt < max_retries - 1:
                 time.sleep(2 * (attempt + 1))
@@ -3016,25 +3400,30 @@ def send_touchpoint(request):
             body_content += '\n\n' + template.signature
         content_type = 'Text'
 
-    # Embed signature as inline CID attachment instead of external URL
+    # Embed uploaded signature image as inline CID attachment (optional, per template)
     sig_inline = None
-    if content_type == 'HTML':
-        body_content = re.sub(
-            r'https://drive\.google\.com/thumbnail\?id=[^"\'&]+(?:&amp;[^"\']*|&[^"\']*)*',
-            r'cid:signature_waldo',
-            body_content,
-            flags=re.IGNORECASE
-        )
-        sig_path = os.path.join(django_settings.BASE_DIR, 'static', 'signature_waldo.png')
-        if os.path.isfile(sig_path):
+    if content_type == 'HTML' and getattr(template, 'signature_image', None):
+        try:
+            sig_path = template.signature_image.path
+            sig_name = os.path.basename(sig_path)
+            ext = os.path.splitext(sig_name)[1].lower().lstrip('.') or 'png'
+            cid = f'signature_tp{template.touchpoint_number}'
+            body_content = re.sub(
+                r'https://drive\.google\.com/thumbnail\?id=[^"\'&]+(?:&amp;[^"\']*|&[^"\']*)*',
+                f'cid:{cid}',
+                body_content,
+                flags=re.IGNORECASE,
+            )
             with open(sig_path, 'rb') as sf:
                 sig_inline = {
-                    'name': 'signature_waldo.png',
-                    'contentType': 'image/png',
+                    'name': sig_name,
+                    'contentType': f'image/{ext if ext!="jpg" else "jpeg"}',
                     'contentBytes': base64.b64encode(sf.read()).decode('utf-8'),
-                    'contentId': 'signature_waldo',
+                    'contentId': cid,
                     'isInline': True,
                 }
+        except Exception as e:
+            print(f'[views] signature_image load failed: {e}', flush=True)
 
     results = []
     for email_addr in recipients:

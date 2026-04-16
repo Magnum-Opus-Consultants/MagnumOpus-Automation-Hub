@@ -95,6 +95,7 @@ urlpatterns = [
     path('useu-list/send-all/', views.send_all_touchpoint, name='send_all_touchpoint'),
     path('useu-list/send-all/progress/', views.send_all_progress, name='send_all_progress'),
     path('useu-list/send-all/stop/', views.stop_sending, name='stop_sending'),
+    path('webhooks/ses/', views.ses_webhook, name='ses_webhook'),
     path('email-templates/', views.email_templates, name='email_templates'),
     path('email-templates/save/', views.email_template_save, name='email_template_save'),
     path('email-templates/send/', views.send_touchpoint, name='send_touchpoint'),
