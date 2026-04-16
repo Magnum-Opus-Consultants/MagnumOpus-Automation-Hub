@@ -196,6 +196,7 @@ def run_campaign(tp_num, job_id, job_file):
 
             with _progress_lock:
                 if not sent_ok:
+                    state['failed'] += 1
                     error_lower = result_msg.lower()
                     if any(kw in error_lower for kw in [
                         'mailboxdoesnotexist', 'mailbox does not exist',
@@ -204,18 +205,15 @@ def run_campaign(tp_num, job_id, job_file):
                         'recipient address rejected', 'user unknown',
                         'domain not found', 'suppressed',
                     ]):
-                        # Mark contact as Undeliverable
-                        state['failed'] += 1
+                        # Mark contact as Undeliverable only — do NOT mark as sent
                         contact.status = 'Undeliverable'
-                        setattr(contact, tp_sent_field, now_str)
-                        contact.save(update_fields=['status', tp_sent_field])
+                        contact.save(update_fields=['status'])
                         print(f"[WORKER] Marked {email_addr} as Undeliverable", flush=True)
-                        update_touchpoint_progress(tp_type, failed=state['failed'], status='sending')
                     else:
-                        state['failed'] += 1
                         print(f"[WORKER] FAILED {email_addr}: {result_msg}", flush=True)
-                        update_touchpoint_progress(tp_type, failed=state['failed'], status='sending')
+                    update_touchpoint_progress(tp_type, failed=state['failed'], status='sending')
                 else:
+                    # Only mark as sent after SES confirms delivery
                     state['sent'] += 1
                     setattr(contact, tp_sent_field, now_str)
                     contact.last_touch = str(tp_num)
