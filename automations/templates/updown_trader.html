@@ -1,0 +1,352 @@
+﻿{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Up-Down Trader Report - MOC Automations{% endblock %}
+
+{% block extra_styles %}
+.stats-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+.stat-card {
+    background: #fff;
+    border: 1px solid #edebe9;
+    border-radius: 4px;
+    padding: 16px 20px;
+    min-width: 140px;
+}
+
+.stat-label {
+    color: #605e5c;
+    font-size: 12px;
+    margin-bottom: 4px;
+}
+
+.stat-value {
+    color: #323130;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.card {
+    background: #fff;
+    border: 1px solid #edebe9;
+    border-radius: 4px;
+    margin-bottom: 16px;
+}
+
+.card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #edebe9;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.card-header svg {
+    width: 18px;
+    height: 18px;
+    fill: #054B70;
+}
+
+.card-title {
+    color: #323130;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.card-body {
+    padding: 16px 20px;
+}
+
+.grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+@media (max-width: 800px) {
+    .grid-2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #f3f2f1;
+    font-size: 13px;
+}
+
+.info-row:last-child {
+    border-bottom: none;
+}
+
+.info-label {
+    color: #605e5c;
+}
+
+.info-value {
+    color: #323130;
+    font-weight: 500;
+}
+
+.query-box { background: #1b1a19; border-radius: 4px; padding: 16px; overflow-x: auto; }
+.query-code { font-family: "Consolas", "Monaco", monospace; font-size: 13px; color: #d4d4d4; line-height: 1.6; white-space: pre; }
+.query-code .kw { color: #569cd6; }
+.btn { background: #054B70; color: #fff; border: none; padding: 8px 16px; border-radius: 2px; font-size: 13px; font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; }
+.btn:hover { background: #043a58; }
+.btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.btn svg { width: 14px; height: 14px; fill: currentColor; }
+.conn-string { background: #f3f2f1; padding: 12px; border-radius: 4px; font-family: "Consolas", monospace; font-size: 12px; color: #323130; margin-top: 16px; word-break: break-all; }
+
+.data-table-wrap { overflow-x: auto; max-height: 500px; overflow-y: auto; border: 1px solid #edebe9; border-radius: 4px; }
+.data-table { border-collapse: collapse; font-size: 12px; white-space: nowrap; width: max-content; }
+.data-table th { background: #054B70; color: #fff; padding: 6px 10px; position: sticky; top: 0; z-index: 2; font-weight: 500; text-align: left; border-right: 1px solid rgba(255,255,255,0.15); }
+.data-table td { padding: 5px 10px; border-bottom: 1px solid #f3f2f1; border-right: 1px solid #f3f2f1; color: #323130; }
+.data-table tr:hover td { background: #f3f8fc; }
+.data-table td:first-child { font-weight: 500; position: sticky; left: 0; background: #fff; z-index: 1; border-right: 2px solid #edebe9; }
+.data-table th:first-child { position: sticky; left: 0; z-index: 3; border-right: 2px solid rgba(255,255,255,0.3); }
+.data-table tr:hover td:first-child { background: #f3f8fc; }
+.data-table .num { text-align: right; font-family: "Consolas", monospace; }
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+.spin { animation: spin 1s linear infinite; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Up-Down Trader Report</h1>
+    <p class="page-subtitle">Customer Spend data upload and sync for the Up-Down Trader Report</p>
+</div>
+
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-label">Customer Spend Records</div>
+        <div class="stat-value">{{ cs_count|default:0|intcomma }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Operational Records</div>
+        <div class="stat-value">{{ cso_count|default:0|intcomma }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Unique Debtors</div>
+        <div class="stat-value">{{ debtor_count|default:0|intcomma }}</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+        <span class="card-title">Sync from SharePoint</span>
+    </div>
+    <div class="card-body">
+        <div style="font-size:13px;color:#605e5c;margin-bottom:12px;">
+            Pulls all Excel files from <strong>DataPrime / Clients / ISCM / Up Down Trader Report / Shipment Data</strong> and processes Customer Spend + Operational data.
+        </div>
+        <div style="display:flex;align-items:center;gap:16px;">
+            <button type="button" class="btn" id="syncBtn" onclick="startSync()">
+                <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                Sync Now
+            </button>
+            <div style="font-size:12px;color:#605e5c;">
+                Last sync: {% if last_sync %}{{ last_sync.date }} at {{ last_sync.time }}{% else %}Never{% endif %}
+            </div>
+        </div>
+        <div id="syncStatus" style="margin-top:8px;font-size:12px;color:#605e5c;"></div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8l-6-6zm4 18H6V4h7v5h5v11z"/></svg>
+        <span class="card-title">SharePoint Files</span>
+    </div>
+    <div class="card-body">
+        {% if sp_files %}
+        {% for f in sp_files %}
+        <div class="info-row" style="align-items:center;">
+            <div>
+                <span class="info-value">{{ f.name }}</span>
+                <span style="color:#605e5c;font-size:11px;margin-left:8px;">{{ f.size|filesizeformat }}</span>
+            </div>
+            <a href="{{ f.web_url }}" target="_blank" class="btn" style="margin-top:0;font-size:12px;padding:4px 12px;">
+                <svg viewBox="0 0 24 24"><path d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+                View
+            </a>
+        </div>
+        {% endfor %}
+        {% else %}
+        <div style="color:#605e5c;font-size:13px;">No files found or unable to connect to SharePoint.</div>
+        {% endif %}
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid #f3f2f1;">
+            <a href="https://magnumopusconsultantspty352.sharepoint.com/sites/DataPrime/Shared%20Documents/Clients/ISCM/Up%20Down%20Trader%20Report/Shipment%20Data" target="_blank" class="btn" style="margin-top:0;font-size:12px;padding:4px 12px;">
+                <svg viewBox="0 0 24 24"><path d="M20 6h-8l-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/></svg>
+                Open Folder in SharePoint
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-header">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+            <span class="card-title">Database</span>
+        </div>
+        <div class="card-body">
+            <div class="info-row">
+                <span class="info-label">Host</span>
+                <span class="info-value">workspace.moc-pty.com</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Port</span>
+                <span class="info-value">5432</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Database</span>
+                <span class="info-value">automation_platform</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">View</span>
+                <span class="info-value">customer_spend_summary</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <svg viewBox="0 0 24 24"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/></svg>
+            <span class="card-title">Data Source</span>
+        </div>
+        <div class="card-body">
+            <div class="info-row">
+                <span class="info-label">Source</span>
+                <span class="info-value">SharePoint (Graph API)</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Site</span>
+                <span class="info-value">DataPrime</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Folder</span>
+                <span class="info-value">Clients / ISCM / Up Down Trader Report / Shipment Data</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Sheets Processed</span>
+                <span class="info-value">Financial Data, Operational Data, Shipment Profile</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if summary_headers %}
+<div class="card">
+    <div class="card-header">
+        <svg viewBox="0 0 24 24"><path d="M3 3v18h18V3H3zm16 16H5V5h14v14zM7 7h2v2H7V7zm0 4h2v2H7v-2zm0 4h2v2H7v-2zm4-8h6v2h-6V7zm0 4h6v2h-6v-2zm0 4h6v2h-6v-2z"/></svg>
+        <span class="card-title">Data Preview &mdash; customer_spend_summary</span>
+        <span style="margin-left:auto;font-size:11px;color:#605e5c;">{{ summary_rows|length }} of {{ cs_count }} rows</span>
+    </div>
+    <div class="card-body" style="padding:0;">
+        <div class="data-table-wrap">
+            <table class="data-table">
+                <thead><tr>{% for h in summary_headers %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+                <tbody>
+                {% for row in summary_rows %}
+                <tr>{% for val in row %}<td{% if forloop.counter0 > 1 %} class="num"{% endif %}>{% if val != None %}{{ val }}{% else %}&mdash;{% endif %}</td>{% endfor %}</tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header">
+        <svg viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+        <span class="card-title">Power BI / Excel ODBC Query</span>
+    </div>
+    <div class="card-body">
+        <div class="query-box">
+            <code class="query-code"><span class="kw">SELECT</span> *
+<span class="kw">FROM</span> customer_spend_summary
+<span class="kw">ORDER BY</span> "ACTUAL 2025" <span class="kw">DESC NULLS LAST</span>;</code>
+        </div>
+        <button class="btn" id="copyQueryBtn" onclick="copyQuery()">
+            <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+            Copy
+        </button>
+
+        <div class="conn-string">
+            Host=workspace.moc-pty.com;Port=5432;Database=automation_platform;Username=powerbi;Password=your_secure_password;SSLMode=require
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function startSync() {
+    var btn = document.getElementById('syncBtn');
+    var status = document.getElementById('syncStatus');
+
+    btn.disabled = true;
+    btn.innerHTML = '<svg viewBox="0 0 24 24" class="spin"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg> Syncing...';
+    status.textContent = 'Connecting to SharePoint...';
+
+    fetch('{% url "sync_updown_trader" %}', {
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token }}'}
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.status === 'started') {
+            pollProgress();
+        } else {
+            status.textContent = data.message || 'Error starting sync';
+            btn.disabled = false;
+            btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg> Sync Now';
+        }
+    });
+}
+
+function pollProgress() {
+    var status = document.getElementById('syncStatus');
+    var btn = document.getElementById('syncBtn');
+    fetch('{% url "sync_updown_trader_progress" %}')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        status.textContent = data.message;
+        if (data.status === 'complete') {
+            btn.disabled = false;
+            btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg> Sync Now';
+            setTimeout(function() { location.reload(); }, 1500);
+        } else if (data.status === 'error') {
+            btn.disabled = false;
+            btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg> Sync Now';
+        } else {
+            setTimeout(pollProgress, 1000);
+        }
+    });
+}
+
+function copyQuery() {
+    var code = document.querySelector('.query-code').textContent;
+    navigator.clipboard.writeText(code).then(function() {
+        var btn = document.getElementById('copyQueryBtn');
+        btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg> Copied';
+        setTimeout(function() {
+            btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg> Copy';
+        }, 2000);
+    });
+}
+</script>
+{% endblock %}

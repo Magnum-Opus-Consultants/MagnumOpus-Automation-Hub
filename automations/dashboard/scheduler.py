@@ -1,6 +1,8 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 from django.conf import settings
+from django.db import transaction
 import json
 import os
 import logging
@@ -10,6 +12,10 @@ from zoneinfo import ZoneInfo
 logger = logging.getLogger(__name__)
 
 scheduler = None
+
+# Up-Down Trader: only load shipment files from this year onward (2024, 2025,
+# 2026 and every future year). Anything earlier is ignored.
+MIN_UPDOWN_YEAR = 2024
 
 
 def update_sync_health(station, status, message, records=0):
@@ -123,21 +129,24 @@ def _fetch_latest_station_email(key, sender, subject_kw):
         raise RuntimeError('Graph token unavailable')
     headers = {'Authorization': f'Bearer {token}'}
 
-    # Inbox scan (recent 100 messages is plenty for 3-hourly run; older ones we already processed)
-    r = requests.get(
-        f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages',
-        headers=headers,
-        params={'$top': 100, '$orderby': 'receivedDateTime desc',
-                '$select': 'id,subject,receivedDateTime,from,hasAttachments'},
-        timeout=30,
-    )
-    r.raise_for_status()
-    msgs = [
-        m for m in r.json().get('value', [])
-        if m.get('hasAttachments')
-        and m.get('from', {}).get('emailAddress', {}).get('address', '').lower() == sender.lower()
-        and subject_kw.lower() in (m.get('subject', '').lower())
-    ]
+    # Inbox scan — paginate through all messages to find the latest matching email
+    url = (f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages'
+           f'?$top=500&$orderby=receivedDateTime desc'
+           f'&$select=id,subject,receivedDateTime,from,hasAttachments')
+    msgs = []
+    while url:
+        r = requests.get(url, headers=headers, timeout=60)
+        r.raise_for_status()
+        j = r.json()
+        for m in j.get('value', []):
+            if (m.get('hasAttachments')
+                and m.get('from', {}).get('emailAddress', {}).get('address', '').lower() == sender.lower()
+                and subject_kw.lower() in m.get('subject', '').lower()):
+                msgs.append(m)
+        # Only paginate if we haven't found any matches yet
+        if msgs:
+            break
+        url = j.get('@odata.nextLink')
     if not msgs:
         return (None, None, None, None, None)
     msg = msgs[0]
@@ -205,35 +214,36 @@ def _run_station_email_sync(key):
 
         # Insert. Row shape: (division, account_name, value, date, date_fixed,
         # budget_actual, week, report_date). DELETE-then-INSERT per (date, week).
-        # Also create "Total" rows per month (latest week value wins).
+        # Wrapped in atomic() so a failing INSERT rolls the DELETE back.
         from collections import defaultdict
-        with connection.cursor() as cur:
-            for date_val, week in set((r[3], r[6]) for r in rows):
-                cur.execute(
-                    f"DELETE FROM {table} WHERE date = %s AND week = %s AND budget_actual = 'Actual'",
-                    (date_val, week),
+        with transaction.atomic():
+            with connection.cursor() as cur:
+                for date_val, week in set((r[3], r[6]) for r in rows):
+                    cur.execute(
+                        f"DELETE FROM {table} WHERE date = %s AND week = %s AND budget_actual = 'Actual'",
+                        (date_val, week),
+                    )
+                execute_values(
+                    cur,
+                    f"INSERT INTO {table} (division, account_name, value, date, date_fixed, budget_actual, week, report_date) VALUES %s",
+                    rows,
                 )
-            execute_values(
-                cur,
-                f"INSERT INTO {table} (division, account_name, value, date, date_fixed, budget_actual, week, report_date) VALUES %s",
-                rows,
-            )
-            # Create Total rows: one per (division, account_name, date) with latest value
-            total_dedup = {}
-            for r in rows:
-                key = (r[0], r[1], r[3], r[5])  # division, account_name, date, budget_actual
-                total_dedup[key] = (r[0], r[1], r[2], r[3], r[4], r[5], 'Total', r[7])
-            total_rows = list(total_dedup.values())
-            for date_val in set(r[3] for r in rows):
-                cur.execute(
-                    f"DELETE FROM {table} WHERE date = %s AND week = 'Total' AND budget_actual = 'Actual'",
-                    (date_val,),
+                # Create Total rows: one per (division, account_name, date) with latest value
+                total_dedup = {}
+                for r in rows:
+                    dedup_key = (r[0], r[1], r[3], r[5])  # division, account_name, date, budget_actual
+                    total_dedup[dedup_key] = (r[0], r[1], r[2], r[3], r[4], r[5], 'Total', r[7])
+                total_rows = list(total_dedup.values())
+                for date_val in set(r[3] for r in rows):
+                    cur.execute(
+                        f"DELETE FROM {table} WHERE date = %s AND week = 'Total' AND budget_actual = 'Actual'",
+                        (date_val,),
+                    )
+                execute_values(
+                    cur,
+                    f"INSERT INTO {table} (division, account_name, value, date, date_fixed, budget_actual, week, report_date) VALUES %s",
+                    total_rows,
                 )
-            execute_values(
-                cur,
-                f"INSERT INTO {table} (division, account_name, value, date, date_fixed, budget_actual, week, report_date) VALUES %s",
-                total_rows,
-            )
 
         with open(STATE_FILE, 'w') as f:
             json.dump({'message_id': msg_id, 'subject': subject,
@@ -248,7 +258,28 @@ def _run_station_email_sync(key):
         update_sync_health(key, 'error', str(e))
 
 
+def run_weekly_reports_job():
+    """Each morning, create today's recurring report tasks in the Planner."""
+    try:
+        from django.core.management import call_command
+        call_command('create_weekly_reports')
+    except Exception as e:
+        logger.exception('[weekly_reports] failed to create daily tasks')
+
+
 # Convenience functions for APScheduler (it needs a plain callable per job id)
+def run_bravo_tran_sync_job():
+    """Hourly Bravo Trans sync — wipe-and-replace with the latest AWA Payables email.
+    Reuses the load_bravo_tran_history management command for a single source of truth."""
+    try:
+        from django.core.management import call_command
+        call_command('load_bravo_tran_history')
+        update_sync_health('bravo_tran', 'success', 'Loaded latest AWA Payables email', 0)
+    except Exception as e:
+        logger.exception('[bravo_tran] hourly sync failed')
+        update_sync_health('bravo_tran', 'error', str(e))
+
+
 def run_ppg_email_sync_job():  _run_station_email_sync('ppg')
 def run_ccc_email_sync_job():  _run_station_email_sync('ccc')
 def run_ccd_email_sync_job():  _run_station_email_sync('ccd')
@@ -283,7 +314,7 @@ def _run_turnover_email_sync():
 
         # Paginate all turnover emails
         url = (f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages'
-               f'?$top=100&$orderby=receivedDateTime desc'
+               f'?$top=500&$orderby=receivedDateTime desc'
                f'&$select=id,subject,receivedDateTime,from,hasAttachments')
         msgs = []
         while url:
@@ -292,7 +323,7 @@ def _run_turnover_email_sync():
             for m in j.get('value', []):
                 if (m.get('hasAttachments')
                     and 'turnover by debtor' in m.get('subject', '').lower()
-                    and m.get('from', {}).get('emailAddress', {}).get('address', '').lower() == 'data.analysis@intelligentscm.com'):
+                    and m.get('from', {}).get('emailAddress', {}).get('address', '').lower() == 'data.excellence@intelligentscm.com'):
                     msgs.append(m)
             url = j.get('@odata.nextLink')
 
@@ -300,49 +331,81 @@ def _run_turnover_email_sync():
             update_sync_health('turnover', 'success', 'No turnover emails found', 0)
             return
 
-        # Only process the latest email
-        msg = msgs[0]
         STATE_FILE = os.path.join(os.path.dirname(__file__), '..', 'turnover_email_last.json')
+
+        # Group by branch (from subject) — keep only the latest email per branch
+        latest_per_branch = {}
+        for m in msgs:
+            subj = m.get('subject', '')
+            branch = subj.split(' - ')[-1].strip() if ' - ' in subj else None
+            if branch and branch not in latest_per_branch:
+                latest_per_branch[branch] = m
+
+        # Check idempotency — skip if we already processed this exact set
         try:
             last = json.load(open(STATE_FILE))
-            if last.get('message_id') == msg['id']:
-                update_sync_health('turnover', 'success', f'Already processed', last.get('rows', 0))
+            last_ids = set(last.get('message_ids', []))
+            current_ids = set(m['id'] for m in latest_per_branch.values())
+            if last_ids == current_ids:
+                update_sync_health('turnover', 'success', f'Already processed {len(last_ids)} branches', last.get('rows', 0))
                 return
         except Exception:
             pass
 
-        ar = requests.get(
-            f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages/{msg["id"]}/attachments',
-            headers=headers, timeout=60)
-        ar.raise_for_status()
-        xlsx = next((a for a in ar.json().get('value', [])
-                     if a.get('name', '').lower().endswith(('.xlsx', '.xls'))), None)
-        if not xlsx:
-            update_sync_health('turnover', 'error', 'No Excel attachment', 0)
-            return
+        total_rows = 0
+        branches_done = []
 
-        fname = xlsx['name']
-        fbytes = base64.b64decode(xlsx['contentBytes'])
-        file_content = io.BytesIO(fbytes)
+        for branch_name, msg in latest_per_branch.items():
+            try:
+                ar = requests.get(
+                    f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages/{msg["id"]}/attachments',
+                    headers=headers, timeout=60)
+                ar.raise_for_status()
+                xlsx = next((a for a in ar.json().get('value', [])
+                             if a.get('name', '').lower().endswith(('.xlsx', '.xls'))), None)
+                if not xlsx:
+                    logger.warning(f'[turnover] No Excel attachment for {branch_name}')
+                    continue
 
-        # Use existing turnover parser (process_excel_file)
-        rows = onedrive_sync.process_excel_file(file_content, fname)
-        if not rows:
-            update_sync_health('turnover', 'success', 'Parsed 0 rows', 0)
-            return
+                fname = xlsx['name']
+                fbytes = base64.b64decode(xlsx['contentBytes'])
+                rows = onedrive_sync.process_excel_file(io.BytesIO(fbytes), fname)
+                if not rows:
+                    continue
 
-        with connection.cursor() as cur:
-            # Turnover uses DELETE all + INSERT (snapshot replacement)
-            cur.execute("DELETE FROM turnover_data")
-            execute_values(cur,
-                "INSERT INTO turnover_data (debtor, debtor_name, value, date, date_fixed, branch, report_date) VALUES %s",
-                rows)
+                # Parser returns (debtor, debtor_name, date_str, branch, value, report_date)
+                # DB expects (debtor, debtor_name, value, date, date_fixed, branch, report_date)
+                mapped = [(r[0], r[1], r[4], r[2], r[2], r[3], r[5]) for r in rows]
+                actual_branch = rows[0][3] if rows else branch_name
+
+                # atomic(): if INSERT fails, the DELETE rolls back so we never
+                # lose historical rows when replacement data can't be written.
+                with transaction.atomic():
+                    with connection.cursor() as cur:
+                        # Only delete dates covered by the new data, preserve historical data
+                        new_dates = set(r[3] for r in mapped)  # date column
+                        for d in new_dates:
+                            cur.execute("DELETE FROM turnover_data WHERE branch = %s AND date = %s", (actual_branch, d))
+                        execute_values(cur,
+                            "INSERT INTO turnover_data (debtor, debtor_name, value, date, date_fixed, branch, report_date) VALUES %s",
+                            mapped)
+
+                total_rows += len(mapped)
+                branches_done.append(actual_branch)
+                logger.info(f'[turnover] {actual_branch}: {len(mapped)} rows from {fname}')
+
+            except Exception as branch_err:
+                logger.error(f'[turnover] Error processing {branch_name}: {branch_err}')
 
         with open(STATE_FILE, 'w') as f:
-            json.dump({'message_id': msg['id'], 'subject': msg['subject'],
-                       'received': msg['receivedDateTime'], 'rows': len(rows)}, f)
-        update_sync_health('turnover', 'success', f'Email {msg["receivedDateTime"][:10]}: {len(rows)} rows', len(rows))
-        logger.info(f'[turnover] email sync: {len(rows)} rows from {fname}')
+            json.dump({
+                'message_ids': [m['id'] for m in latest_per_branch.values()],
+                'branches': branches_done,
+                'rows': total_rows,
+            }, f)
+        update_sync_health('turnover', 'success',
+                           f'{len(branches_done)} branches, {total_rows} rows', total_rows)
+        logger.info(f'[turnover] email sync complete: {len(branches_done)} branches, {total_rows} rows')
 
     except Exception as e:
         logger.exception('[turnover] email sync failed')
@@ -364,7 +427,7 @@ def _run_wip_email_sync():
         headers = {'Authorization': f'Bearer {token}'}
 
         url = (f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages'
-               f'?$top=100&$orderby=receivedDateTime desc'
+               f'?$top=500&$orderby=receivedDateTime desc'
                f'&$select=id,subject,receivedDateTime,from,hasAttachments')
         msgs = []
         while url:
@@ -412,11 +475,31 @@ def _run_wip_email_sync():
             rows.append(tuple(str(v).strip() if v is not None else '' for v in vals))
         wb.close()
 
+        # Safety guards: never wipe the snapshot unless we have a credible
+        # replacement. Zero rows almost always means a parser/sheet mismatch —
+        # keep the existing data. A >50% shrink is also suspicious; bail out
+        # and flag it on the monitor rather than silently losing history.
+        if not rows:
+            update_sync_health('wip_accrual', 'error',
+                               f'Email {msg["receivedDateTime"][:10]} parsed 0 rows — kept existing data',
+                               0)
+            return
         with connection.cursor() as cur:
-            cur.execute('DELETE FROM wip_accrual')
-            execute_values(cur,
-                'INSERT INTO wip_accrual (type,branch,dept,charge_code,job,local_ref,wip,accrual,net_total,added,age,debtor_creditor,stat,job_branch,controlling_agent,controlling_customer,management_group,exp_group,orig,eta,etd,posted_by,posted_by_fullname) VALUES %s',
-                rows)
+            cur.execute('SELECT COUNT(*) FROM wip_accrual')
+            existing = cur.fetchone()[0] or 0
+        if existing > 100 and len(rows) < existing * 0.5:
+            update_sync_health('wip_accrual', 'error',
+                               f'Refused sync: {len(rows)} new rows vs {existing} existing (>50% shrink)',
+                               existing)
+            logger.error(f'[wip_accrual] refused: incoming {len(rows)} would shrink from {existing}')
+            return
+
+        with transaction.atomic():
+            with connection.cursor() as cur:
+                cur.execute('DELETE FROM wip_accrual')
+                execute_values(cur,
+                    'INSERT INTO wip_accrual (type,branch,dept,charge_code,job,local_ref,wip,accrual,net_total,added,age,debtor_creditor,stat,job_branch,controlling_agent,controlling_customer,management_group,exp_group,orig,eta,etd,posted_by,posted_by_fullname) VALUES %s',
+                    rows)
 
         with open(STATE_FILE, 'w') as f:
             json.dump({'message_id': msg['id'], 'received': msg['receivedDateTime'], 'rows': len(rows)}, f)
@@ -427,10 +510,127 @@ def _run_wip_email_sync():
         update_sync_health('wip_accrual', 'error', str(e))
 
 
-def _run_import_ops_email_sync():
-    """Fetch latest import ops email and insert into import_ops."""
-    import os, json, io, base64, requests
+IMPORT_OPS_COLUMNS = [
+    # (db_name, pg_type) — order matches Excel columns C…EQ of the Shipment Profile sheet
+    ('shipment_id', 'TEXT'), ('shipment_direction', 'TEXT'), ('shipment_report_date', 'TIMESTAMPTZ'),
+    ('trans', 'TEXT'), ('customs_info', 'TEXT'), ('mode', 'TEXT'),
+    ('origin', 'TEXT'), ('origin_country', 'TEXT'), ('destination', 'TEXT'), ('destination_country', 'TEXT'),
+    ('consignor_code', 'TEXT'), ('consignor_name', 'TEXT'),
+    ('consignee_code', 'TEXT'), ('consignee_name', 'TEXT'),
+    ('house_ref', 'TEXT'), ('incoterm', 'TEXT'), ('additional_terms', 'TEXT'), ('ppd_ccx', 'TEXT'),
+    ('goods_description', 'TEXT'),
+    ('origin_etd', 'TIMESTAMPTZ'), ('destination_eta', 'TIMESTAMPTZ'),
+    ('weight', 'NUMERIC'), ('weight_uq', 'TEXT'),
+    ('volume', 'NUMERIC'), ('volume_uq', 'TEXT'),
+    ('loading_meters', 'NUMERIC'),
+    ('chargeable', 'NUMERIC'), ('chargeable_uq', 'TEXT'),
+    ('inner_qty', 'NUMERIC'), ('inner_uq', 'TEXT'),
+    ('outer_qty', 'NUMERIC'), ('outer_uq', 'TEXT'),
+    ('added', 'TIMESTAMPTZ'),
+    ('controlling_customer_code', 'TEXT'), ('controlling_customer_name', 'TEXT'),
+    ('controlling_agent_code', 'TEXT'), ('controlling_agent_name', 'TEXT'),
+    ('controlling_agent_address', 'TEXT'), ('controlling_agent_country', 'TEXT'),
+    ('transport_job', 'TEXT'), ('brokerage_job', 'TEXT'),
+    ('is_master_lead', 'TEXT'), ('master_lead_ref', 'TEXT'),
+    ('import_broker_code', 'TEXT'), ('import_broker_name', 'TEXT'),
+    ('export_broker_code', 'TEXT'), ('export_broker_name', 'TEXT'),
+    ('job_branch', 'TEXT'), ('job_dept', 'TEXT'),
+    ('local_client_code', 'TEXT'), ('local_client_name', 'TEXT'),
+    ('job_sales_rep', 'TEXT'), ('job_operator', 'TEXT'), ('job_status', 'TEXT'),
+    ('job_opened', 'DATE'),
+    ('recognized_revenue', 'NUMERIC'), ('recognized_wip', 'NUMERIC'),
+    ('total_recognized_income', 'NUMERIC'),
+    ('recognized_cost', 'NUMERIC'), ('recognized_accrual', 'NUMERIC'),
+    ('total_recognized_expense', 'NUMERIC'), ('job_profit', 'NUMERIC'),
+    ('consol_id', 'TEXT'),
+    ('first_load', 'TEXT'), ('last_discharge', 'TEXT'),
+    ('etd_first_load', 'TIMESTAMPTZ'), ('eta_last_discharge', 'TIMESTAMPTZ'),
+    ('master', 'TEXT'), ('vessel', 'TEXT'), ('flight_voyage', 'TEXT'),
+    ('load_port', 'TEXT'), ('discharge_port', 'TEXT'),
+    ('etd_load', 'TIMESTAMPTZ'), ('eta_discharge', 'TIMESTAMPTZ'),
+    ('sending_agent_code', 'TEXT'), ('sending_agent_name', 'TEXT'),
+    ('receiving_agent', 'TEXT'), ('receiving_agent_name', 'TEXT'),
+    ('co_loaded_with', 'TEXT'), ('co_loader_name', 'TEXT'),
+    ('carrier_code', 'TEXT'), ('carrier_name', 'TEXT'),
+    ('teu', 'NUMERIC'), ('container_count', 'NUMERIC'),
+    ('cntr_other', 'NUMERIC'),
+    ('cntr_20f', 'NUMERIC'), ('cntr_20r', 'NUMERIC'), ('cntr_20h', 'NUMERIC'),
+    ('cntr_40f', 'NUMERIC'), ('cntr_40r', 'NUMERIC'), ('cntr_40h', 'NUMERIC'),
+    ('cntr_45f', 'NUMERIC'), ('cntr_gen', 'NUMERIC'),
+    ('unrecognized_revenue', 'NUMERIC'), ('unrecognized_wip', 'NUMERIC'),
+    ('unrecognized_cost', 'NUMERIC'), ('unrecognized_accrual', 'NUMERIC'),
+    ('total_revenue', 'NUMERIC'), ('total_wip', 'NUMERIC'), ('total_income', 'NUMERIC'),
+    ('service_level_code', 'TEXT'), ('shippers_reference', 'TEXT'),
+    ('consignor_city', 'TEXT'), ('consignor_state', 'TEXT'), ('consignor_postcode', 'TEXT'),
+    ('consignee_city', 'TEXT'), ('consignee_state', 'TEXT'), ('consignee_postcode', 'TEXT'),
+    ('consol_atd', 'TIMESTAMPTZ'), ('consol_ata', 'TIMESTAMPTZ'),
+    ('job_revenue_recognition_date', 'TIMESTAMPTZ'),
+    ('direction', 'TEXT'),
+    ('local_client_ar_group_code', 'TEXT'), ('local_client_ar_group_name', 'TEXT'),
+    ('overseas_agent_code', 'TEXT'), ('overseas_agent_name', 'TEXT'),
+    ('job_overseas_agent_ar_group_code', 'TEXT'), ('job_overseas_agent_ar_group_name', 'TEXT'),
+    ('total_cost', 'NUMERIC'), ('total_accrual', 'NUMERIC'), ('total_expense', 'NUMERIC'),
+]
+
+
+def _rebuild_import_ops_table():
+    """Drop+recreate import_ops with the full 121-col Shipment Profile schema."""
     from django.db import connection
+    cols_ddl = ',\n    '.join(f'{n} {t}' for n, t in IMPORT_OPS_COLUMNS)
+    ddl = f'''
+    DROP TABLE IF EXISTS import_ops;
+    CREATE TABLE import_ops (
+        id BIGSERIAL PRIMARY KEY,
+        {cols_ddl}
+    );
+    CREATE INDEX import_ops_shipment_id_idx ON import_ops (shipment_id);
+    CREATE INDEX import_ops_job_branch_idx  ON import_ops (job_branch);
+    CREATE INDEX import_ops_job_opened_idx  ON import_ops (job_opened);
+    '''
+    with connection.cursor() as cur:
+        cur.execute(ddl)
+
+
+def _coerce_io_value(pg_type, v):
+    if v is None or (isinstance(v, str) and v.strip() == ''):
+        return None
+    if pg_type == 'NUMERIC':
+        try:
+            return float(str(v).replace(',', ''))
+        except Exception:
+            return None
+    if pg_type == 'DATE':
+        from datetime import datetime, date
+        if isinstance(v, datetime):
+            return v.date()
+        if isinstance(v, date):
+            return v
+        s = str(v).strip()
+        for fmt in ('%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%d/%m/%Y', '%m/%d/%Y'):
+            try:
+                return datetime.strptime(s[:19] if ' ' in s[:19] else s[:10], fmt).date()
+            except Exception:
+                continue
+        return None
+    if pg_type == 'TIMESTAMPTZ':
+        from datetime import datetime
+        if hasattr(v, 'year') and hasattr(v, 'month'):
+            return v  # openpyxl already gave us a datetime
+        s = str(v).strip()
+        for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M:%S%z', '%Y-%m-%dT%H:%M:%S',
+                    '%Y-%m-%d', '%d/%m/%Y %H:%M:%S', '%d/%m/%Y'):
+            try:
+                return datetime.strptime(s, fmt)
+            except Exception:
+                continue
+        return None
+    return str(v).strip()
+
+
+def _run_import_ops_email_sync():
+    """Fetch latest import ops email and upsert into import_ops (by shipment_id)."""
+    import os, json, io, base64, requests
+    from django.db import connection, transaction
     from psycopg2.extras import execute_values
     from .views import _get_graph_token
     import openpyxl
@@ -442,7 +642,7 @@ def _run_import_ops_email_sync():
         headers = {'Authorization': f'Bearer {token}'}
 
         url = (f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages'
-               f'?$top=100&$orderby=receivedDateTime desc'
+               f'?$top=500&$orderby=receivedDateTime desc'
                f'&$select=id,subject,receivedDateTime,from,hasAttachments')
         msgs = []
         while url:
@@ -458,47 +658,109 @@ def _run_import_ops_email_sync():
             update_sync_health('import_ops', 'success', 'No import ops emails found', 0)
             return
 
-        msg = msgs[0]
         STATE_FILE = os.path.join(os.path.dirname(__file__), '..', 'import_ops_email_last.json')
-        try:
-            last = json.load(open(STATE_FILE))
-            if last.get('message_id') == msg['id']:
-                update_sync_health('import_ops', 'success', 'Already processed', last.get('rows', 0))
-                return
-        except Exception:
-            pass
 
-        ar = requests.get(
-            f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages/{msg["id"]}/attachments',
-            headers=headers, timeout=60)
-        ar.raise_for_status()
-        xlsx = next((a for a in ar.json().get('value', [])
-                     if a.get('name', '').lower().endswith(('.xlsx', '.xls'))), None)
-        if not xlsx:
-            update_sync_health('import_ops', 'error', 'No Excel attachment', 0)
+        # Skip if we already processed the latest email
+        last_id = None
+        if os.path.exists(STATE_FILE):
+            try:
+                with open(STATE_FILE) as f:
+                    last_id = json.load(f).get('message_id')
+            except Exception:
+                pass
+
+        if msgs[0]['id'] == last_id:
+            with connection.cursor() as cur:
+                cur.execute('SELECT COUNT(*) FROM import_ops')
+                total = cur.fetchone()[0]
+            update_sync_health('import_ops', 'success', f'Already up to date ({total} total)', total)
             return
 
-        fb = base64.b64decode(xlsx['contentBytes'])
-        wb = openpyxl.load_workbook(io.BytesIO(fb), read_only=True, data_only=True)
-        ws = wb['Shipment Profile']
-        rows = []
-        for row in ws.iter_rows(min_row=15, values_only=False):
-            cells = [c.value for c in row]
-            vals = cells[2:25] if len(cells) > 24 else cells[2:] + [None] * (23 - max(0, len(cells) - 2))
-            if not vals[0]:
+        # Ensure unique index exists for upsert
+        col_names = [n for n, _ in IMPORT_OPS_COLUMNS]
+        with connection.cursor() as cur:
+            cur.execute("""SELECT indexname FROM pg_indexes
+                           WHERE tablename = 'import_ops' AND indexname = 'import_ops_shipment_id_uq'""")
+            if not cur.fetchone():
+                cur.execute("""DELETE FROM import_ops a USING import_ops b
+                               WHERE a.id > b.id AND a.shipment_id = b.shipment_id""")
+                cur.execute('CREATE UNIQUE INDEX import_ops_shipment_id_uq ON import_ops (shipment_id)')
+
+        # Ensure table has the correct shape
+        with connection.cursor() as cur:
+            cur.execute("""SELECT column_name FROM information_schema.columns
+                           WHERE table_name = 'import_ops' AND column_name <> 'id'
+                           ORDER BY ordinal_position""")
+            existing_cols = [r[0] for r in cur.fetchall()]
+        if existing_cols != col_names:
+            logger.warning(f'[import_ops] rebuilding table (schema drift): {len(existing_cols)} cols → {len(col_names)} cols')
+            _rebuild_import_ops_table()
+
+        # Process all unprocessed emails (oldest first so state file ends on the newest)
+        to_process = []
+        for m in msgs:
+            if m['id'] == last_id:
+                break
+            to_process.append(m)
+        to_process.reverse()
+
+        total_upserted = 0
+        insert_cols = ','.join(col_names)
+        update_set = ','.join(f'{c} = EXCLUDED.{c}' for c in col_names if c != 'shipment_id')
+
+        for msg in to_process:
+            ar = requests.get(
+                f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages/{msg["id"]}/attachments',
+                headers=headers, timeout=60)
+            ar.raise_for_status()
+            xlsx = next((a for a in ar.json().get('value', [])
+                         if a.get('name', '').lower().endswith(('.xlsx', '.xls'))), None)
+            if not xlsx:
                 continue
-            rows.append(tuple(str(v).strip() if v is not None else '' for v in vals))
-        wb.close()
+
+            fb = base64.b64decode(xlsx['contentBytes'])
+            wb = openpyxl.load_workbook(io.BytesIO(fb), read_only=True, data_only=True)
+            ws = wb['Shipment Profile']
+
+            header_row = next(ws.iter_rows(min_row=15, max_row=15, values_only=True))
+            if not header_row or len(header_row) < 3 or (header_row[2] or '').strip() != 'Shipment ID':
+                wb.close()
+                continue
+
+            rows = []
+            n_cols = len(IMPORT_OPS_COLUMNS)
+            for row in ws.iter_rows(min_row=16, values_only=True):
+                vals = list(row[2:2 + n_cols])
+                if len(vals) < n_cols:
+                    vals += [None] * (n_cols - len(vals))
+                if not vals[0]:
+                    continue
+                coerced = tuple(_coerce_io_value(t, v) for (n, t), v in zip(IMPORT_OPS_COLUMNS, vals))
+                rows.append(coerced)
+            wb.close()
+
+            if not rows:
+                continue
+
+            with transaction.atomic():
+                with connection.cursor() as cur:
+                    execute_values(cur,
+                        f"""INSERT INTO import_ops ({insert_cols}) VALUES %s
+                            ON CONFLICT (shipment_id) DO UPDATE SET {update_set}""",
+                        rows)
+            total_upserted += len(rows)
+
+        # Save state as the newest email
+        latest = to_process[-1]
+        with open(STATE_FILE, 'w') as f:
+            json.dump({'message_id': latest['id'], 'received': latest['receivedDateTime'], 'rows': total_upserted}, f)
 
         with connection.cursor() as cur:
-            cur.execute('DELETE FROM import_ops')
-            execute_values(cur,
-                'INSERT INTO import_ops (shipment_id,shipment_direction,report_date,trans,customs_info,mode,origin,origin_country,destination,destination_country,consignor_code,consignor_name,consignee_code,consignee_name,house_ref,incoterm,additional_terms,ppd_ccx,goods_description,origin_etd,destination_eta,weight,weight_unit) VALUES %s',
-                rows)
+            cur.execute('SELECT COUNT(*) FROM import_ops')
+            total = cur.fetchone()[0]
 
-        with open(STATE_FILE, 'w') as f:
-            json.dump({'message_id': msg['id'], 'received': msg['receivedDateTime'], 'rows': len(rows)}, f)
-        update_sync_health('import_ops', 'success', f'Email {msg["receivedDateTime"][:10]}: {len(rows)} rows', len(rows))
+        update_sync_health('import_ops', 'success',
+                           f'Processed {len(to_process)} email(s): upserted {total_upserted} rows ({total} total)', total)
 
     except Exception as e:
         logger.exception('[import_ops] email sync failed')
@@ -521,7 +783,7 @@ def _run_creditor_email_sync():
         headers = {'Authorization': f'Bearer {token}'}
 
         url = (f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages'
-               f'?$top=100&$orderby=receivedDateTime desc'
+               f'?$top=500&$orderby=receivedDateTime desc'
                f'&$select=id,subject,receivedDateTime,from,hasAttachments')
         all_msgs = []
         while url:
@@ -546,8 +808,6 @@ def _run_creditor_email_sync():
                 per_group[mm.group(1).upper()].append(m)
 
         grand = 0
-        with connection.cursor() as cur:
-            cur.execute('DELETE FROM creditor_transactions')
 
         for group, gmsgs in per_group.items():
             gmsgs.sort(key=lambda m: m['receivedDateTime'], reverse=True)
@@ -618,10 +878,17 @@ def _run_creditor_email_sync():
                             rs.append((cb, cn, period, v, group, cur_branch))
 
                 if rs:
-                    with connection.cursor() as cur:
-                        execute_values(cur,
-                            'INSERT INTO creditor_transactions (creditor, creditor_name, period, value, creditor_group, branch) VALUES %s',
-                            rs)
+                    # atomic(): rolls back the scoped DELETE if INSERT fails,
+                    # so we can never lose creditor history on a bad batch.
+                    with transaction.atomic():
+                        with connection.cursor() as cur:
+                            # Only delete periods covered by new data for this group
+                            new_periods = set(r[2] for r in rs)
+                            for p in new_periods:
+                                cur.execute('DELETE FROM creditor_transactions WHERE creditor_group = %s AND period = %s', (group, p))
+                            execute_values(cur,
+                                'INSERT INTO creditor_transactions (creditor, creditor_name, period, value, creditor_group, branch) VALUES %s',
+                                rs)
                     grand += len(rs)
             except Exception as e:
                 logger.warning(f'[creditor] {group} failed: {e}')
@@ -655,7 +922,7 @@ def _run_condor_dor_email_sync():
         headers = {'Authorization': f'Bearer {token}'}
 
         url = (f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages'
-               f'?$top=100&$orderby=receivedDateTime desc'
+               f'?$top=500&$orderby=receivedDateTime desc'
                f'&$select=id,subject,receivedDateTime,from,hasAttachments')
         all_msgs = []
         while url:
@@ -690,12 +957,17 @@ def _run_condor_dor_email_sync():
                 continue
             # Convert to condor_dor_pnl schema: (department, account_name, value, date, date_fixed, branch, budget_actual)
             rows = [(department, r[1], r[2], str(r[3]), r[4], branch, r[5]) for r in pnl_rows]
+            if not rows:
+                continue
 
-            with connection.cursor() as cur:
-                cur.execute("DELETE FROM condor_dor_pnl WHERE department = %s", (department,))
-                execute_values(cur,
-                    "INSERT INTO condor_dor_pnl (department, account_name, value, date, date_fixed, branch, budget_actual) VALUES %s",
-                    rows)
+            # atomic(): DELETE rolls back if INSERT fails, so this department's
+            # history is never lost on a bad write.
+            with transaction.atomic():
+                with connection.cursor() as cur:
+                    cur.execute("DELETE FROM condor_dor_pnl WHERE department = %s", (department,))
+                    execute_values(cur,
+                        "INSERT INTO condor_dor_pnl (department, account_name, value, date, date_fixed, branch, budget_actual) VALUES %s",
+                        rows)
             grand += len(rows)
 
         update_sync_health('condor_dor', 'success', f'{grand} rows across 4 files', grand)
@@ -1199,25 +1471,146 @@ def check_bounce_emails():
         update_sync_health('bounce_check', 'error', str(e))
 
 
-def refresh_onedrive_token():
-    """Refresh the OneDrive access token to keep it alive.
 
-    The actual retry logic lives in get_access_token() which retries 3 times
-    with backoff. This function tracks the result in sync health so the
-    monitoring dashboard shows token status.
-    """
-    from . import onedrive_sync
+def run_updown_trader_sync_job():
+    """Monthly scheduled sync of Up-Down Trader data from SharePoint."""
+    import tempfile
+    import requests as req
+    from django.db import connection
+
     try:
-        token = onedrive_sync.get_access_token()
-        if token:
-            logger.info("OneDrive token refreshed successfully")
-            update_sync_health('onedrive_token', 'success', 'Token is active')
-        else:
-            logger.error("OneDrive token refresh returned None - all retries exhausted")
-            update_sync_health('onedrive_token', 'error', 'Token refresh failed - re-authentication may be required')
+        from data.up_down_trader.load_data import (
+            ensure_tables, upsert_customer_spend, upsert_customer_spend_operational,
+            _extract_year, dedupe_operational, trim_to_source_year, rebuild_summary_view
+        )
+        from .views import _get_graph_token
+
+        SITE = 'magnumopusconsultantspty352.sharepoint.com:/sites/DataPrime'
+        FOLDER = 'Clients/ISCM/Up Down Trader Report/Shipment Data'
+
+        token = _get_graph_token()
+        if not token:
+            logger.error("Up-Down Trader scheduled sync: Graph API token unavailable")
+            update_sync_health('updown_trader', 'error', 'Graph API token unavailable')
+            return
+
+        headers = {'Authorization': f'Bearer {token}'}
+
+        sr = req.get(f'https://graph.microsoft.com/v1.0/sites/{SITE}',
+                     headers=headers, timeout=30)
+        sr.raise_for_status()
+        site_id = sr.json()['id']
+
+        dr = req.get(f'https://graph.microsoft.com/v1.0/sites/{site_id}/drive',
+                     headers=headers, timeout=30)
+        dr.raise_for_status()
+        drive_id = dr.json()['id']
+
+        fr = req.get(
+            f'https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{FOLDER}:/children',
+            headers=headers, timeout=30)
+        fr.raise_for_status()
+        items = [i for i in fr.json().get('value', [])
+                 if i.get('name', '').lower().endswith(('.xlsx', '.xls'))]
+
+        if not items:
+            logger.info("Up-Down Trader scheduled sync: No Excel files found")
+            update_sync_health('updown_trader', 'success', 'No files found')
+            return
+
+        ensure_tables()
+        cs_count = 0
+        op_count = 0
+        operational_truncated = False
+        temp_files = []
+
+        try:
+            for item in items:
+                fname = item['name']
+                fyear = _extract_year(fname)
+                if fyear and fyear < MIN_UPDOWN_YEAR:
+                    logger.info(f"Up-Down Trader sync: skipping {fname} (year {fyear} < {MIN_UPDOWN_YEAR})")
+                    continue
+                logger.info(f"Up-Down Trader sync: processing {fname}")
+
+                dl = req.get(
+                    f'https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item["id"]}/content',
+                    headers=headers, timeout=120)
+                dl.raise_for_status()
+
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+                tmp.write(dl.content)
+                tmp.close()
+                temp_files.append(tmp.name)
+
+                import openpyxl
+                wb = openpyxl.load_workbook(tmp.name, read_only=True, data_only=True)
+                sheets = wb.sheetnames
+                wb.close()
+
+                has_financial = 'Financial Data ' in sheets or 'Financial Data' in sheets
+                has_operational = 'Operational Data' in sheets or 'Shipment Profile' in sheets
+
+                # Financial Data is no longer used. The report sources job income
+                # and revenue from the shipment profile (operational) data only.
+                if has_financial:
+                    logger.info(f"Up-Down Trader sync: skipping financial data file {fname} (financial data no longer used)")
+
+                if has_operational:
+                    if not operational_truncated:
+                        with connection.cursor() as cur:
+                            cur.execute("TRUNCATE customer_spend_operational RESTART IDENTITY")
+                        operational_truncated = True
+                    count = upsert_customer_spend_operational(tmp.name, truncate=False)
+                    op_count += count
+                    # Tag the rows just inserted with the year of this file, so a
+                    # year's column comes only from that year's file.
+                    y = _extract_year(fname)
+                    if y:
+                        with connection.cursor() as cur:
+                            cur.execute("UPDATE customer_spend_operational SET source_year=%s WHERE source_year IS NULL", [y])
+
+            # Shipment files overlap, so the same shipment can be appended from
+            # multiple files — remove the resulting duplicate rows before the
+            # report view is built (otherwise every summed value is inflated).
+            dedupe_operational()
+            # Keep only rows whose recognition year matches their source file year,
+            # so e.g. the 2025 file's 2024-recognised rows don't bleed into 2024.
+            trim_to_source_year()
+            rebuild_summary_view()
+
+            # Save last sync timestamp
+            sync_file = os.path.join(os.path.dirname(__file__), '..', 'updown_trader_last_sync.json')
+            with open(sync_file, 'w') as f:
+                json.dump({
+                    'last_sync': datetime.now(ZoneInfo('Africa/Johannesburg')).isoformat(),
+                    'records': cs_count + op_count
+                }, f)
+
+            msg = f'Synced {len(items)} files: {cs_count} spend + {op_count} operational records'
+            logger.info(f"Up-Down Trader scheduled sync: {msg}")
+            update_sync_health('updown_trader', 'success', msg, cs_count + op_count)
+
+        finally:
+            for path in temp_files:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+
     except Exception as e:
-        logger.error(f"OneDrive token refresh error: {e}")
-        update_sync_health('onedrive_token', 'error', f'Token refresh exception: {e}')
+        logger.error(f"Up-Down Trader scheduled sync error: {e}")
+        update_sync_health('updown_trader', 'error', str(e))
+
+
+def run_sync_digest_job():
+    """Run every report sync, then email the status digest (Mon/Wed/Fri)."""
+    try:
+        from dashboard.sync_digest import run_all_and_email
+        run_all_and_email()
+    except Exception as e:
+        logger.exception('[sync_digest] failed')
+        update_sync_health('sync_digest', 'error', str(e))
 
 
 def start_scheduler():
@@ -1236,6 +1629,17 @@ def start_scheduler():
         id='onedrive_sync',
         name='Sync OneDrive turnover data every hour',
         replace_existing=True
+    )
+
+    # Daily recurring reports → create Planner tasks each morning at 05:00 UTC (07:00 SAST)
+    scheduler.add_job(
+        run_weekly_reports_job,
+        trigger=CronTrigger(hour=5, minute=0),
+        id='weekly_reports',
+        name='Create today\'s recurring report tasks',
+        replace_existing=True,
+        misfire_grace_time=3600,
+        coalesce=True,
     )
 
     # ── PPG OneDrive sync PAUSED ─ now ingesting from weekly Sunday email via Graph.
@@ -1285,59 +1689,6 @@ def start_scheduler():
             replace_existing=True,
         )
 
-    # ── Old OneDrive hourly jobs (paused — now email-driven) ──
-    # scheduler.add_job(run_dor_sync_job, IntervalTrigger(hours=1), id='dor_sync', ...)
-    # scheduler.add_job(run_con_sync_job, IntervalTrigger(hours=1), id='con_sync', ...)
-    # scheduler.add_job(run_ccd_sync_job, IntervalTrigger(hours=1), id='ccd_sync', ...)
-    # scheduler.add_job(run_atl_sync_job, IntervalTrigger(hours=1), id='atl_sync', ...)
-    # scheduler.add_job(run_ccc_sync_job, IntervalTrigger(hours=1), id='ccc_sync', ...)
-    # scheduler.add_job(run_hnl_sync_job, IntervalTrigger(hours=1), id='hnl_sync', ...)
-    # scheduler.add_job(run_jfk_sync_job, IntervalTrigger(hours=1), id='jfk_sync', ...)
-    # scheduler.add_job(run_fax_sync_job, IntervalTrigger(hours=1), id='fax_sync', ...)
-    # scheduler.add_job(run_hou_sync_job, IntervalTrigger(hours=1), id='hou_sync', ...)
-    # scheduler.add_job(run_ics_sync_job, IntervalTrigger(hours=1), id='ics_sync', ...)
-    # scheduler.add_job(run_imp_sync_job, IntervalTrigger(hours=1), id='imp_sync', ...)
-    # scheduler.add_job(run_lax_sync_job, IntervalTrigger(hours=1), id='lax_sync', ...)
-    # scheduler.add_job(run_lcl_sync_job, IntervalTrigger(hours=1), id='lcl_sync', ...)
-    # scheduler.add_job(run_ord_sync_job, IntervalTrigger(hours=1), id='ord_sync', ...)
-    # scheduler.add_job(run_dfw_sync_job, IntervalTrigger(hours=1), id='dfw_sync', ...)
-
-    # Run Import Ops sync every hour
-    scheduler.add_job(
-        run_import_ops_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='import_ops_sync',
-        name='Sync Import Ops data every hour',
-        replace_existing=True
-    )
-
-    # Run WIP Accrual sync every hour
-    scheduler.add_job(
-        run_wip_accrual_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='wip_accrual_sync',
-        name='Sync WIP Accrual data every hour',
-        replace_existing=True
-    )
-
-    # Run Creditor sync every hour
-    scheduler.add_job(
-        run_creditor_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='creditor_sync',
-        name='Sync Creditor data every hour',
-        replace_existing=True
-    )
-
-    # Run Condor+DOR PNL sync every hour
-    scheduler.add_job(
-        run_condor_dor_sync_job,
-        trigger=IntervalTrigger(hours=1),
-        id='condor_dor_sync',
-        name='Sync Condor+DOR PNL data every hour',
-        replace_existing=True
-    )
-
     # Check and send scheduled touchpoints every 5 minutes
     scheduler.add_job(
         run_scheduled_touchpoints,
@@ -1356,24 +1707,31 @@ def start_scheduler():
         replace_existing=True
     )
 
-    # Refresh OneDrive token every minute to ensure it never expires
+    # Up-Down Trader sync — 19th of every month at 02:00 UTC (04:00 SAST)
     scheduler.add_job(
-        refresh_onedrive_token,
-        trigger=IntervalTrigger(minutes=1),
-        id='token_refresh',
-        name='Refresh OneDrive token every minute',
-        replace_existing=True
+        run_updown_trader_sync_job,
+        trigger=CronTrigger(day=19, hour=2, minute=0),
+        id='updown_trader_sync',
+        name='Monthly Up-Down Trader SharePoint sync (19th)',
+        replace_existing=True,
+        misfire_grace_time=3600,
+        coalesce=True,
+    )
+
+    # Report sync digest — Mon/Wed/Fri at 04:00 UTC (06:00 SAST): run every
+    # report sync, then email Ethan the one-table status summary.
+    scheduler.add_job(
+        run_sync_digest_job,
+        trigger=CronTrigger(day_of_week='mon,wed,fri', hour=4, minute=0),
+        id='sync_digest',
+        name='Report sync digest email (Mon/Wed/Fri)',
+        replace_existing=True,
+        misfire_grace_time=3600,
+        coalesce=True,
     )
 
     scheduler.start()
-    logger.info("Scheduler started - All stations syncing every hour, token refresh every minute")
-
-    # Immediately refresh token on startup
-    try:
-        refresh_onedrive_token()
-        logger.info("OneDrive token refreshed on startup")
-    except Exception as e:
-        logger.error(f"OneDrive token refresh on startup failed: {e}")
+    logger.info("Scheduler started - All syncs email-driven every 3 hours")
 
 
 def stop_scheduler():

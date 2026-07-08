@@ -5,6 +5,38 @@ from django.shortcuts import render, redirect
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
+from functools import wraps
+
+
+def page_access(*keys):
+    """Require the user to have at least one of the given page access flags
+    (superusers always pass). Apply AFTER @login_required."""
+    def decorator(view):
+        @wraps(view)
+        def _wrapped(request, *args, **kwargs):
+            u = request.user
+            if u.is_superuser:
+                return view(request, *args, **kwargs)
+            try:
+                p = u.profile
+            except Exception:
+                raise PermissionDenied('No profile')
+            if any(getattr(p, f'can_{k}', False) for k in keys):
+                return view(request, *args, **kwargs)
+            raise PermissionDenied('You do not have access to this page.')
+        return _wrapped
+    return decorator
+
+
+def admin_required(view):
+    """Only superusers may access. Apply AFTER @login_required."""
+    @wraps(view)
+    def _wrapped(request, *args, **kwargs):
+        if not request.user.is_superuser:
+            raise PermissionDenied('Admin only.')
+        return view(request, *args, **kwargs)
+    return _wrapped
 from django.views.decorators.http import require_http_methods
 from django.db.models import Sum, Count
 from django.db.models.functions import ExtractYear
@@ -12,6 +44,8 @@ from django.db import OperationalError, ProgrammingError, connection
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings as django_settings
+from django.utils import timezone as django_timezone
+from django.core import signing
 from .models import TurnoverData, ProjectTask, UserProfile, USEUContact, TouchpointTemplate
 from django.contrib.auth.models import User
 from .google_drive import sync_google_drive_data, get_progress, update_progress, get_last_sync
@@ -121,6 +155,7 @@ def home(request):
 
 
 @login_required
+@page_access('data_analysis')
 def data_analysis(request):
     """Data Analysis page with all stations"""
     try:
@@ -138,10 +173,13 @@ def data_analysis(request):
         'fax': 'fax_pnl', 'hnl': 'hnl_pnl', 'hou': 'hou_pnl',
         'ics': 'ics_pnl', 'imp': 'imp_pnl', 'jfk': 'jfk_pnl',
         'lax': 'lax_pnl', 'lcl': 'lcl_pnl', 'ord': 'ord_pnl',
-        'dfw': 'dfw_pnl', 'condor_dor': 'condor_dor_pnl',
+        'dfw': 'dfw_pnl', 'bravo_tran': 'bravo_tran',
+        'condor_dor': 'condor_dor_pnl',
         'import_ops': 'import_ops', 'wip_accrual': 'wip_accrual',
         'creditor': 'creditor_transactions',
         'tfs': 'tfs_weekly',
+        'updown_trader_cs': 'customer_spend',
+        'updown_trader_cso': 'customer_spend_operational',
     }
     station_rows = {}
     for key, table in station_tables.items():
@@ -168,6 +206,14 @@ def data_analysis(request):
     except:
         condor_depts = 0
 
+    # Up-Down Trader debtors
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(DISTINCT debtor) FROM customer_spend")
+            updown_debtors = cursor.fetchone()[0]
+    except:
+        updown_debtors = 0
+
     # Load last sync times
     sync_files = {
         'turnover': 'last_sync.json',
@@ -183,6 +229,7 @@ def data_analysis(request):
         'import_ops': 'import_ops_last_sync.json',
         'wip_accrual': 'wip_accrual_last_sync.json',
         'tfs': 'tfs_last_sync.json',
+        'updown_trader': 'updown_trader_last_sync.json',
     }
     last_syncs = {}
     base_dir = os.path.dirname(os.path.dirname(__file__))
@@ -202,6 +249,7 @@ def data_analysis(request):
         'branch_count': branch_count,
         'creditor_groups': creditor_groups,
         'condor_depts': condor_depts,
+        'updown_debtors': updown_debtors,
         **station_rows,
         **last_syncs,
     }
@@ -773,6 +821,119 @@ def sync_ccc_progress(request):
 
 
 # CCD view
+@login_required
+def bravo_tran(request):
+    """Bravo Trans / AWA Payables Waiting — table holds only the latest report."""
+    total_records = vendor_count = branch_count = open_invoices = 0
+    latest_report = None
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM bravo_tran")
+            total_records = cursor.fetchone()[0] or 0
+            cursor.execute("SELECT COUNT(DISTINCT vendor) FROM bravo_tran")
+            vendor_count = cursor.fetchone()[0] or 0
+            cursor.execute("SELECT COUNT(DISTINCT job_branches) FROM bravo_tran")
+            branch_count = cursor.fetchone()[0] or 0
+            cursor.execute("SELECT COUNT(*) FROM bravo_tran WHERE invoice_total IS NOT NULL AND invoice_total > 0")
+            open_invoices = cursor.fetchone()[0] or 0
+            cursor.execute("SELECT MAX(report_date) FROM bravo_tran")
+            latest_report = cursor.fetchone()[0]
+    except Exception:
+        pass
+
+    # Fetch email→branch allocations from useu_contacts (only rows with non-empty email & branch)
+    allocations = list(
+        USEUContact.objects.exclude(email='').exclude(branch='')
+        .values_list('id', 'email', 'branch', 'contact_name')
+        .order_by('branch', 'email')
+    )
+    allocated_emails = {a[1].lower() for a in allocations}
+
+    # Find emails in bravo_tran that have no allocation yet
+    unallocated = []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "SELECT DISTINCT request_sent_to FROM bravo_tran "
+                "WHERE request_sent_to IS NOT NULL AND request_sent_to <> '' "
+                "ORDER BY request_sent_to"
+            )
+            for row in cursor.fetchall():
+                raw = row[0].strip()
+                # Some rows have comma-separated emails — split them
+                for part in raw.split(','):
+                    email = part.strip().lower()
+                    if email and email not in allocated_emails:
+                        unallocated.append(email)
+                        allocated_emails.add(email)  # deduplicate
+    except Exception:
+        pass
+
+    return render(request, 'bravo_tran.html', {
+        'total_records': total_records,
+        'vendor_count': vendor_count,
+        'branch_count': branch_count,
+        'open_invoices': open_invoices,
+        'latest_report': latest_report,
+        'allocations_json': json.dumps([list(a) for a in allocations]),
+        'unallocated_json': json.dumps(sorted(unallocated)),
+    })
+
+
+@login_required
+@require_http_methods(["POST"])
+def bravo_tran_allocate(request):
+    """Add or update an email→branch allocation in useu_contacts."""
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+    email = (data.get('email') or '').strip().lower()
+    branch = (data.get('branch') or '').strip()
+    contact_name = (data.get('contact_name') or '').strip()
+    if not email or not branch:
+        return JsonResponse({'ok': False, 'error': 'Email and branch are required'}, status=400)
+    contact_id = data.get('id')
+    if contact_id:
+        try:
+            c = USEUContact.objects.get(id=contact_id)
+            c.email = email
+            c.branch = branch
+            c.contact_name = contact_name
+            c.save(update_fields=['email', 'branch', 'contact_name'])
+            return JsonResponse({'ok': True, 'id': c.id})
+        except USEUContact.DoesNotExist:
+            return JsonResponse({'ok': False, 'error': 'Not found'}, status=404)
+    else:
+        c = USEUContact.objects.create(
+            email=email, branch=branch, contact_name=contact_name,
+            org_name='', default='', attach='', phone='',
+            touchpoint_1='', tp1_sent_on='', touchpoint_2='',
+            last_touch='', status='Active', tp1_processing_id='',
+        )
+        return JsonResponse({'ok': True, 'id': c.id})
+
+
+@login_required
+@require_http_methods(["POST"])
+def bravo_tran_deallocate(request):
+    """Remove an email→branch allocation (clears the branch field)."""
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+    contact_id = data.get('id')
+    if not contact_id:
+        return JsonResponse({'ok': False, 'error': 'ID required'}, status=400)
+    try:
+        c = USEUContact.objects.get(id=contact_id)
+        c.branch = ''
+        c.save(update_fields=['branch'])
+        return JsonResponse({'ok': True})
+    except USEUContact.DoesNotExist:
+        return JsonResponse({'ok': False, 'error': 'Not found'}, status=404)
+
+
 @login_required
 def ccd(request):
     """CCD Financial Analysis page"""
@@ -1672,8 +1833,9 @@ def sync_condor_dor_progress(request):
 # --- Sync Monitor ---
 
 STATIONS = [
-    'turnover', 'creditor', 'condor_dor',
-    'atl', 'ccc', 'ccd', 'con', 'dor', 'fax',
+    'turnover', 'creditor', 'condor_dor', 'bravo_tran',
+    'wip_accrual', 'import_ops',
+    'atl', 'ccc', 'ccd', 'con', 'dfw', 'dor', 'fax',
     'hnl', 'hou', 'ics', 'imp', 'jfk', 'lax',
     'lcl', 'ord', 'ppg',
 ]
@@ -1682,6 +1844,9 @@ STATION_TABLES = {
     'turnover': 'turnover_data',
     'creditor': 'creditor_transactions',
     'condor_dor': 'condor_dor_pnl',
+    'bravo_tran': 'bravo_tran',
+    'wip_accrual': 'wip_accrual',
+    'import_ops': 'import_ops',
     'atl': 'atl_pnl', 'ccc': 'ccc_pnl', 'ccd': 'ccd_pnl',
     'con': 'con_pnl', 'dor': 'dor_pnl', 'fax': 'fax_pnl',
     'hnl': 'hnl_pnl', 'hou': 'hou_pnl', 'ics': 'ics_pnl',
@@ -1694,7 +1859,7 @@ STATION_TABLES = {
 def _get_station_statuses():
     """Build station status list for the monitor page."""
     now = datetime.now(ZoneInfo('Africa/Johannesburg'))
-    one_hour_ago = now - timedelta(hours=1)
+    stale_threshold = now - timedelta(hours=6)  # Email syncs run every 3h, stale after 6h
 
     # Load health data
     health_data = {}
@@ -1712,43 +1877,59 @@ def _get_station_statuses():
     error_count = 0
 
     for station in STATIONS:
-        # Read last_sync timestamp
-        sync_file = getattr(django_settings, f'{station.upper()}_LAST_SYNC_FILE', None)
+        # Read last sync timestamp - prefer email_last.json, fall back to last_sync.json
         last_sync_dt = None
         last_sync_display = None
-        synced_data = False  # True when an actual last_sync file was found
+        email_info = None
 
+        # Read health info up-front so we can use its last_check as a
+        # candidate for "last sync time" alongside the state-file mtime.
+        health = health_data.get(station, {})
+        health_status = health.get('status', 'unknown')
+        health_last_check_dt = None
+        if health.get('last_check'):
+            try:
+                health_last_check_dt = datetime.fromisoformat(health['last_check'])
+            except Exception:
+                health_last_check_dt = None
+
+        # Check email sync state first (the primary sync method)
+        email_file = os.path.join(os.path.dirname(__file__), '..', f'{station}_email_last.json')
+        email_state_dt = None
+        if os.path.exists(email_file):
+            try:
+                with open(email_file, 'r') as f:
+                    edata = json.load(f)
+                if edata.get('received') or edata.get('message_ids') or edata.get('branches') or edata.get('groups') or edata.get('rows'):
+                    mtime = os.path.getmtime(email_file)
+                    email_state_dt = datetime.fromtimestamp(mtime, tz=ZoneInfo('Africa/Johannesburg'))
+                    email_info = edata
+            except Exception:
+                pass
+
+        # Fall back to old last_sync file
+        legacy_sync_dt = None
+        sync_file = getattr(django_settings, f'{station.upper()}_LAST_SYNC_FILE', None)
         if sync_file and os.path.exists(sync_file):
             try:
                 with open(sync_file, 'r') as f:
                     data = json.load(f)
                 if 'last_sync' in data:
-                    last_sync_dt = datetime.fromisoformat(data['last_sync'])
-                    last_sync_display = {
-                        'time': last_sync_dt.strftime('%H:%M'),
-                        'date': last_sync_dt.strftime('%b %d, %Y'),
-                    }
-                    # had_data=True means actual records were processed;
-                    # False means the job ran but found no file to import
-                    synced_data = data.get('had_data', True)
+                    legacy_sync_dt = datetime.fromisoformat(data['last_sync'])
             except Exception:
                 pass
 
-        # Read health info
-        health = health_data.get(station, {})
-        health_status = health.get('status', 'unknown')
-
-        # Fallback: if no last_sync file, use sync_health last_check so the
-        # monitor shows when the job last ran (e.g. "No file" syncs like CCC)
-        if last_sync_dt is None and health.get('last_check'):
-            try:
-                last_sync_dt = datetime.fromisoformat(health['last_check'])
-                last_sync_display = {
-                    'time': last_sync_dt.strftime('%H:%M'),
-                    'date': last_sync_dt.strftime('%b %d, %Y'),
-                }
-            except Exception:
-                pass
+        # Pick the most recent timestamp across all three sources. A sync that
+        # re-processed an already-seen email still bumps sync_health.last_check
+        # even if the state file's mtime doesn't change — so using max(...)
+        # means pressing "Sync All" reliably updates the monitor.
+        candidates = [t for t in (email_state_dt, legacy_sync_dt, health_last_check_dt) if t is not None]
+        if candidates:
+            last_sync_dt = max(candidates)
+            last_sync_display = {
+                'time': last_sync_dt.strftime('%H:%M'),
+                'date': last_sync_dt.strftime('%b %d, %Y'),
+            }
 
         # Query actual record count from DB
         records = None
@@ -1761,14 +1942,14 @@ def _get_station_statuses():
             except Exception:
                 records = None
 
-        # Determine overall status
-        if health_status == 'error':
+        # Determine overall status — email sync success overrides stale health errors
+        if health_status == 'error' and email_info is None:
             status = 'error'
             error_count += 1
         elif last_sync_dt is None:
             status = 'unknown'
             stale_count += 1
-        elif last_sync_dt < one_hour_ago:
+        elif last_sync_dt < stale_threshold:
             status = 'stale'
             stale_count += 1
         else:
@@ -1776,14 +1957,16 @@ def _get_station_statuses():
             healthy_count += 1
 
         # Build a meaningful message from available data
-        if health_status == 'error':
+        if health_status == 'error' and email_info is None:
             message = health.get('message', 'Sync error')
-        elif not synced_data:
-            message = 'No file in OneDrive'
-        elif records is not None:
-            message = f'Synced {records:,} records'
+        elif email_info and email_info.get('rows'):
+            message = f'{email_info["rows"]:,} rows from email'
+        elif records is not None and records > 0:
+            message = f'{records:,} records'
+        elif email_info is not None:
+            message = 'Email processed (idempotent)'
         else:
-            message = 'OK'
+            message = 'Waiting for data'
 
         # Time ago string
         time_ago = None
@@ -1864,6 +2047,7 @@ def sync_all(request):
             run_dor_email_sync_job, run_turnover_email_sync_job,
             run_wip_email_sync_job, run_import_ops_email_sync_job,
             run_creditor_email_sync_job, run_condor_dor_email_sync_job,
+            run_bravo_tran_sync_job,
         )
         jobs = [
             ('PPG', run_ppg_email_sync_job), ('CCC', run_ccc_email_sync_job),
@@ -1879,6 +2063,7 @@ def sync_all(request):
             ('Import Ops', run_import_ops_email_sync_job),
             ('Creditor', run_creditor_email_sync_job),
             ('Condor+DOR', run_condor_dor_email_sync_job),
+            ('Bravo Trans', run_bravo_tran_sync_job),
         ]
         errors = 0
         for i, (name, fn) in enumerate(jobs):
@@ -1937,12 +2122,18 @@ def save_powerbi_embed(request):
 # ── User Management ────────────────────────────────────────────────────────────
 
 @login_required
+@admin_required
 def user_list(request):
-    users = User.objects.all().order_by('date_joined')
+    users = User.objects.select_related('profile').all().order_by('date_joined')
+    # Make sure every user has a profile so template can access flags
+    for u in users:
+        if not hasattr(u, 'profile') or u.profile is None:
+            UserProfile.objects.get_or_create(user=u)
     return render(request, 'users.html', {'users': users, 'current_user': request.user})
 
 
 @login_required
+@admin_required
 def user_create(request):
     if request.method != 'POST':
         return redirect('user_list')
@@ -1960,6 +2151,7 @@ def user_create(request):
 
 
 @login_required
+@admin_required
 def user_edit(request, user_id):
     if request.method != 'POST':
         return redirect('user_list')
@@ -1968,17 +2160,35 @@ def user_edit(request, user_id):
     except User.DoesNotExist:
         messages.error(request, 'User not found.')
         return redirect('user_list')
+
+    # Role (admin vs user) — self-change allowed.
+    role = request.POST.get('role', '').strip()
+    if role in ('admin', 'user'):
+        if role == 'admin':
+            user.is_superuser = True
+            user.is_staff = True
+        else:
+            user.is_superuser = False
+            user.is_staff = False
+
+    # Optional password update
     password = request.POST.get('password', '').strip()
-    if not password:
-        messages.error(request, 'New password cannot be empty.')
-        return redirect('user_list')
-    user.set_password(password)
+    if password:
+        user.set_password(password)
     user.save()
-    messages.success(request, f'Password for "{user.username}" updated.')
+
+    # Page-access flags on UserProfile (ignored for admins — they see everything)
+    profile, _ = UserProfile.objects.get_or_create(user=user)
+    for key in ('data_analysis', 'emailing', 'planner', 'sync_monitor', 'automations'):
+        setattr(profile, f'can_{key}', request.POST.get(f'can_{key}') == 'on')
+    profile.save()
+
+    messages.success(request, f'Updated settings for "{user.username}".')
     return redirect('user_list')
 
 
 @login_required
+@admin_required
 def user_delete(request, user_id):
     if request.method != 'POST':
         return redirect('user_list')
@@ -2017,6 +2227,7 @@ def save_settings(request):
 # ── US-EU List ─────────────────────────────────────────────────────────────────
 
 @login_required
+@page_access('emailing')
 def useu_list(request):
     # On first load, import CSV data into DB if table is empty
     if USEUContact.objects.count() == 0:
@@ -2068,11 +2279,52 @@ def useu_list(request):
             Q(email__icontains=search)
         )
 
-    filtered_total = qs.count()
-    start = (page - 1) * per_page
-    end = start + per_page
+    # Date range filter on tp{n}_sent_on. Input format: YYYY-MM-DD (HTML5 date input).
+    # DB values use mixed formats ("dd-mm-yyyy" and "dd/mm/yyyy"), so we parse both.
+    # sent_field selects which touchpoint column to filter on. If sent_field is set
+    # (without dates), we restrict to rows that have that TP sent at all.
+    sent_from = request.GET.get('sent_from', '').strip()
+    sent_to = request.GET.get('sent_to', '').strip()
+    tp_field_param = request.GET.get('sent_field', '').strip()
+    allowed_tp_fields = {f'tp{i}_sent_on' for i in range(1, 11)}
+    if tp_field_param and tp_field_param not in allowed_tp_fields:
+        tp_field_param = ''
+    if tp_field_param and (sent_from or sent_to):
+        from datetime import datetime as _dt
+        def _parse_iso(s):
+            try:
+                return _dt.strptime(s, '%Y-%m-%d').date()
+            except Exception:
+                return None
+        def _parse_db(s):
+            s = (s or '').strip()
+            if not s:
+                return None
+            for fmt in ('%d-%m-%Y', '%d/%m/%Y', '%Y-%m-%d', '%Y/%m/%d'):
+                try:
+                    return _dt.strptime(s, fmt).date()
+                except Exception:
+                    continue
+            return None
+        d_from = _parse_iso(sent_from) if sent_from else None
+        d_to = _parse_iso(sent_to) if sent_to else None
+        matched_ids = []
+        for cid, raw in qs.exclude(**{tp_field_param: ''}).values_list('id', tp_field_param).iterator():
+            d = _parse_db(raw)
+            if d is None:
+                continue
+            if d_from and d < d_from:
+                continue
+            if d_to and d > d_to:
+                continue
+            matched_ids.append(cid)
+        qs = qs.filter(id__in=matched_ids)
+    elif tp_field_param:
+        qs = qs.exclude(**{tp_field_param: ''}).exclude(**{f'{tp_field_param}__isnull': True})
 
-    rows = list(qs.order_by('id')[start:end].values_list(
+    filtered_total = qs.count()
+    # Send ALL rows to the client so Excel-style filter / sort / paginate run locally.
+    rows = list(qs.order_by('id').values_list(
         'id', 'org_name', 'contact_name', 'email', 'phone', 'status', 'last_touch',
         'touchpoint_1', 'tp1_sent_on',
         'touchpoint_2', 'tp2_sent_on',
@@ -2211,8 +2463,22 @@ def useu_update_cell(request):
 
     try:
         contact = USEUContact.objects.get(id=contact_id)
+        prev_status = contact.status
         setattr(contact, field, value)
-        contact.save(update_fields=[field])
+        update_fields = [field]
+
+        if field == 'status':
+            hubspot_values = {'Moved to HubSpot', 'Move to HubSpot'}
+            now_hs = value in hubspot_values
+            was_hs = prev_status in hubspot_values
+            if now_hs and not was_hs:
+                contact.moved_to_hubspot_at = django_timezone.now()
+                update_fields.append('moved_to_hubspot_at')
+            elif was_hs and not now_hs:
+                contact.moved_to_hubspot_at = None
+                update_fields.append('moved_to_hubspot_at')
+
+        contact.save(update_fields=update_fields)
 
         # Auto-calculate TP2-TP10 when TP1 date is set
         tp_dates = {}
@@ -2820,6 +3086,216 @@ def email_templates(request):
 
 
 @login_required
+def reporting(request):
+    """Summary of list performance by status, with HubSpot growth over time,
+    touchpoint coverage, deal-lost reasons, and bounce breakdown."""
+    from django.db.models import Count, Q
+    from django.db.models.functions import TruncWeek, TruncMonth, TruncYear
+    from datetime import datetime as _dt, date as _date, timedelta as _td
+
+    # ── Filters from query string ────────────────────────────────────────────
+    date_from_raw = request.GET.get('date_from', '').strip()
+    date_to_raw = request.GET.get('date_to', '').strip()
+    status_filter = request.GET.get('status', '').strip()
+
+    def _parse_iso(s):
+        try:
+            return _dt.strptime(s, '%Y-%m-%d').date()
+        except Exception:
+            return None
+
+    date_from = _parse_iso(date_from_raw)
+    date_to = _parse_iso(date_to_raw)
+
+    contacts = USEUContact.objects.all()
+    if status_filter:
+        if status_filter == 'Moved to HubSpot':
+            contacts = contacts.filter(Q(status='Moved to HubSpot') | Q(status='Move to HubSpot'))
+        else:
+            contacts = contacts.filter(status=status_filter)
+    total_contacts = contacts.count()
+
+    status_counts_qs = contacts.values('status').annotate(count=Count('id'))
+    status_counts = {s['status']: s['count'] for s in status_counts_qs}
+
+    active = status_counts.get('Active', 0)
+    undelivered = status_counts.get('Undeliverable', 0)
+    moved_to_hubspot = status_counts.get('Moved to HubSpot', 0) + status_counts.get('Move to HubSpot', 0)
+    inactive = status_counts.get('Lost', 0)
+
+    def pct(n):
+        return round((n / total_contacts) * 100, 1) if total_contacts else 0.0
+
+    summary = [
+        {'label': 'Total contacts', 'value': total_contacts, 'pct': 100.0 if total_contacts else 0.0, 'pill': 'total'},
+        {'label': 'Active (still reachable)', 'value': active, 'pct': pct(active), 'pill': 'active'},
+        {'label': 'Bad email (bounced)', 'value': undelivered, 'pct': pct(undelivered), 'pill': 'undelivered'},
+        {'label': 'Moved to HubSpot', 'value': moved_to_hubspot, 'pct': pct(moved_to_hubspot), 'pill': 'hubspot'},
+        {'label': 'Not a fit / lost', 'value': inactive, 'pct': pct(inactive), 'pill': 'inactive'},
+    ]
+
+    # HubSpot growth series: rows with a moved_to_hubspot_at timestamp,
+    # grouped by week / month / year. The date filter narrows this window.
+    hs_rows = USEUContact.objects.filter(moved_to_hubspot_at__isnull=False)
+    if date_from:
+        hs_rows = hs_rows.filter(moved_to_hubspot_at__date__gte=date_from)
+    if date_to:
+        hs_rows = hs_rows.filter(moved_to_hubspot_at__date__lte=date_to)
+
+    def build_series(trunc_fn, label_fmt):
+        qs = (hs_rows.annotate(bucket=trunc_fn('moved_to_hubspot_at'))
+              .values('bucket').annotate(c=Count('id')).order_by('bucket'))
+        labels, counts, cum = [], [], []
+        running = 0
+        for row in qs:
+            if not row['bucket']:
+                continue
+            labels.append(label_fmt(row['bucket']))
+            counts.append(row['c'])
+            running += row['c']
+            cum.append(running)
+        return {'labels': labels, 'counts': counts, 'cumulative': cum}
+
+    weekly_series = build_series(TruncWeek, lambda d: d.strftime('Wk of %d %b %Y'))
+    monthly_series = build_series(TruncMonth, lambda d: d.strftime('%b %Y'))
+    yearly_series = build_series(TruncYear, lambda d: str(d.year))
+
+    # ── Growth KPIs (YoY and MoM) based on unfiltered-but-status-ignoring data.
+    # We want growth regardless of the current date/status filter — it's a
+    # stable top-line metric. So recompute from all HubSpot-stamped contacts.
+    growth_base = USEUContact.objects.filter(moved_to_hubspot_at__isnull=False)
+
+    today = django_timezone.now().date()
+    first_this_month = today.replace(day=1)
+    first_prev_month = (first_this_month - _td(days=1)).replace(day=1)
+    first_prev_prev_month = (first_prev_month - _td(days=1)).replace(day=1)
+
+    mtd_this = growth_base.filter(
+        moved_to_hubspot_at__date__gte=first_this_month,
+        moved_to_hubspot_at__date__lte=today,
+    ).count()
+    prev_month_full = growth_base.filter(
+        moved_to_hubspot_at__date__gte=first_prev_month,
+        moved_to_hubspot_at__date__lt=first_this_month,
+    ).count()
+    prev_prev_month_full = growth_base.filter(
+        moved_to_hubspot_at__date__gte=first_prev_prev_month,
+        moved_to_hubspot_at__date__lt=first_prev_month,
+    ).count()
+
+    def growth_pct(current, previous):
+        if previous <= 0:
+            return None if current == 0 else 100.0 * current
+        return round(((current - previous) / previous) * 100, 1)
+
+    mom_value = prev_month_full  # last full month
+    mom_prev = prev_prev_month_full  # month before
+    mom_growth = growth_pct(mom_value, mom_prev)
+
+    # YoY: last 12 months (rolling) vs prior 12 months
+    one_year_ago = today - _td(days=365)
+    two_years_ago = today - _td(days=730)
+    ytd_this_y = growth_base.filter(
+        moved_to_hubspot_at__date__gte=one_year_ago,
+        moved_to_hubspot_at__date__lte=today,
+    ).count()
+    ytd_prev_y = growth_base.filter(
+        moved_to_hubspot_at__date__gte=two_years_ago,
+        moved_to_hubspot_at__date__lt=one_year_ago,
+    ).count()
+    yoy_growth = growth_pct(ytd_this_y, ytd_prev_y)
+
+    # Touchpoint coverage: how many contacts have each TP sent
+    tp_labels = [f'TP{n}' for n in range(1, 11)]
+    tp_counts = []
+    for n in range(1, 11):
+        field = f'tp{n}_sent_on'
+        tp_counts.append(
+            contacts.exclude(**{field: ''}).exclude(**{f'{field}__isnull': True}).count()
+        )
+
+    # Deal lost reasons — count non-empty, bucket by reason text
+    lost_with_reason_qs = contacts.exclude(deal_lost_reason='').exclude(deal_lost_reason__isnull=True)
+    lost_with_reason = lost_with_reason_qs.count()
+    lost_without_reason = inactive - contacts.filter(status='Lost').exclude(deal_lost_reason='').exclude(deal_lost_reason__isnull=True).count()
+    lost_without_reason = max(0, lost_without_reason)
+    reason_rows = (lost_with_reason_qs.values('deal_lost_reason')
+                   .annotate(c=Count('id')).order_by('-c'))
+    reason_labels = [r['deal_lost_reason'][:40] for r in reason_rows]
+    reason_counts = [r['c'] for r in reason_rows]
+
+    # Bounce breakdown from EmailSendLog — error_message is "{Type}/{SubType}: ..."
+    # where Type is "Permanent" (hard) or "Transient" (soft). SES convention.
+    hard_bounces = 0
+    soft_bounces = 0
+    undetermined_bounces = 0
+    total_bounces = 0
+    try:
+        from .models import EmailSendLog
+        bounce_logs = EmailSendLog.objects.filter(status='bounced').values_list('error_message', flat=True)
+        for err in bounce_logs:
+            total_bounces += 1
+            low = (err or '').lower()
+            if low.startswith('permanent'):
+                hard_bounces += 1
+            elif low.startswith('transient'):
+                soft_bounces += 1
+            else:
+                undetermined_bounces += 1
+    except Exception:
+        pass
+
+    STATUS_CHOICES = ['Active', 'Inactive', 'Undeliverable', 'Moved to HubSpot', 'Lost']
+
+    profile, _ = UserProfile.objects.get_or_create(user=request.user)
+    return render(request, 'reporting.html', {
+        'summary': summary,
+        'total_contacts': total_contacts,
+        'filter_date_from': date_from_raw,
+        'filter_date_to': date_to_raw,
+        'filter_status': status_filter,
+        'status_choices': STATUS_CHOICES,
+        'mom_growth': mom_growth,
+        'mom_current': mom_value,
+        'mom_previous': mom_prev,
+        'mom_label_current': first_prev_month.strftime('%b %Y'),
+        'mom_label_previous': first_prev_prev_month.strftime('%b %Y'),
+        'yoy_growth': yoy_growth,
+        'yoy_current': ytd_this_y,
+        'yoy_previous': ytd_prev_y,
+        'mtd_this': mtd_this,
+        'mtd_label': first_this_month.strftime('%b %Y'),
+        'pie_full': json.dumps({
+            'labels': ['Active', 'Undelivered', 'Moved to HubSpot', 'Inactive'],
+            'data': [active, undelivered, moved_to_hubspot, inactive],
+        }),
+        'pie_compare': json.dumps({
+            'labels': ['Active', 'Undelivered', 'Moved to HubSpot'],
+            'data': [active, undelivered, moved_to_hubspot],
+        }),
+        'hs_series': json.dumps({
+            'week': weekly_series,
+            'month': monthly_series,
+            'year': yearly_series,
+        }),
+        'tp_coverage': json.dumps({'labels': tp_labels, 'counts': tp_counts}),
+        'lost_reason_chart': json.dumps({'labels': reason_labels, 'counts': reason_counts}),
+        'lost_with_reason': lost_with_reason,
+        'lost_without_reason': lost_without_reason,
+        'reason_rows': [{'reason': r['deal_lost_reason'], 'count': r['c']} for r in reason_rows],
+        'bounce_chart': json.dumps({
+            'labels': ['Hard (Permanent)', 'Soft (Transient)', 'Undetermined'],
+            'counts': [hard_bounces, soft_bounces, undetermined_bounces],
+        }),
+        'hard_bounces': hard_bounces,
+        'soft_bounces': soft_bounces,
+        'undetermined_bounces': undetermined_bounces,
+        'total_bounces': total_bounces,
+        'dark_mode': profile.dark_mode,
+    })
+
+
+@login_required
 def email_template_save(request):
     """Save a touchpoint email template (multipart form for file upload)"""
     if request.method != 'POST':
@@ -2959,7 +3435,7 @@ def get_touchpoint_schedules(request):
 GRAPH_CLIENT_ID = '43fbe5a9-6b5b-4c81-9067-7aff9ac3ed5a'
 GRAPH_TENANT_ID = 'b1504b1d-d096-409a-a0f0-6cc546dde993'
 GRAPH_CLIENT_SECRET = os.getenv('GRAPH_CLIENT_SECRET', '')
-GRAPH_MAILBOX = 'waldogaybba@moc-pty.com'
+GRAPH_MAILBOX = 'Ethan.Sevenster@moc-pty.com'
 
 
 def _gmail_send_mail(to_address, subject, body_html=None, body_text=None,
@@ -3093,6 +3569,259 @@ def _get_graph_token():
     return result.get('access_token')
 
 
+# ── Unsubscribe / opt-out ─────────────────────────────────────────────────────
+
+UNSUBSCRIBE_SALT = 'useu-unsubscribe-v1'
+
+
+def _unsubscribe_signer():
+    return signing.TimestampSigner(salt=UNSUBSCRIBE_SALT)
+
+
+def _make_unsubscribe_token(contact_id):
+    return _unsubscribe_signer().sign(str(contact_id))
+
+
+def _build_unsubscribe_url(contact_id, request=None):
+    token = _make_unsubscribe_token(contact_id)
+    base = (os.getenv('PUBLIC_BASE_URL') or '').rstrip('/')
+    if not base and request is not None:
+        base = request.build_absolute_uri('/').rstrip('/')
+    if not base:
+        base = 'http://127.0.0.1:8000'
+    return f"{base}/unsubscribe/{token}/"
+
+
+def _append_unsubscribe_footer(body, contact, is_html, request=None):
+    if not contact or not getattr(contact, 'id', None):
+        return body
+    url = _build_unsubscribe_url(contact.id, request=request)
+    if is_html:
+        footer = (
+            '<div style="margin-top:32px;padding-top:16px;border-top:1px solid #e5e7eb;'
+            'color:#6b7280;font-size:12px;font-family:Arial,sans-serif;line-height:1.5;">'
+            'You are receiving this email because you are on the contact list at Magnum Opus Consultants.'
+            '<br>If you no longer wish to receive these emails, '
+            f'<a href="{url}" style="color:#2563eb;text-decoration:underline;">click here to unsubscribe</a>.'
+            '</div>'
+        )
+        # Insert before </body> if present, else append
+        if '</body>' in body.lower():
+            return re.sub(r'</body>', footer + '</body>', body, count=1, flags=re.IGNORECASE)
+        return body + footer
+    footer = (
+        '\n\n--\n'
+        'You are receiving this email because you are on the contact list at Magnum Opus Consultants.\n'
+        f'To unsubscribe: {url}\n'
+    )
+    return body + footer
+
+
+def _render_unsub_page(title, heading, body_html, *, status=200, accent='#2d6b86'):
+    page = f"""<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{title} · Magnum Opus Consultants</title>
+<link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {{
+    --bg: #f4f6f9;
+    --surface: #ffffff;
+    --border: #d8dfe6;
+    --text-primary: #1a2838;
+    --text-secondary: #526070;
+    --text-muted: #8d9aa7;
+    --accent: {accent};
+    --accent-hover: #1f5670;
+    --suiteheader-bg: #1a2838;
+  }}
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  html, body {{ min-height: 100%; }}
+  body {{
+    font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+    background-color: var(--bg);
+    color: var(--text-primary);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }}
+  body::before {{
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    background:
+      linear-gradient(rgba(244,246,249,0.55), rgba(244,246,249,0.70)),
+      url('/static/HOME-The-process.png') center/cover no-repeat;
+    background-attachment: fixed;
+    pointer-events: none;
+  }}
+  .topbar {{
+    background: var(--suiteheader-bg);
+    color: #e9eef4;
+    padding: 12px 24px;
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.2px;
+    box-shadow: 0 1px 0 rgba(0,0,0,0.06);
+  }}
+  .topbar .brand-mark {{
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+  }}
+  .topbar .brand-mark img {{
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    display: block;
+  }}
+  main {{
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+  }}
+  .card {{
+    width: 100%;
+    max-width: 520px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 36px 36px 32px;
+    box-shadow: 0 12px 40px rgba(26,40,56,0.10), 0 2px 6px rgba(26,40,56,0.06);
+  }}
+  .eyebrow {{
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }}
+  h1 {{
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 14px;
+    line-height: 1.25;
+  }}
+  p {{
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 14px;
+    font-size: 15px;
+  }}
+  p strong {{ color: var(--text-primary); font-weight: 600; }}
+  .btn {{
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent);
+    color: #fff;
+    border: 0;
+    padding: 12px 22px;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s ease, transform 0.05s ease;
+    text-decoration: none;
+  }}
+  .btn:hover {{ background: var(--accent-hover); }}
+  .btn:active {{ transform: translateY(1px); }}
+  .btn-danger {{ background: #b91c1c; }}
+  .btn-danger:hover {{ background: #991b1b; }}
+  .muted {{
+    color: var(--text-muted);
+    font-size: 13px;
+    margin-top: 18px;
+  }}
+  footer.brand-footer {{
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 12px;
+    padding: 18px 12px 28px;
+  }}
+  footer.brand-footer a {{ color: var(--accent); text-decoration: none; }}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <span class="brand-mark"><img src="/static/favicon-192.png" alt="MOC"> Magnum Opus Consultants</span>
+  </div>
+  <main>
+    <div class="card">
+      <div class="eyebrow">Email preferences</div>
+      <h1>{heading}</h1>
+      {body_html}
+    </div>
+  </main>
+  <footer class="brand-footer">
+    &copy; Magnum Opus Consultants
+  </footer>
+</body>
+</html>"""
+    return HttpResponse(page, status=status)
+
+
+@csrf_exempt
+def unsubscribe(request, token):
+    """Public endpoint hit when a recipient clicks 'unsubscribe' in an email."""
+    try:
+        contact_id = int(_unsubscribe_signer().unsign(token, max_age=60 * 60 * 24 * 365 * 5))
+    except (signing.BadSignature, ValueError):
+        return _render_unsub_page(
+            'Invalid link', 'Invalid or expired link',
+            '<p>This unsubscribe link is no longer valid. Please contact us directly to be removed from our list.</p>',
+            status=400, accent='#b91c1c',
+        )
+
+    contact = USEUContact.objects.filter(id=contact_id).first()
+    if not contact:
+        return _render_unsub_page(
+            'Invalid link', 'Invalid or expired link',
+            '<p>This unsubscribe link is no longer valid. Please contact us directly to be removed from our list.</p>',
+            status=404, accent='#b91c1c',
+        )
+
+    already = bool(contact.opted_out_at)
+
+    if request.method == 'POST':
+        if not already:
+            contact.opted_out_at = django_timezone.now()
+            contact.status = 'Inactive'
+            contact.save(update_fields=['opted_out_at', 'status'])
+        who = contact.contact_name or contact.email
+        return _render_unsub_page(
+            'Unsubscribed', 'You have been unsubscribed',
+            f'<p>{who}, you will no longer receive emails from <strong>Magnum Opus Consultants</strong>.</p>'
+            '<p class="muted">If this was a mistake, please contact us directly to be re-added.</p>',
+        )
+
+    # GET — confirm page (protects against link-prefetchers)
+    if already:
+        return _render_unsub_page(
+            'Already unsubscribed', "You're already unsubscribed",
+            f'<p>The email address <strong>{contact.email}</strong> is no longer on our list.</p>'
+            '<p class="muted">If this was a mistake, please contact us directly to be re-added.</p>',
+        )
+
+    body_html = (
+        f'<p>Are you sure you want to stop receiving emails from <strong>Magnum Opus Consultants</strong> '
+        f'at <strong>{contact.email}</strong>?</p>'
+        f'<form method="post" action="/unsubscribe/{token}/" style="margin-top:18px;">'
+        '<button type="submit" class="btn btn-danger">Yes, unsubscribe me</button>'
+        '</form>'
+        '<p class="muted">You can re-subscribe at any time by contacting us.</p>'
+    )
+    return _render_unsub_page('Unsubscribe', 'Unsubscribe', body_html)
+
+
 # ── AWS SES Email Sending ─────────────────────────────────────────────────────
 
 def _get_ses_client():
@@ -3106,7 +3835,7 @@ def _get_ses_client():
 
 
 def _ses_send_mail(to_address, subject, body_html=None, body_text=None,
-                   from_address=None, from_name='Magnum Opus Consultants',
+                   from_address=None, from_name='Ethan Sevenster',
                    attachments=None, max_retries=3):
     """Send an email via AWS SES. For emails with attachments, uses raw email.
 
@@ -3476,6 +4205,12 @@ def send_touchpoint(request):
 
         # Look up contact for variable substitution
         contact = USEUContact.objects.filter(email__iexact=original_email).first()
+
+        # Skip contacts that have opted out
+        if contact and contact.opted_out_at:
+            results.append({'email': email_addr, 'ok': False, 'status': 'opted-out — skipped'})
+            continue
+
         final_body = body_content
         if contact:
             final_body = final_body.replace('{{org_name}}', contact.org_name or '')
@@ -3483,6 +4218,11 @@ def send_touchpoint(request):
             final_body = final_body.replace('{{email}}', contact.email or '')
             final_body = final_body.replace('{{phone}}', contact.phone or '')
             final_body = final_body.replace('{{touchpoint_number}}', str(tp_num))
+
+        # Append unsubscribe footer (only when we have a contact record to track)
+        final_body = _append_unsubscribe_footer(
+            final_body, contact, is_html=(content_type == 'HTML'), request=request,
+        )
 
         subject = template.subject
         if contact:
@@ -3534,6 +4274,127 @@ def send_touchpoint(request):
             USEUContact.objects.filter(id=contact.id).update(**update_fields)
 
     return JsonResponse({'ok': True, 'results': results})
+
+
+@login_required
+def send_test_touchpoint(request):
+    """Send a test email for a touchpoint to user-specified recipients.
+    Uses sample variable values so the user can see exactly what clients receive.
+    Does NOT update any contact records."""
+    if request.method != 'POST':
+        return JsonResponse({'ok': False, 'error': 'POST required'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'ok': False, 'error': 'Invalid JSON'}, status=400)
+
+    tp_num = data.get('touchpoint_number', 1)
+    recipients = data.get('recipients', [])
+
+    if not recipients:
+        return JsonResponse({'ok': False, 'error': 'Enter at least one email address'}, status=400)
+
+    # Limit to 10 test recipients at a time
+    recipients = [e.strip() for e in recipients if e.strip()][:10]
+
+    try:
+        template = TouchpointTemplate.objects.get(touchpoint_number=tp_num)
+    except TouchpointTemplate.DoesNotExist:
+        return JsonResponse({'ok': False, 'error': f'Template for TP{tp_num} not found. Save the template first.'}, status=404)
+
+    # Determine email body
+    if template.body_html:
+        body_content = template.body_html
+        content_type = 'HTML'
+    else:
+        body_content = template.body
+        if template.signature:
+            body_content += '\n\n' + template.signature
+        content_type = 'Text'
+
+    # Embed uploaded signature image as inline CID attachment
+    sig_inline = None
+    if content_type == 'HTML' and getattr(template, 'signature_image', None):
+        try:
+            sig_path = template.signature_image.path
+            sig_name = os.path.basename(sig_path)
+            ext = os.path.splitext(sig_name)[1].lower().lstrip('.') or 'png'
+            cid = f'signature_tp{template.touchpoint_number}'
+            body_content = re.sub(
+                r'https://drive\.google\.com/thumbnail\?id=[^"\'&]+(?:&amp;[^"\']*|&[^"\']*)*',
+                f'cid:{cid}',
+                body_content,
+                flags=re.IGNORECASE,
+            )
+            with open(sig_path, 'rb') as sf:
+                sig_inline = {
+                    'name': sig_name,
+                    'contentType': f'image/{ext if ext!="jpg" else "jpeg"}',
+                    'contentBytes': base64.b64encode(sf.read()).decode('utf-8'),
+                    'contentId': cid,
+                    'isInline': True,
+                }
+        except Exception as e:
+            print(f'[views] test email signature_image load failed: {e}', flush=True)
+
+    # Sample variable values for the test email
+    sample_vars = {
+        '{{org_name}}': 'Sample Corp Inc.',
+        '{{contact_name}}': 'John Doe',
+        '{{email}}': 'johndoe@samplecorp.com',
+        '{{phone}}': '+1 (555) 123-4567',
+        '{{touchpoint_number}}': str(tp_num),
+    }
+
+    # Build attachments list once
+    attachments = []
+    if template.attachment:
+        try:
+            att_path = template.attachment.path
+            with open(att_path, 'rb') as f:
+                att_bytes = f.read()
+            raw_name = os.path.basename(att_path)
+            name_part, ext = os.path.splitext(raw_name)
+            att_name = name_part.replace('_', ' ').replace('-', ' ')
+            att_name = ' '.join(att_name.split()) + ext
+            attachments.append({
+                'name': att_name,
+                'contentBytes': base64.b64encode(att_bytes).decode('utf-8'),
+            })
+        except Exception:
+            pass
+    if sig_inline:
+        attachments.append(sig_inline)
+
+    # Substitute variables in subject and body — identical to what clients receive
+    subject = template.subject
+    final_body = body_content
+    for var, val in sample_vars.items():
+        subject = subject.replace(var, val)
+        final_body = final_body.replace(var, val)
+
+    results = []
+    for email_addr in recipients:
+        body_html = final_body if content_type == 'HTML' else None
+        body_text = final_body if content_type == 'Text' else None
+        sent_ok, msg_id = _ses_send_mail(
+            to_address=email_addr,
+            subject=subject,
+            body_html=body_html,
+            body_text=body_text,
+            attachments=attachments if attachments else None,
+        )
+        results.append({'email': email_addr, 'ok': sent_ok, 'status': msg_id})
+        if sent_ok:
+            time.sleep(0.1)
+
+    sent_count = sum(1 for r in results if r['ok'])
+    return JsonResponse({
+        'ok': True,
+        'results': results,
+        'message': f'Test email sent to {sent_count}/{len(recipients)} recipients',
+    })
 
 
 # Touchpoint Progress Tracking
@@ -3705,6 +4566,27 @@ def sync_import_ops_progress_view(request):
     return JsonResponse(import_ops_sync_progress)
 
 
+def accruals(request):
+    """Accruals page — reuses the wip_accrual table, different view/lens."""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM wip_accrual")
+            total_records = cursor.fetchone()[0] or 0
+            cursor.execute("SELECT COUNT(DISTINCT branch) FROM wip_accrual WHERE branch != ''")
+            branch_count = cursor.fetchone()[0] or 0
+            cursor.execute("SELECT COUNT(DISTINCT dept) FROM wip_accrual WHERE dept != ''")
+            dept_count = cursor.fetchone()[0] or 0
+    except Exception:
+        total_records = branch_count = dept_count = 0
+
+    return render(request, 'accruals.html', {
+        'total_records': total_records,
+        'branch_count': branch_count,
+        'dept_count': dept_count,
+    })
+
+
+@login_required
 def wip_accrual(request):
     """WIP & Accrual Report page"""
     try:
@@ -3782,6 +4664,7 @@ def sync_wip_accrual_progress_view(request):
 # --- Software: Planner & Gantt ---
 
 @login_required
+@page_access('planner')
 def planner(request):
     """System planner - Kanban board grouped by project"""
     if request.method == 'POST':
@@ -3792,9 +4675,12 @@ def planner(request):
                 description=request.POST.get('description', '').strip(),
                 status=request.POST.get('status', 'todo'),
                 priority=request.POST.get('priority', 'medium'),
+                company=request.POST.get('company', '').strip(),
                 project_name=request.POST.get('project_name', '').strip(),
                 start_date=request.POST.get('start_date') or None,
                 end_date=request.POST.get('end_date') or None,
+                start_time=request.POST.get('start_time') or None,
+                end_time=request.POST.get('end_time') or None,
             )
         elif action == 'update':
             task_id = request.POST.get('task_id')
@@ -3804,9 +4690,12 @@ def planner(request):
                 task.description = request.POST.get('description', task.description).strip()
                 task.status = request.POST.get('status', task.status)
                 task.priority = request.POST.get('priority', task.priority)
+                task.company = request.POST.get('company', task.company).strip()
                 task.project_name = request.POST.get('project_name', task.project_name).strip()
                 task.start_date = request.POST.get('start_date') or None
                 task.end_date = request.POST.get('end_date') or None
+                task.start_time = request.POST.get('start_time') or None
+                task.end_time = request.POST.get('end_time') or None
                 task.save()
             except ProjectTask.DoesNotExist:
                 pass
@@ -3835,15 +4724,32 @@ def planner(request):
     for status, label in columns:
         board[status] = {'label': label, 'tasks': list(tasks.filter(status=status))}
 
+    tasks_json = [{
+        'id': t.id,
+        'title': t.title,
+        'description': t.description,
+        'status': t.status,
+        'priority': t.priority,
+        'company': t.company,
+        'company_display': t.get_company_display() if t.company else '',
+        'project_name': t.project_name,
+        'start_date': t.start_date.isoformat() if t.start_date else '',
+        'end_date': t.end_date.isoformat() if t.end_date else '',
+        'start_time': t.start_time.strftime('%H:%M') if t.start_time else '',
+        'end_time': t.end_time.strftime('%H:%M') if t.end_time else '',
+    } for t in tasks]
+
     return render(request, 'planner.html', {
         'board': board,
         'columns': columns,
         'projects': sorted(set(p for p in projects if p)),
         'all_tasks': tasks,
+        'tasks_json': tasks_json,
     })
 
 
 @login_required
+@page_access('planner')
 def gantt(request):
     """Gantt chart for all project tasks with dates"""
     tasks = ProjectTask.objects.filter(
@@ -3953,6 +4859,268 @@ def sync_tfs(request):
 def sync_tfs_progress(request):
     """Get TFS sync progress"""
     return JsonResponse(tfs_sync_progress)
+
+
+# ── Up-Down Trader Report ──────────────────────────────────────────────────────
+
+updown_trader_sync_progress = {'status': 'idle', 'message': '', 'current': 0, 'total': 0}
+
+
+def _update_updown_progress(status, message, current=0, total=0):
+    global updown_trader_sync_progress
+    updown_trader_sync_progress = {
+        'status': status,
+        'message': message,
+        'current': current,
+        'total': total,
+    }
+
+
+def _get_updown_trader_last_sync():
+    try:
+        sync_file = os.path.join(os.path.dirname(__file__), '..', 'updown_trader_last_sync.json')
+        with open(sync_file, 'r') as f:
+            data = json.load(f)
+            if 'last_sync' in data:
+                dt = datetime.fromisoformat(data['last_sync'])
+                return {'time': dt.strftime('%H:%M'), 'date': dt.strftime('%B %d, %Y')}
+    except Exception:
+        pass
+    return None
+
+
+@login_required
+def updown_trader(request):
+    """Up-Down Trader Report page"""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM customer_spend")
+            cs_count = cursor.fetchone()[0] or 0
+            cursor.execute("SELECT COUNT(*) FROM customer_spend_operational")
+            cso_count = cursor.fetchone()[0] or 0
+            cursor.execute("SELECT COUNT(DISTINCT debtor) FROM customer_spend")
+            debtor_count = cursor.fetchone()[0] or 0
+    except Exception:
+        cs_count = cso_count = debtor_count = 0
+
+    last_sync = _get_updown_trader_last_sync()
+
+    # Fetch file list from SharePoint
+    sp_files = []
+    try:
+        import requests as req
+        token = _get_graph_token()
+        if token:
+            headers = {'Authorization': f'Bearer {token}'}
+            sr = req.get(f'https://graph.microsoft.com/v1.0/sites/{UPDOWN_SHAREPOINT_SITE}',
+                         headers=headers, timeout=15)
+            sr.raise_for_status()
+            site_id = sr.json()['id']
+            dr = req.get(f'https://graph.microsoft.com/v1.0/sites/{site_id}/drive',
+                         headers=headers, timeout=15)
+            dr.raise_for_status()
+            drive_id = dr.json()['id']
+            fr = req.get(
+                f'https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{UPDOWN_SHAREPOINT_FOLDER}:/children',
+                headers=headers, timeout=15)
+            fr.raise_for_status()
+            for item in fr.json().get('value', []):
+                name = item.get('name', '')
+                if name.lower().endswith(('.xlsx', '.xls')):
+                    sp_files.append({
+                        'name': name,
+                        'size': item.get('size', 0),
+                        'modified': item.get('lastModifiedDateTime', ''),
+                        'web_url': item.get('webUrl', ''),
+                    })
+    except Exception:
+        pass
+
+    # Fetch customer_spend_summary preview data
+    summary_headers = []
+    summary_rows = []
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM customer_spend_summary LIMIT 50")
+            summary_headers = [desc[0] for desc in cursor.description]
+            summary_rows = cursor.fetchall()
+    except Exception:
+        pass
+
+    return render(request, 'updown_trader.html', {
+        'cs_count': cs_count,
+        'cso_count': cso_count,
+        'debtor_count': debtor_count,
+        'last_sync': last_sync,
+        'sp_files': sp_files,
+        'summary_headers': summary_headers,
+        'summary_rows': summary_rows,
+    })
+
+
+UPDOWN_SHAREPOINT_SITE = 'magnumopusconsultantspty352.sharepoint.com:/sites/DataPrime'
+UPDOWN_SHAREPOINT_FOLDER = 'Clients/ISCM/Up Down Trader Report/Shipment Data'
+
+
+@login_required
+def sync_updown_trader(request):
+    """Sync Up-Down Trader data from SharePoint folder"""
+    if request.method != 'POST':
+        return JsonResponse({'status': 'error', 'message': 'Invalid request method'})
+
+    _update_updown_progress('starting', 'Starting SharePoint sync...', 0, 100)
+
+    def run_sync():
+        import tempfile, requests as req, base64
+
+        temp_files = []
+        try:
+            from data.up_down_trader.load_data import (
+                ensure_tables, upsert_customer_spend, upsert_customer_spend_operational,
+                _extract_year, dedupe_operational, trim_to_source_year, rebuild_summary_view
+            )
+
+            # Get Graph API token
+            _update_updown_progress('syncing', 'Connecting to SharePoint...', 5, 100)
+            token = _get_graph_token()
+            if not token:
+                _update_updown_progress('error', 'Graph API token unavailable', 0, 100)
+                return
+            headers = {'Authorization': f'Bearer {token}'}
+
+            # Get site and drive
+            sr = req.get(f'https://graph.microsoft.com/v1.0/sites/{UPDOWN_SHAREPOINT_SITE}',
+                         headers=headers, timeout=30)
+            sr.raise_for_status()
+            site_id = sr.json()['id']
+
+            dr = req.get(f'https://graph.microsoft.com/v1.0/sites/{site_id}/drive',
+                         headers=headers, timeout=30)
+            dr.raise_for_status()
+            drive_id = dr.json()['id']
+
+            # List files in folder
+            _update_updown_progress('syncing', 'Listing SharePoint files...', 10, 100)
+            fr = req.get(
+                f'https://graph.microsoft.com/v1.0/drives/{drive_id}/root:/{UPDOWN_SHAREPOINT_FOLDER}:/children',
+                headers=headers, timeout=30)
+            fr.raise_for_status()
+            items = [i for i in fr.json().get('value', [])
+                     if i.get('name', '').lower().endswith(('.xlsx', '.xls'))]
+
+            if not items:
+                _update_updown_progress('complete', 'No Excel files found in SharePoint folder', 100, 100)
+                return
+
+            ensure_tables()
+            total_records = 0
+            cs_count = 0
+            op_count = 0
+            operational_truncated = False
+
+            for idx, item in enumerate(items):
+                fname = item['name']
+                # Only load 2024 onward (2024, 2025, 2026 and future years); skip older files.
+                fyear = _extract_year(fname)
+                if fyear and fyear < 2024:
+                    continue
+                pct = 15 + int(70 * idx / len(items))
+                _update_updown_progress('syncing', f'Downloading {fname}...', pct, 100)
+
+                # Download file content
+                dl = req.get(
+                    f'https://graph.microsoft.com/v1.0/drives/{drive_id}/items/{item["id"]}/content',
+                    headers=headers, timeout=120)
+                dl.raise_for_status()
+
+                # Save to temp file
+                tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.xlsx')
+                tmp.write(dl.content)
+                tmp.close()
+                temp_files.append(tmp.name)
+
+                # Detect file type and process
+                import openpyxl
+                wb = openpyxl.load_workbook(tmp.name, read_only=True, data_only=True)
+                sheets = wb.sheetnames
+                wb.close()
+
+                has_financial = 'Financial Data ' in sheets or 'Financial Data' in sheets
+                has_operational = 'Operational Data' in sheets or 'Shipment Profile' in sheets
+
+                # Financial Data is no longer used. The report sources job income
+                # and revenue from the shipment profile (operational) data only.
+                if has_financial:
+                    _update_updown_progress('syncing', f'Skipping {fname} — financial data no longer used', pct + 5, 100)
+
+                if has_operational:
+                    if not operational_truncated:
+                        # Truncate once before first operational insert
+                        with connection.cursor() as cur:
+                            cur.execute("TRUNCATE customer_spend_operational RESTART IDENTITY")
+                        operational_truncated = True
+                    _update_updown_progress('syncing', f'Processing Operational data from {fname}...', pct + 10, 100)
+                    count = upsert_customer_spend_operational(
+                        tmp.name,
+                        progress_callback=lambda msg, cur, tot: _update_updown_progress('syncing', msg, cur, tot),
+                        truncate=False
+                    )
+                    op_count += count
+                    # Tag the rows just inserted with the year of this file, so a
+                    # year's column comes only from that year's file.
+                    y = _extract_year(fname)
+                    if y:
+                        with connection.cursor() as cur:
+                            cur.execute("UPDATE customer_spend_operational SET source_year=%s WHERE source_year IS NULL", [y])
+
+            total_records = cs_count + op_count
+
+            # Shipment files overlap, so the same shipment can be appended from
+            # multiple files — remove duplicate rows before building the report
+            # view (otherwise every summed value is doubled).
+            _update_updown_progress('syncing', 'Removing duplicate rows...', 90, 100)
+            dedupe_operational()
+
+            # Keep only rows whose recognition year matches their source file year,
+            # so e.g. the 2025 file's 2024-recognised rows don't bleed into 2024.
+            _update_updown_progress('syncing', 'Trimming to source-file year...', 91, 100)
+            trim_to_source_year()
+
+            # Rebuild the summary view with all discovered years
+            _update_updown_progress('syncing', 'Rebuilding summary view...', 92, 100)
+            rebuild_summary_view()
+
+            # Save last sync timestamp
+            sync_file = os.path.join(os.path.dirname(__file__), '..', 'updown_trader_last_sync.json')
+            with open(sync_file, 'w') as f:
+                json.dump({
+                    'last_sync': datetime.now(ZoneInfo('Africa/Johannesburg')).isoformat(),
+                    'records': total_records
+                }, f)
+
+            msg = f'Synced {len(items)} files: {cs_count} spend + {op_count} operational records'
+            _update_updown_progress('complete', msg, 100, 100)
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            _update_updown_progress('error', f'Error: {str(e)}', 0, 100)
+        finally:
+            for path in temp_files:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+
+    import threading
+    threading.Thread(target=run_sync, daemon=True).start()
+    return JsonResponse({'status': 'started'})
+
+
+@login_required
+def sync_updown_trader_progress(request):
+    """Get Up-Down Trader sync progress"""
+    return JsonResponse(updown_trader_sync_progress)
 
 
 @login_required
