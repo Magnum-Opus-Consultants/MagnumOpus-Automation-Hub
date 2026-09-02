@@ -47,7 +47,9 @@ from django.conf import settings as django_settings
 from django.utils import timezone as django_timezone
 from django.core import signing
 from .models import TurnoverData, ProjectTask, UserProfile, USEUContact, TouchpointTemplate
-from django.contrib.auth.models import User
+from .models import DocCompany, DocSystem, DocDocument, DocFolder, ServerRecord
+from .models import Domain, Repository
+from django.contrib.auth.models import User, Group
 from .google_drive import sync_google_drive_data, get_progress, update_progress, get_last_sync
 from . import onedrive_sync
 import threading
@@ -87,6 +89,377 @@ def login_view(request):
 def logout_view(request):
     logout(request)
     return redirect('login')
+
+
+# ── JSON auth API (for the Sentinel Next.js frontend) ───────────────────────────
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_login(request):
+    """JSON login. Authenticates and sets the Django session cookie."""
+    try:
+        data = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid request body.'}, status=400)
+    username = (data.get('username') or '').strip()
+    password = data.get('password') or ''
+    if not username or not password:
+        return JsonResponse({'detail': 'Username and password are required.'}, status=400)
+    user = authenticate(request, username=username, password=password)
+    if user is None:
+        return JsonResponse({'detail': 'Invalid username or password.'}, status=401)
+    login(request, user)
+    return JsonResponse({
+        'ok': True,
+        'user': {
+            'username': user.username,
+            'is_staff': user.is_staff,
+            'is_superuser': user.is_superuser,
+        },
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_logout(request):
+    logout(request)
+    return JsonResponse({'ok': True})
+
+
+def api_me(request):
+    """Return the current session user, or 401 if not signed in."""
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Not authenticated.'}, status=401)
+    u = request.user
+    return JsonResponse({
+        'id': u.id,
+        'username': u.username,
+        'full_name': u.get_full_name() or u.username,
+        'is_staff': u.is_staff,
+        'is_superuser': u.is_superuser,
+        'is_admin': u.is_superuser,
+        'modules': _user_modules(u),
+    })
+
+
+# ── User management + module access (for the Sentinel frontend) ─────────────────
+# Module access is stored via Django Groups named "mod_<key>" so no schema
+# migration is needed. Superusers implicitly have every module.
+SENTINEL_MODULES = [
+    {'key': 'data', 'label': 'Data Analysis', 'desc': 'Automated reports, station syncs and sync logs.'},
+    {'key': 'servers', 'label': 'Servers', 'desc': 'Server inventory, live monitoring, access and credentials.'},
+    {'key': 'documentation', 'label': 'Documentation', 'desc': 'Company systems, folders and documents.'},
+    {'key': 'domains', 'label': 'Domains', 'desc': 'Domain registrations, DNS, SSL and renewal dates.'},
+    {'key': 'repos', 'label': 'Repositories', 'desc': 'Code repositories and their recent commit history.'},
+]
+_MODULE_KEYS = [m['key'] for m in SENTINEL_MODULES]
+
+
+def _user_modules(user):
+    """Return the list of module keys this user can access."""
+    if user.is_superuser:
+        return list(_MODULE_KEYS)
+    names = set(user.groups.values_list('name', flat=True))
+    return [k for k in _MODULE_KEYS if f'mod_{k}' in names]
+
+
+def _set_user_modules(user, keys):
+    """Replace the user's module groups with the given keys."""
+    wanted = {k for k in (keys or []) if k in _MODULE_KEYS}
+    # Drop every module group, then add back the wanted ones.
+    for g in list(user.groups.filter(name__startswith='mod_')):
+        user.groups.remove(g)
+    for k in wanted:
+        g, _ = Group.objects.get_or_create(name=f'mod_{k}')
+        user.groups.add(g)
+
+
+def _set_full_name(user, full_name):
+    parts = (full_name or '').strip().split(' ', 1)
+    user.first_name = parts[0] if parts and parts[0] else ''
+    user.last_name = parts[1] if len(parts) > 1 else ''
+
+
+def _user_dict(user):
+    return {
+        'id': user.id,
+        'username': user.username,
+        'full_name': user.get_full_name() or user.username,
+        'email': user.email or '',
+        'is_admin': user.is_superuser,
+        'is_active': user.is_active,
+        'modules': _user_modules(user),
+        'last_login': user.last_login.isoformat() if user.last_login else None,
+        'date_joined': user.date_joined.isoformat() if user.date_joined else None,
+    }
+
+
+def _require_admin(request):
+    """Return an error JsonResponse if the caller isn't an authenticated admin, else None."""
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Not authenticated.'}, status=401)
+    if not request.user.is_superuser:
+        return JsonResponse({'detail': 'Administrator access required.'}, status=403)
+    return None
+
+
+def _require_module(request, key):
+    """Return an error JsonResponse if the caller can't access the module, else None."""
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Not authenticated.'}, status=401)
+    if request.user.is_superuser or f'mod_{key}' in set(request.user.groups.values_list('name', flat=True)):
+        return None
+    return JsonResponse({'detail': 'You do not have access to this module.'}, status=403)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def api_users(request):
+    """List all users with their module access (admin only)."""
+    err = _require_admin(request)
+    if err:
+        return err
+    users = User.objects.order_by('-is_superuser', 'username')
+    return JsonResponse({
+        'users': [_user_dict(u) for u in users],
+        'modules': SENTINEL_MODULES,
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_user_create(request):
+    """Create a user and allocate modules (admin only)."""
+    err = _require_admin(request)
+    if err:
+        return err
+    try:
+        data = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid request body.'}, status=400)
+    username = (data.get('username') or '').strip()
+    password = data.get('password') or ''
+    if not username or not password:
+        return JsonResponse({'detail': 'Username and password are required.'}, status=400)
+    if User.objects.filter(username__iexact=username).exists():
+        return JsonResponse({'detail': 'A user with that username already exists.'}, status=400)
+    user = User.objects.create_user(username=username, password=password, email=(data.get('email') or '').strip())
+    _set_full_name(user, data.get('full_name'))
+    is_admin = bool(data.get('is_admin'))
+    user.is_superuser = is_admin
+    user.is_staff = is_admin
+    user.is_active = bool(data.get('is_active', True))
+    user.save()
+    _set_user_modules(user, data.get('modules'))
+    return JsonResponse({'ok': True, 'user': _user_dict(user)})
+
+
+@csrf_exempt
+@require_http_methods(["POST", "PATCH"])
+def api_user_update(request, pk):
+    """Update a user's details, module access, or password (admin only)."""
+    err = _require_admin(request)
+    if err:
+        return err
+    try:
+        user = User.objects.get(pk=pk)
+    except User.DoesNotExist:
+        return JsonResponse({'detail': 'User not found.'}, status=404)
+    try:
+        data = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({'detail': 'Invalid request body.'}, status=400)
+
+    if 'full_name' in data:
+        _set_full_name(user, data.get('full_name'))
+    if 'email' in data:
+        user.email = (data.get('email') or '').strip()
+    if 'username' in data:
+        new_username = (data.get('username') or '').strip()
+        if new_username and new_username != user.username:
+            if User.objects.filter(username__iexact=new_username).exclude(pk=user.pk).exists():
+                return JsonResponse({'detail': 'A user with that username already exists.'}, status=400)
+            user.username = new_username
+    if 'is_admin' in data:
+        # Don't let the last admin demote themselves out of admin.
+        making_non_admin = not bool(data.get('is_admin'))
+        if making_non_admin and user.is_superuser and User.objects.filter(is_superuser=True, is_active=True).count() <= 1:
+            return JsonResponse({'detail': 'Cannot remove the last administrator.'}, status=400)
+        is_admin = bool(data.get('is_admin'))
+        user.is_superuser = is_admin
+        user.is_staff = is_admin
+    if 'is_active' in data:
+        if not bool(data.get('is_active')) and user.pk == request.user.pk:
+            return JsonResponse({'detail': 'You cannot deactivate your own account.'}, status=400)
+        user.is_active = bool(data.get('is_active'))
+    if data.get('password'):
+        user.set_password(data['password'])
+    user.save()
+    if 'modules' in data:
+        _set_user_modules(user, data.get('modules'))
+    return JsonResponse({'ok': True, 'user': _user_dict(user)})
+
+
+@csrf_exempt
+@require_http_methods(["POST", "DELETE"])
+def api_user_delete(request, pk):
+    """Delete a user (admin only)."""
+    err = _require_admin(request)
+    if err:
+        return err
+    if request.user.pk == pk:
+        return JsonResponse({'detail': 'You cannot delete your own account.'}, status=400)
+    try:
+        user = User.objects.get(pk=pk)
+    except User.DoesNotExist:
+        return JsonResponse({'detail': 'User not found.'}, status=404)
+    if user.is_superuser and User.objects.filter(is_superuser=True, is_active=True).count() <= 1:
+        return JsonResponse({'detail': 'Cannot delete the last administrator.'}, status=400)
+    user.delete()
+    return JsonResponse({'ok': True})
+
+
+def api_dashboard_summary(request):
+    """JSON dashboard summary for the Sentinel frontend (mirrors the home view)."""
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Not authenticated.'}, status=401)
+
+    all_tables = {
+        'turnover_data': 'Turnover', 'ppg_pnl': 'PPG', 'dor_pnl': 'DOR',
+        'con_pnl': 'CON', 'atl_pnl': 'ATL', 'ccc_pnl': 'CCC',
+        'ccd_pnl': 'CCD', 'fax_pnl': 'FAX', 'hnl_pnl': 'HNL',
+        'hou_pnl': 'HOU', 'ics_pnl': 'ICS', 'imp_pnl': 'IMP',
+        'jfk_pnl': 'JFK', 'lax_pnl': 'LAX', 'lcl_pnl': 'LCL',
+        'ord_pnl': 'ORD', 'dfw_pnl': 'DFW', 'condor_dor_pnl': 'Condor+DOR',
+        'import_ops': 'Import Ops', 'wip_accrual': 'WIP & Accrual',
+        'creditor_transactions': 'Creditor',
+    }
+    total_records = 0
+    station_count = 0
+    top_stations = []
+    for table, label in all_tables.items():
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(f"SELECT COUNT(*) FROM {table}")
+                count = cursor.fetchone()[0]
+                total_records += count
+                station_count += 1
+                top_stations.append({'label': label, 'count': count})
+        except Exception:
+            pass
+    top_stations.sort(key=lambda x: -x['count'])
+    top_stations = top_stations[:6]
+
+    task_total = ProjectTask.objects.count()
+    task_done = ProjectTask.objects.filter(status='done').count()
+    task_in_progress = ProjectTask.objects.filter(status='in_progress').count()
+    task_todo = ProjectTask.objects.filter(status='todo').count()
+
+    health_data = {}
+    try:
+        health_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'sync_health.json')
+        with open(health_path) as f:
+            health_data = json.load(f)
+    except Exception:
+        pass
+    synced_count = sum(1 for v in health_data.values() if v.get('status') == 'success')
+
+    return JsonResponse({
+        'total_records': total_records,
+        'station_count': station_count,
+        'top_stations': top_stations,
+        'task_total': task_total,
+        'task_done': task_done,
+        'task_in_progress': task_in_progress,
+        'task_todo': task_todo,
+        'synced_count': synced_count,
+        'health_total': len(health_data),
+    })
+
+
+def api_data_analysis_stations(request):
+    """JSON list of every station automation (name, description, records, sync status)."""
+    err = _require_module(request, 'data')
+    if err:
+        return err
+
+    special = {
+        'turnover': ('Turnover', 'Turnover data synced from OneDrive to PostgreSQL for Power BI.'),
+        'creditor': ('Creditor Report', 'Creditor payables by group and branch for Power BI.'),
+        'condor_dor': ('Condor+DOR PNL', 'Condor & DOR P&L across CON, FEA, TRX, BRK departments.'),
+        'bravo_tran': ('TFS Weekly Data', 'Weekly revenue, fleet utilization & YoY performance for Power BI.'),
+        'wip_accrual': ('WIP & Accrual Report', 'WIP and Accrual data synced from OneDrive for Power BI.'),
+        'import_ops': ('Import Operations', 'Import Operational Report data synced from OneDrive for Power BI.'),
+    }
+
+    stations, healthy, stale, error = _get_station_statuses()
+    out = []
+    for s in stations:
+        code_lower = s.get('code_lower', '')
+        if code_lower in special:
+            name, desc = special[code_lower]
+        else:
+            name = f"{s['code']} Financial Analysis"
+            desc = f"{s['code']} Budget vs Actual P&L for Power BI."
+        out.append({
+            'key': code_lower,
+            'code': s['code'],
+            'name': name,
+            'description': desc,
+            'records': s.get('records'),
+            'last_sync': s.get('last_sync'),
+            'time_ago': s.get('time_ago'),
+            'status': s.get('status'),
+        })
+
+    return JsonResponse({
+        'stations': out,
+        'healthy': healthy,
+        'stale': stale,
+        'error': error,
+        'total': len(out),
+    })
+
+
+# Maps a station key to the existing per-station sync view (report sending excluded).
+STATION_SYNC_VIEWS = {
+    'turnover': 'sync_data', 'ppg': 'sync_ppg', 'dor': 'sync_dor', 'con': 'sync_con',
+    'atl': 'sync_atl', 'hnl': 'sync_hnl', 'ccc': 'sync_ccc', 'ccd': 'sync_ccd',
+    'fax': 'sync_fax', 'hou': 'sync_hou', 'ics': 'sync_ics', 'imp': 'sync_imp',
+    'jfk': 'sync_jfk', 'lax': 'sync_lax', 'lcl': 'sync_lcl', 'ord': 'sync_ord',
+    'dfw': 'sync_dfw', 'condor_dor': 'sync_condor_dor', 'bravo_tran': 'sync_tfs',
+    'import_ops': 'sync_import_ops', 'wip_accrual': 'sync_wip_accrual',
+}
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_station_sync(request):
+    """Trigger a station's existing sync job (reuses the per-station sync views)."""
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Not authenticated.'}, status=401)
+    try:
+        data = json.loads(request.body or b'{}')
+    except json.JSONDecodeError:
+        data = {}
+    station = (data.get('station') or '').strip().lower()
+
+    fn_name = STATION_SYNC_VIEWS.get(station)
+    if not fn_name:
+        return JsonResponse({'ok': False, 'detail': 'This station syncs automatically — no manual trigger.'}, status=200)
+
+    fn = globals().get(fn_name)
+    if not callable(fn):
+        return JsonResponse({'ok': False, 'detail': 'Sync unavailable.'}, status=500)
+
+    # The per-station views require POST and return a JSON status. Calling directly
+    # reuses their exact logic (starts a background thread, or reports "not connected").
+    try:
+        return fn(request)
+    except Exception as e:
+        msg = str(e)
+        if 'Extra data' in msg or 'JSON' in msg.upper() or 'token' in msg.lower():
+            msg = 'OneDrive not connected in this environment'
+        return JsonResponse({'ok': False, 'detail': msg}, status=200)
 
 
 @login_required
@@ -1942,8 +2315,19 @@ def _get_station_statuses():
             except Exception:
                 records = None
 
-        # Determine overall status — email sync success overrides stale health errors
-        if health_status == 'error' and email_info is None:
+        # A recorded error only counts while it is still the latest thing that
+        # happened. sync_health entries are never cleared, so without this an
+        # error from months ago pins a station to "error" forever — even after a
+        # sync has since succeeded and loaded new rows.
+        health_error_is_current = health_status == 'error' and not (
+            last_sync_dt is not None
+            and health_last_check_dt is not None
+            and health_last_check_dt < last_sync_dt
+        )
+
+        # Determine overall status — a later successful sync overrides a stale
+        # health error, as does any email sync result.
+        if health_error_is_current and email_info is None:
             status = 'error'
             error_count += 1
         elif last_sync_dt is None:
@@ -1957,7 +2341,7 @@ def _get_station_statuses():
             healthy_count += 1
 
         # Build a meaningful message from available data
-        if health_status == 'error' and email_info is None:
+        if health_error_is_current and email_info is None:
             message = health.get('message', 'Sync error')
         elif email_info and email_info.get('rows'):
             message = f'{email_info["rows"]:,} rows from email'
@@ -5218,3 +5602,616 @@ def automation_stop_all_emails(request):
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     return JsonResponse({'ok': True, 'stopped': stopped})
+
+
+# ── Documentation API: Company → System → Documents ─────────────────────────────
+def _doc_auth(request):
+    return request.user.is_authenticated
+
+
+def _company_dict(c):
+    return {
+        'id': c.id,
+        'name': c.name,
+        'logo': c.logo,
+        'brand_color': c.brand_color,
+        'industry': c.industry,
+        'website': c.website,
+        'contact_name': c.contact_name,
+        'contact_email': c.contact_email,
+        'contact_phone': c.contact_phone,
+        'description': c.description,
+        'systems': c.systems.count(),
+        'documents': DocDocument.objects.filter(system__company=c).count(),
+    }
+
+
+@csrf_exempt
+def api_doc_companies(request):
+    err = _require_module(request, 'documentation')
+    if err:
+        return err
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body or b'{}')
+        except json.JSONDecodeError:
+            data = {}
+        name = (data.get('name') or '').strip()
+        if not name:
+            return JsonResponse({'detail': 'Company name required.'}, status=400)
+        obj, created = DocCompany.objects.get_or_create(name=name)
+        return JsonResponse(_company_dict(obj), status=201 if created else 200)
+    return JsonResponse({'companies': [_company_dict(c) for c in DocCompany.objects.all()]})
+
+
+@csrf_exempt
+@require_http_methods(["GET", "PATCH", "POST", "DELETE"])
+def api_doc_company_detail(request, pk):
+    err = _require_module(request, 'documentation')
+    if err:
+        return err
+    c = DocCompany.objects.filter(id=pk).first()
+    if not c:
+        return JsonResponse({'detail': 'Company not found.'}, status=404)
+    if request.method == 'DELETE':
+        c.delete()
+        return JsonResponse({'ok': True})
+    if request.method in ('PATCH', 'POST'):
+        try:
+            data = json.loads(request.body or b'{}')
+        except json.JSONDecodeError:
+            data = {}
+        if 'name' in data:
+            new_name = (data.get('name') or '').strip()
+            if not new_name:
+                return JsonResponse({'detail': 'Company name required.'}, status=400)
+            if DocCompany.objects.filter(name=new_name).exclude(id=c.id).exists():
+                return JsonResponse({'detail': 'Another company already uses that name.'}, status=400)
+            c.name = new_name
+        for f in ['brand_color', 'industry', 'website', 'contact_name', 'contact_email', 'contact_phone', 'description']:
+            if f in data:
+                setattr(c, f, (data.get(f) or '').strip())
+        if 'logo' in data:
+            c.logo = data.get('logo') or ''   # base64 data URL — don't strip
+        c.save()
+        return JsonResponse({'ok': True, 'company': _company_dict(c)})
+    return JsonResponse(_company_dict(c))
+
+
+@csrf_exempt
+def api_doc_systems(request):
+    if not _doc_auth(request):
+        return JsonResponse({'detail': 'Not authenticated.'}, status=401)
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body or b'{}')
+        except json.JSONDecodeError:
+            data = {}
+        company = DocCompany.objects.filter(id=data.get('company')).first()
+        name = (data.get('name') or '').strip()
+        if not company or not name:
+            return JsonResponse({'detail': 'Company and system name required.'}, status=400)
+        obj, created = DocSystem.objects.get_or_create(
+            company=company, name=name,
+            defaults={'description': (data.get('description') or '').strip()},
+        )
+        return JsonResponse({'id': obj.id, 'name': obj.name}, status=201 if created else 200)
+    company_id = request.GET.get('company')
+    qs = DocSystem.objects.filter(company_id=company_id) if company_id else DocSystem.objects.all()
+    out = [{
+        'id': s.id, 'name': s.name, 'description': s.description,
+        'company': s.company_id, 'documents': s.documents.count(),
+    } for s in qs]
+    return JsonResponse({'systems': out})
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def api_doc_system_detail(request, pk):
+    if not _doc_auth(request):
+        return JsonResponse({'detail': 'Not authenticated.'}, status=401)
+    DocSystem.objects.filter(id=pk).delete()
+    return JsonResponse({'ok': True})
+
+
+@csrf_exempt
+def api_doc_documents(request):
+    if not _doc_auth(request):
+        return JsonResponse({'detail': 'Not authenticated.'}, status=401)
+    if request.method == 'POST':
+        system = DocSystem.objects.filter(id=request.POST.get('system')).first()
+        f = request.FILES.get('file')
+        if not system or not f:
+            return JsonResponse({'detail': 'System and file are required.'}, status=400)
+        folder_id = request.POST.get('folder')
+        folder = DocFolder.objects.filter(id=folder_id, system=system).first() if folder_id else None
+        doc = DocDocument.objects.create(
+            system=system, folder=folder, name=f.name, file=f, size=f.size,
+            content_type=getattr(f, 'content_type', '') or '',
+            uploaded_by=request.user.username,
+        )
+        return JsonResponse({'id': doc.id, 'name': doc.name, 'size': doc.size}, status=201)
+    return JsonResponse({'detail': 'Use /api/docs/contents to list.'}, status=400)
+
+
+def _doc_json(d):
+    return {
+        'id': d.id, 'name': d.name, 'size': d.size, 'content_type': d.content_type,
+        'uploaded_by': d.uploaded_by,
+        'uploaded_at': d.uploaded_at.strftime('%b %d, %Y %H:%M'),
+    }
+
+
+def api_doc_contents(request):
+    """Folder-tree contents for a system at a given folder (blank = root)."""
+    if not _doc_auth(request):
+        return JsonResponse({'detail': 'Not authenticated.'}, status=401)
+    system = DocSystem.objects.filter(id=request.GET.get('system')).first()
+    if not system:
+        return JsonResponse({'detail': 'System not found.'}, status=404)
+    folder_id = request.GET.get('folder') or None
+    current = DocFolder.objects.filter(id=folder_id, system=system).first() if folder_id else None
+
+    # breadcrumb path from root → current
+    path = []
+    node = current
+    while node is not None:
+        path.insert(0, {'id': node.id, 'name': node.name})
+        node = node.parent
+
+    subfolders = DocFolder.objects.filter(system=system, parent=current)
+    folders = [{
+        'id': fo.id, 'name': fo.name,
+        'folders': fo.children.count(), 'files': fo.files.count(),
+    } for fo in subfolders]
+    documents = [_doc_json(d) for d in DocDocument.objects.filter(system=system, folder=current)]
+
+    return JsonResponse({
+        'system': {'id': system.id, 'name': system.name},
+        'folder': {'id': current.id, 'name': current.name} if current else None,
+        'path': path,
+        'folders': folders,
+        'documents': documents,
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_doc_folders(request):
+    if not _doc_auth(request):
+        return JsonResponse({'detail': 'Not authenticated.'}, status=401)
+    try:
+        data = json.loads(request.body or b'{}')
+    except json.JSONDecodeError:
+        data = {}
+    system = DocSystem.objects.filter(id=data.get('system')).first()
+    name = (data.get('name') or '').strip()
+    if not system or not name:
+        return JsonResponse({'detail': 'System and folder name required.'}, status=400)
+    parent = DocFolder.objects.filter(id=data.get('parent'), system=system).first() if data.get('parent') else None
+    obj = DocFolder.objects.create(system=system, parent=parent, name=name)
+    return JsonResponse({'id': obj.id, 'name': obj.name}, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def api_doc_folder_detail(request, pk):
+    if not _doc_auth(request):
+        return JsonResponse({'detail': 'Not authenticated.'}, status=401)
+    DocFolder.objects.filter(id=pk).delete()
+    return JsonResponse({'ok': True})
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def api_doc_document_detail(request, pk):
+    if not _doc_auth(request):
+        return JsonResponse({'detail': 'Not authenticated.'}, status=401)
+    doc = DocDocument.objects.filter(id=pk).first()
+    if doc:
+        try:
+            doc.file.delete(save=False)
+        except Exception:
+            pass
+        doc.delete()
+    return JsonResponse({'ok': True})
+
+
+def api_doc_download(request, pk):
+    if not _doc_auth(request):
+        return JsonResponse({'detail': 'Not authenticated.'}, status=401)
+    doc = DocDocument.objects.filter(id=pk).first()
+    if not doc:
+        return JsonResponse({'detail': 'Not found.'}, status=404)
+    from django.http import FileResponse
+    return FileResponse(doc.file.open('rb'), as_attachment=True, filename=doc.name)
+
+
+# ── Servers: live status of the infrastructure (inventory from the Obsidian vault) ──
+SERVER_INVENTORY = [
+    {
+        "name": "Magnum Opus Consultants Old Server", "company": "Magnum Opus Consultants", "ip": "206.189.204.60", "host": "workspace.moc-pty.com", "port": 443,
+        "group": "DigitalOcean Cloud", "role": "Original MOC host — Automation Platform, RMAA, LANCorp, MOC Emailing",
+        "hostname": "moc-prime", "os": "Ubuntu 24.04.3 LTS", "provider": "DigitalOcean droplet", "netbird_url": None,
+        "cpu": "1 vCPU", "ram": "0.96 GB (~287 MB free)", "disk": "24 GB (58% used, 9.9 GB free)",
+        "runtimes": ["Python 3.12.3", "Node 20.20.2", "nginx 1.24.0", "PostgreSQL 16.14", "MySQL"],
+        "services": ["lancorp-backend", "moc-backend + moc-frontend", "rmaa-backend", "mysql", "postgresql@16-main", "nginx", "Automation Platform gunicorn (:8002)"],
+        "databases": ["PostgreSQL automation_platform 302 MB", "MySQL"],
+        "domains": ["automation.moc-pty.com", "workspace.moc-pty.com", "landcorp.moc-pty.com", "pulseboard.moc-pty.com", "rmaa.moc-pty.com", "magnumopusmail.moc-pty.com", "fuelrefundinstitute.com"],
+        "access": "root via id_ed25519_mocprime", "netbird_ip": None, "lan_ip": None,
+        "notes": ["PostgreSQL 5432 is internet-facing — firewall priority.", "Low RAM (~1 GB) with MySQL + Postgres + app backends.", "Original MOC host; workloads also on the Magnum Opus Consultants Applications Server — DNS cut-over pending.", "No application DB backup timer — databases unprotected."],
+    },
+    {
+        "name": "Food Safety Agency Production Server", "company": "Food Safety Agency", "ip": "64.227.19.8", "host": "inspector-app.fsa-pty.co.za", "port": 443,
+        "group": "DigitalOcean Cloud", "role": "FSA production — APS, EPVS, Debtor, Mobile",
+        "hostname": "ubuntu-s-2vcpu-2gb-nyc1", "os": "Ubuntu 24.04.4 LTS", "provider": "DigitalOcean droplet", "netbird_url": None,
+        "cpu": "2 vCPU", "ram": "1.9 GB", "disk": "58 GB (32% used, 40 GB free)",
+        "runtimes": ["Python 3.12.3", "Node 20.20.2", "nginx 1.24.0", "PostgreSQL 16.14", "certbot"],
+        "services": ["aps-gunicorn (:8001)", "aps-frontend (:3000)", "epvs-django (:8004)", "epvs-node (:5000)", "dms-gunicorn (:8003)", "fsa-mobile-django (:8005)", "nginx", "postgresql@16-main"],
+        "databases": ["fsa_inspection 52 MB (APS)", "FSA_Debtors 28 MB (Debtor)", "fsa_mobile 16 MB (Mobile)", "epvs 11 MB (EPVS)"],
+        "domains": ["agricultural-production.fsa-pty.co.za", "egg-production-verification.fsa-pty.co.za", "debtor-management.fsa-pty.co.za", "inspector-app.fsa-pty.co.za", "v4-project.moc-pty.com", "fsa-debitor-system.moc-pty.com"],
+        "access": "root via id_ed25519_digitalocean", "netbird_ip": "100.108.208.173", "lan_ip": None,
+        "notes": ["Daily DB + media backup timers (02:00 / 03:00).", "APS send_weekly_report cron every 20 min."],
+    },
+    {
+        "name": "Magnum Opus Consultants Applications Server", "company": "Magnum Opus Consultants", "ip": "134.209.20.61", "host": "rmaa.moc-pty.com", "port": 443,
+        "group": "DigitalOcean Cloud", "role": "New MOC server — RMAA, PulseBoard, MOC Emailing, Fuel Refund",
+        "hostname": "Server-one", "os": "Ubuntu 24.04.4 LTS", "provider": "DigitalOcean droplet", "netbird_url": None,
+        "cpu": "1 vCPU", "ram": "1.9 GB", "disk": "48 GB (15% used, 41 GB free)",
+        "runtimes": ["Python 3.12.3", "Node 20.20.2", "nginx 1.24.0", "PostgreSQL 16.14", "MySQL (3306/33060)"],
+        "services": ["rmaa-backend", "pulseboard", "moc-backend + moc-frontend", "fuelrefund", "mysql", "postgresql@16-main", "nginx"],
+        "databases": ["PostgreSQL automation_platform 238 MB (migrated copy)", "MySQL"],
+        "domains": ["rmaa.moc-pty.com", "pulseboard.moc-pty.com", "magnumopusmail.moc-pty.com", "fuelrefundinstitute.com"],
+        "access": "root via id_ed25519 (ssh server-one)", "netbird_ip": "100.108.21.132", "lan_ip": None,
+        "notes": ["Migration target for RMAA, PulseBoard, MOC Emailing, Fuel Refund.", "Some DNS still points at the Magnum Opus Consultants Old Server pending cut-over.", "Daily moc-db-backup timer."],
+    },
+    {
+        "name": "Headquarters Hypervisor", "company": "Shared", "ip": "10.0.0.21", "host": "10.0.0.21", "port": 8006,
+        "group": "Headquarters Office Servers", "role": "Proxmox VE hypervisor — office LAN, runs 5 VMs",
+        "hostname": "proxmox", "os": "Proxmox VE 9.1.5 (kernel 6.17.9)", "provider": "Office LAN (owned hardware)",
+        "netbird_url": "https://100.108.29.54:8006",
+        "cpu": "40 × Xeon E5-2680 v2 @ 2.80 GHz", "ram": "135 GB (73 GB used)", "disk": "101 GB root (9.4 GB used)",
+        "runtimes": ["Proxmox VE 9.1.5"],
+        "services": ["local-lvm (lvmthin 32/367 GB)", "local (dir 9/101 GB)", "RiadZ2_pool (ZFS 10.4/22.6 TB)"],
+        "databases": [], "domains": [], "access": "Web/API root@pam at https://10.0.0.21:8006 (NetBird: 100.108.29.54)", "netbird_ip": "100.108.29.54", "lan_ip": "10.0.0.21",
+        "notes": ["Hosts VMs 101–105.", "No firewall enabled at datacenter, node, or VM level — Firewall Plan pending."],
+    },
+    {
+        "name": "Food Safety Agency Nextcloud Storage", "company": "Food Safety Agency", "ip": "100.108.208.36", "host": "fsacloud.netbird.cloud", "port": 443,
+        "group": "Headquarters Office Servers", "role": "FSA Nextcloud — primary backup target",
+        "hostname": "fsacloud", "os": "Ubuntu 24.04.4 LTS", "provider": "Proxmox VM 101 (10.0.0.21)",
+        "netbird_url": "https://fsacloud.netbird.cloud",
+        "cpu": "10 cores", "ram": "32 GB", "disk": "29 GB root (44% used) + 3.6 TB data (26% used)",
+        "runtimes": ["Docker Compose", "Nextcloud 30.0.17"],
+        "services": ["nextcloud-app-1 (nextcloud:30-apache)", "nginx-proxy-manager-app-1", "nextcloud-db-1 (postgres:16)", "nextcloud-redis-1 (redis:7)"],
+        "databases": ["Nextcloud postgres:16 (container)"], "domains": ["fsacloud.netbird.cloud"],
+        "access": "Web over NetBird; NPM admin :81; commands via Proxmox guest agent", "netbird_ip": "100.108.208.36", "lan_ip": "10.0.0.22",
+        "notes": ["Primary backup target — receives FSA DB + media backups.", "Inode incident fixed 2026-08-06 (root LV grown 14.5 → 29 GB)."],
+    },
+    {
+        "name": "Magnum Opus Consultants Nextcloud Storage", "company": "Magnum Opus Consultants", "ip": "100.108.200.197", "host": "cloud.moc-pty.com", "port": 443,
+        "group": "Headquarters Office Servers", "role": "MOC Nextcloud",
+        "hostname": "moccloud", "os": "Ubuntu 24.04.4 LTS", "provider": "Proxmox VM 102 (10.0.0.21)",
+        "netbird_url": "https://100.108.200.197",
+        "cpu": "3 cores", "ram": "8 GB", "disk": "15 GB root (⚠️ 73% used) + 3.6 TB data (1% used)",
+        "runtimes": ["Docker Compose", "Nextcloud 30"],
+        "services": ["nextcloud-app-1 (nextcloud:30-apache)", "nginx-proxy-manager-app-1", "nextcloud-db-1 (postgres:16)", "nextcloud-redis-1 (redis:7)"],
+        "databases": ["Nextcloud postgres:16 (container)"], "domains": ["cloud.moc-pty.com"],
+        "access": "Web (LE cert); NPM admin :81; commands via Proxmox guest agent", "netbird_ip": "100.108.200.197", "lan_ip": "10.0.0.23",
+        "notes": ["⚠️ Root disk 73% full on a 15 GB disk — grow before it fills."],
+    },
+    {
+        "name": "E-Click Application Server", "company": "E-Click", "ip": None, "host": None, "port": None,
+        "group": "Headquarters Office Servers", "role": "E-Click Software (guest agent unresponsive)",
+        "hostname": "E-Click-Software", "os": "unknown", "provider": "Proxmox VM 103 (10.0.0.21)", "netbird_url": None,
+        "cpu": "2 cores", "ram": "16 GB", "disk": "32 GB",
+        "runtimes": [], "services": [], "databases": [], "domains": [],
+        "access": "Proxmox console only (guest agent unresponsive)", "netbird_ip": None, "lan_ip": None,
+        "notes": ["qemu guest agent does not respond — OS/services/IPs unknown.", "Needs a manual check from the Proxmox console."],
+    },
+    {
+        "name": "Magnum Opus Consultants Development Sandbox", "company": "Magnum Opus Consultants", "ip": "100.108.18.30", "host": "100.108.18.30", "port": 22,
+        "group": "Headquarters Office Servers", "role": "Idle MOC dev/demo sandbox (NetBird)",
+        "hostname": "moc-devbox", "os": "Ubuntu 24.04.4 LTS", "provider": "Proxmox VM 104 (10.0.0.21)", "netbird_url": None,
+        "cpu": "8 cores", "ram": "16 GB", "disk": "250 GB (1% used)",
+        "runtimes": [], "services": ["sshd (:22)", "systemd-resolved (:53)"],
+        "databases": [], "domains": [],
+        "access": "ssh ethan@100.108.18.30 (key id_ed25519, passwordless sudo)", "netbird_ip": "100.108.18.30", "lan_ip": "10.0.0.114",
+        "notes": ["Idle — no web/app services running.", "Sandbox for MOC app development / demo copies."],
+    },
+    {
+        "name": "Food Safety Agency Demo & Sandbox", "company": "Food Safety Agency", "ip": "100.108.223.27", "host": "aps-demo.fsa-pty.co.za", "port": 443,
+        "group": "Headquarters Office Servers", "role": "FSA demo environment (NetBird only)",
+        "hostname": "food-safety-agency-devbox", "os": "Ubuntu 24.04.4 LTS", "provider": "Proxmox VM 105 (10.0.0.21)", "netbird_url": None,
+        "cpu": "8 cores", "ram": "16 GB", "disk": "250 GB (2% used, 237 GB free)",
+        "runtimes": ["nginx 1.24", "PostgreSQL 16", "Python 3.12", "Node 20.20.2", "certbot"],
+        "services": ["aps-demo-gunicorn + aps-demo-frontend (:8001/:3000)", "epvs-demo-django + epvs-demo-node (:8004/:5000)", "dms-demo-gunicorn (:8003)", "nginx", "postgresql@16-main"],
+        "databases": ["PostgreSQL 16 (demo apps)"],
+        "domains": ["aps-demo.fsa-pty.co.za", "epvs-demo.fsa-pty.co.za", "debtor-demo.fsa-pty.co.za"],
+        "access": "ssh ethan@100.108.223.27 (key id_ed25519); jump host to Proxmox when off-LAN", "netbird_ip": "100.108.223.27", "lan_ip": "10.0.0.115",
+        "notes": ["Runs the three internal demo apps.", "Wildcard TLS *.fsa-pty.co.za (DNS-01, manual renew).", "Reachable on NetBird only."],
+    },
+]
+
+
+# User-editable metadata only. Hardware/system/database fields are scanned from the server.
+_SERVER_FIELDS = ['name', 'company', 'group', 'ip', 'host', 'port', 'hostname', 'provider',
+                  'access', 'netbird_ip', 'lan_ip', 'netbird_url',
+                  'ssh_user', 'ssh_ip', 'ssh_key', 'password', 'domains', 'notes', 'order']
+
+
+def _split_lines(t):
+    return [ln.strip() for ln in (t or '').split('\n') if ln.strip()]
+
+
+def _server_dict(rec):
+    d = {
+        'id': rec.id, 'name': rec.name, 'company': rec.company, 'group': rec.group,
+        'ip': rec.ip or None, 'host': rec.host, 'port': rec.port,
+        'hostname': rec.hostname, 'os': rec.os, 'provider': rec.provider,
+        'cpu': rec.cpu, 'ram': rec.ram, 'disk': rec.disk, 'access': rec.access,
+        'netbird_ip': rec.netbird_ip or None, 'lan_ip': rec.lan_ip or None, 'netbird_url': rec.netbird_url or None,
+        'ssh_user': rec.ssh_user, 'ssh_ip': rec.ssh_ip, 'ssh_key': rec.ssh_key, 'password': rec.password,
+        'scanned_at': rec.scanned_at.strftime('%b %d, %Y %H:%M') if rec.scanned_at else None,
+        'runtimes': _split_lines(rec.runtimes), 'services': _split_lines(rec.services),
+        'databases': _split_lines(rec.databases), 'domains': _split_lines(rec.domains),
+        'notes': _split_lines(rec.notes),
+    }
+    d['ssh_command'] = (f"ssh -i ~/.ssh/{rec.ssh_key} {rec.ssh_user}@{rec.ssh_ip}"
+                        if rec.ssh_user and rec.ssh_ip and rec.ssh_key else None)
+    return d
+
+
+def _apply_fields(rec, data):
+    for f in _SERVER_FIELDS:
+        if f in data:
+            if f == 'port':
+                rec.port = int(data[f]) if str(data[f] or '').strip() else None
+            elif f == 'order':
+                rec.order = int(data[f] or 0)
+            else:
+                setattr(rec, f, data[f] or '')
+
+
+def api_servers(request):
+    err = _require_module(request, 'servers')
+    if err:
+        return err
+    import socket
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+    records = list(ServerRecord.objects.all())
+
+    def check(rec):
+        d = _server_dict(rec)
+        d['target'] = f"{rec.host}:{rec.port}" if rec.host and rec.port else None
+        if not rec.host or not rec.port:
+            d['status'] = 'unknown'
+            d['latency_ms'] = None
+            return d
+        start = time.time()
+        try:
+            with socket.create_connection((rec.host, rec.port), timeout=2.5):
+                d['status'] = 'up'
+                d['latency_ms'] = int((time.time() - start) * 1000)
+        except Exception:
+            d['status'] = 'down'
+            d['latency_ms'] = None
+        return d
+
+    results = []
+    if records:
+        with ThreadPoolExecutor(max_workers=len(records)) as ex:
+            results = list(ex.map(check, records))
+    up = sum(1 for r in results if r['status'] == 'up')
+    down = sum(1 for r in results if r['status'] == 'down')
+    return JsonResponse({'servers': results, 'up': up, 'down': down, 'total': len(results)})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_server_create(request):
+    err = _require_module(request, 'servers')
+    if err:
+        return err
+    try:
+        data = json.loads(request.body or b'{}')
+    except json.JSONDecodeError:
+        data = {}
+    rec = ServerRecord(order=ServerRecord.objects.count())
+    _apply_fields(rec, data)
+    if not rec.name:
+        rec.name = 'New Server'
+    rec.save()
+    return JsonResponse({'id': rec.id}, status=201)
+
+
+@csrf_exempt
+@require_http_methods(["POST", "PATCH"])
+def api_server_update(request, pk):
+    err = _require_module(request, 'servers')
+    if err:
+        return err
+    rec = ServerRecord.objects.filter(id=pk).first()
+    if not rec:
+        return JsonResponse({'detail': 'Not found.'}, status=404)
+    try:
+        data = json.loads(request.body or b'{}')
+    except json.JSONDecodeError:
+        data = {}
+    _apply_fields(rec, data)
+    rec.save()
+    return JsonResponse({'ok': True})
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def api_server_delete(request, pk):
+    err = _require_module(request, 'servers')
+    if err:
+        return err
+    ServerRecord.objects.filter(id=pk).delete()
+    return JsonResponse({'ok': True})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_server_scan(request, pk):
+    """SSH into a server and auto-detect its hardware, runtimes, services and databases."""
+    err = _require_module(request, 'servers')
+    if err:
+        return err
+    rec = ServerRecord.objects.filter(id=pk).first()
+    if not rec:
+        return JsonResponse({'ok': False, 'detail': 'Not found.'}, status=404)
+    if not (rec.ssh_user and rec.ssh_ip and rec.ssh_key):
+        return JsonResponse({'ok': False, 'detail': 'No SSH access configured — add SSH user, IP and key first.'}, status=200)
+
+    import subprocess
+    ssh_bin = r'C:\Program Files\Git\usr\bin\ssh.exe'
+    if not os.path.exists(ssh_bin):
+        ssh_bin = 'ssh'
+    keypath = os.path.join(os.path.expanduser('~'), '.ssh', rec.ssh_key)
+    remote = (
+        'echo @@OS; ( . /etc/os-release 2>/dev/null; echo "$PRETTY_NAME" ); '
+        'echo @@CORES; nproc; '
+        'echo @@MODEL; grep -m1 "model name" /proc/cpuinfo | cut -d: -f2-; '
+        'echo @@RAM; free -m 2>/dev/null | grep -i "^Mem:"; '
+        'echo @@DISK; df -h / | tail -1; '
+        'echo @@RUN; python3 --version 2>/dev/null; node --version 2>/dev/null; nginx -v 2>&1; psql --version 2>/dev/null; mysql --version 2>/dev/null; docker --version 2>/dev/null; '
+        'echo @@SVC; systemctl list-units --type=service --state=running --no-legend --no-pager 2>/dev/null; '
+        'echo @@DB; sudo -n -u postgres psql -tAc "SELECT datname FROM pg_database WHERE datistemplate=false" 2>/dev/null; '
+        'echo @@END'
+    )
+    try:
+        p = subprocess.run(
+            [ssh_bin, '-i', keypath, '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes',
+             '-o', 'ConnectTimeout=6', '-o', 'StrictHostKeyChecking=no', '-o', 'UserKnownHostsFile=/dev/null',
+             f"{rec.ssh_user}@{rec.ssh_ip}", remote],
+            capture_output=True, text=True, timeout=25,
+        )
+    except Exception:
+        return JsonResponse({'ok': False, 'detail': 'SSH scan failed (host not reachable / no key).'}, status=200)
+
+    sec, cur = {}, None
+    for line in p.stdout.splitlines():
+        s = line.strip()
+        if s.startswith('@@'):
+            cur = s[2:].strip()
+            sec[cur] = []
+        elif cur is not None and s:
+            sec[cur].append(s)
+
+    def first(k):
+        v = sec.get(k) or []
+        return v[0] if v else ''
+
+    if not first('OS') and not first('CORES'):
+        return JsonResponse({'ok': False, 'detail': 'Scan returned no data (SSH auth or command failed).'}, status=200)
+
+    cores, model = first('CORES'), first('MODEL').strip()
+    rec.os = first('OS')
+    rec.cpu = (f"{cores} cores" if cores else '') + (f" \u00b7 {model}" if model else '')
+    ramline = first('RAM').split()
+    if len(ramline) >= 3 and ramline[0].lower().startswith('mem'):
+        try:
+            rec.ram = f"{int(ramline[1]) / 1024:.1f} GB ({int(ramline[2]) / 1024:.1f} GB used)"
+        except Exception:
+            pass
+    dl = first('DISK').split()
+    if len(dl) >= 5:
+        rec.disk = f"{dl[1]} ({dl[4]} used, {dl[3]} free)"
+
+    runtimes = []
+    for r in sec.get('RUN', []):
+        if 'not found' in r or 'command not' in r:
+            continue
+        runtimes.append(r.replace('nginx version: ', '').strip())
+    rec.runtimes = '\n'.join(runtimes)
+
+    skip = ('systemd', 'dbus', 'cron', 'ssh', 'getty', 'rsyslog', 'polkit', 'user@', 'accounts',
+            'unattended', 'multipathd', 'snapd', 'udisks', 'modemmanager', 'networkd', 'resolved',
+            'timesyncd', 'logind', 'irqbalance', 'packagekit', 'serial-getty')
+    services = []
+    for line in sec.get('SVC', []):
+        name = line.split()[0].replace('.service', '') if line.split() else ''
+        if name and not any(x in name for x in skip):
+            services.append(name)
+    rec.services = '\n'.join(services[:16])
+
+    rec.databases = '\n'.join(f"PostgreSQL: {d}" for d in sec.get('DB', []) if d and d != 'postgres')
+
+    from django.utils import timezone as _tz
+    rec.scanned_at = _tz.now()
+    rec.save()
+    return JsonResponse({'ok': True})
+
+
+# Estimated monthly cost per server (USD). Only cloud droplets bill; owned hardware = 0.
+COST_MONTHLY = {
+    "MOC-Prime": 6.0,
+    "FSA-Production": 18.0,
+    "MOC-ServerOne": 12.0,
+    "Proxmox-Host": 0.0,       # owned hardware — no cloud cost
+    "FSA-Nextcloud": 0.0,      # runs on the Proxmox host
+    "MOC-Nextcloud": 0.0,
+    "EClick-Software": 0.0,
+    "MOC-DevBox": 0.0,
+    "FSA-Sandbox": 0.0,
+}
+
+# SSH access for live metrics — keyed by stable hostname (survives display renames).
+SSH_CONF = {
+    "moc-prime": {"user": "root", "ip": "206.189.204.60", "key": "id_ed25519_mocprime"},
+    "ubuntu-s-2vcpu-2gb-nyc1": {"user": "root", "ip": "64.227.19.8", "key": "id_ed25519_digitalocean"},
+    "Server-one": {"user": "root", "ip": "134.209.20.61", "key": "id_ed25519"},
+    "moc-devbox": {"user": "ethan", "ip": "100.108.18.30", "key": "id_ed25519"},
+    "food-safety-agency-devbox": {"user": "ethan", "ip": "100.108.223.27", "key": "id_ed25519"},
+}
+
+
+def api_server_metrics(request):
+    """Live hardware metrics for one server via SSH, using its stored SSH access."""
+    err = _require_module(request, 'servers')
+    if err:
+        return err
+    rec = ServerRecord.objects.filter(id=request.GET.get('id')).first()
+    if not rec:
+        return JsonResponse({'available': False, 'detail': 'Server not found.'})
+    if not (rec.ssh_user and rec.ssh_ip and rec.ssh_key):
+        return JsonResponse({'available': False, 'detail': 'No SSH access configured for live metrics.'})
+
+    import subprocess
+    ssh_bin = r'C:\Program Files\Git\usr\bin\ssh.exe'
+    if not os.path.exists(ssh_bin):
+        ssh_bin = 'ssh'
+    key = os.path.join(os.path.expanduser('~'), '.ssh', rec.ssh_key)
+    remote = 'nproc; head -1 /proc/loadavg; free -m | sed -n "2p"; df -m / | tail -1; uptime -p'
+    try:
+        p = subprocess.run(
+            [ssh_bin, '-i', key, '-o', 'IdentitiesOnly=yes', '-o', 'BatchMode=yes',
+             '-o', 'ConnectTimeout=5', '-o', 'StrictHostKeyChecking=no',
+             '-o', 'UserKnownHostsFile=/dev/null',
+             f"{rec.ssh_user}@{rec.ssh_ip}", remote],
+            capture_output=True, text=True, timeout=12,
+        )
+        lines = [l for l in p.stdout.splitlines() if l.strip()]
+        if len(lines) < 4:
+            return JsonResponse({'available': False, 'detail': 'SSH metrics unavailable'})
+        cores = int(lines[0].strip())
+        load = float(lines[1].split()[0])
+        mem = lines[2].split()
+        mem_total, mem_used = int(mem[1]), int(mem[2])
+        disk = lines[3].split()
+        disk_total_mb, disk_used_mb = int(disk[1]), int(disk[2])
+        uptime = lines[4] if len(lines) > 4 else None
+        return JsonResponse({
+            'available': True, 'source': 'ssh',
+            'cpu_percent': round(min(100.0, load / cores * 100), 1) if cores else None,
+            'cores': cores, 'load': load,
+            'mem_used_mb': mem_used, 'mem_total_mb': mem_total,
+            'disk_used_gb': round(disk_used_mb / 1024, 1), 'disk_total_gb': round(disk_total_mb / 1024, 1),
+            'uptime': uptime,
+        })
+    except Exception:
+        return JsonResponse({'available': False, 'detail': 'SSH metrics unavailable (host not reachable / no key).'})

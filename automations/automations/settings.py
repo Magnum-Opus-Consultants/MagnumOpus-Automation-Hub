@@ -97,7 +97,13 @@ ONEDRIVE_CLIENT_ID = '43fbe5a9-6b5b-4c81-9067-7aff9ac3ed5a'
 ONEDRIVE_TENANT_ID = 'b1504b1d-d096-409a-a0f0-6cc546dde993'
 ONEDRIVE_CLIENT_SECRET = os.getenv('ONEDRIVE_CLIENT_SECRET', '')
 ONEDRIVE_REDIRECT_URI = 'http://localhost:8000/onedrive/callback'
-ONEDRIVE_SCOPES = ['Files.Read.All', 'Files.ReadWrite.All', 'Mail.Read', 'Mail.Send']
+# Delegated scopes for the OneDrive file sync only. Mail.Read / Mail.Send are
+# registered as *Application* permissions and are used by the separate app-only
+# flow (acquire_token_for_client with '.default') — asking for them here requests
+# delegated versions that were never consented, which forces an admin-approval
+# prompt and blocks the sign-in. Both scopes below are delegated and already
+# granted with "Admin consent required: No".
+ONEDRIVE_SCOPES = ['Files.Read.All', 'Files.ReadWrite.All']
 ONEDRIVE_FOLDER_PATH = '/Automation Platform/Turn Over Automation Report'
 ONEDRIVE_PPG_FOLDER_PATH = '/Automation Platform/PPG Financial Analysis Report'
 ONEDRIVE_DOR_FOLDER_PATH = '/Automation Platform/DOR Financial Analysis Report'

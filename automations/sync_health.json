@@ -12,94 +12,94 @@
     "records": 0
   },
   "ppg": {
-    "last_check": "2026-04-14T21:28:00.667738+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-08-30T20:24:18.650541+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-30",
+    "records": 644
   },
   "ccc": {
-    "last_check": "2026-04-14T20:28:00.669528+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-08-30T20:24:18.632212+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-30",
+    "records": 423
   },
   "fax": {
-    "last_check": "2026-04-14T21:28:00.696721+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-08-28T11:21:31.747698+02:00",
+    "status": "success",
+    "message": "Email 2026-08-23: 513 rows",
+    "records": 513
   },
   "ccd": {
-    "last_check": "2026-04-14T20:28:00.674456+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-08-30T20:24:18.550637+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-30",
+    "records": 301
   },
   "con": {
-    "last_check": "2026-04-14T21:28:00.705521+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-08-28T11:21:38.443974+02:00",
+    "status": "success",
+    "message": "Email 2026-08-23: 605 rows",
+    "records": 605
   },
   "jfk": {
-    "last_check": "2026-04-14T19:28:00.670482+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-08-30T20:24:18.507678+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-30",
+    "records": 661
   },
   "dor": {
-    "last_check": "2026-04-14T21:28:00.677716+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-08-28T11:21:40.276609+02:00",
+    "status": "success",
+    "message": "Email 2026-08-23: 453 rows",
+    "records": 453
   },
   "atl": {
-    "last_check": "2026-04-14T20:28:00.666943+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-08-28T11:21:34.197062+02:00",
+    "status": "success",
+    "message": "Email 2026-08-23: 540 rows",
+    "records": 540
   },
   "hnl": {
-    "last_check": "2026-04-14T21:28:00.692324+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-08-30T20:24:18.637396+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-30",
+    "records": 736
   },
   "turnover": {
-    "last_check": "2026-04-14T21:28:00.664999+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-09-02T10:25:06.302773+02:00",
+    "status": "success",
+    "message": "Synced 12632 records",
+    "records": 12632
   },
   "lax": {
-    "last_check": "2026-04-14T21:28:00.698739+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-08-28T11:21:29.718212+02:00",
+    "status": "success",
+    "message": "Email 2026-08-23: 579 rows",
+    "records": 579
   },
   "wip_accrual": {
-    "last_check": "2026-04-14T19:28:00.706499+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-08-28T11:22:11.216219+02:00",
+    "status": "success",
+    "message": "Email 2026-08-28: 14552 rows",
+    "records": 14552
   },
   "ics": {
-    "last_check": "2026-04-14T19:28:00.780450+02:00",
+    "last_check": "2026-08-30T20:24:17.197548+02:00",
     "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
+    "message": "429 Client Error: Too Many Requests for url: https://graph.microsoft.com/v1.0/users/ethan.sevenster@moc-pty.com/messages?$top=500&$orderby=receivedDateTime%20desc&$select=id,subject,receivedDateTime,from,hasAttachments",
     "records": 0
   },
   "ord": {
-    "last_check": "2026-04-14T14:51:38.479901+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-08-30T20:24:18.607045+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-30",
+    "records": 593
   },
   "imp": {
-    "last_check": "2026-04-14T14:51:38.300624+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-08-28T11:21:27.811663+02:00",
+    "status": "success",
+    "message": "Email 2026-08-23: 662 rows",
+    "records": 662
   },
   "condor_dor": {
     "last_check": "2026-04-14T19:28:00.820907+02:00",
@@ -108,22 +108,22 @@
     "records": 0
   },
   "lcl": {
-    "last_check": "2026-04-14T13:51:38.459935+02:00",
+    "last_check": "2026-08-30T20:24:17.908233+02:00",
     "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
+    "message": "429 Client Error: Too Many Requests for url: https://graph.microsoft.com/v1.0/users/ethan.sevenster@moc-pty.com/messages?$top=500&$orderby=receivedDateTime%20desc&$select=id,subject,receivedDateTime,from,hasAttachments",
     "records": 0
   },
   "hou": {
-    "last_check": "2026-04-14T16:28:00.691850+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-08-30T20:24:18.142785+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-30",
+    "records": 584
   },
   "creditor": {
-    "last_check": "2026-04-14T20:28:00.727814+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-08-28T12:16:05.966745+02:00",
+    "status": "success",
+    "message": "14 groups, 5406 rows",
+    "records": 5406
   },
   "import_ops": {
     "last_check": "2026-04-14T16:28:00.740150+02:00",
@@ -144,9 +144,9 @@
     "records": 0
   },
   "dfw": {
-    "last_check": "2026-04-14T20:28:00.760361+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-08-28T11:21:36.395243+02:00",
+    "status": "success",
+    "message": "Email 2026-08-23: 554 rows",
+    "records": 554
   }
 }

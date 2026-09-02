@@ -1,1 +1,1 @@
-{"status": "error", "message": "Scheduled sync error: Extra data: line 1 column 6324 (char 6323)", "current": 0, "total": 100, "percent": 0}
+{"status": "complete", "message": "Synced 12632 records", "current": 100, "total": 100, "percent": 100}

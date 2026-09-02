@@ -90,8 +90,14 @@ def get_access_token():
 
         access_token = token_data.get('access_token')
         if not access_token:
-            logger.error("No access_token in token file")
-            return None
+            # A cache with no access token is still usable when it carries a
+            # refresh token — that is exactly the state after seeding the cache
+            # from a fresh refresh token. Refresh rather than giving up.
+            if not token_data.get('refresh_token'):
+                logger.error("No access_token or refresh_token in token file")
+                return None
+            logger.info("No cached access token, refreshing from refresh_token...")
+            return _do_token_refresh(token_data)
 
         # If we know the token hasn't expired yet, return it directly
         if _token_expiry > 0 and time.time() < _token_expiry:

@@ -1,7 +1,21 @@
 from django.urls import path
 from . import views
+from . import api_platform as platform_api
 
 urlpatterns = [
+    # ── Sentinel platform modules: domains, repositories ──
+    path('api/domains', platform_api.api_domains, name='api_domains'),
+    path('api/domains/create', platform_api.api_domain_create, name='api_domain_create'),
+    path('api/domains/<int:pk>', platform_api.api_domain_update, name='api_domain_update'),
+    path('api/domains/<int:pk>/delete', platform_api.api_domain_delete, name='api_domain_delete'),
+
+    path('api/repos', platform_api.api_repos, name='api_repos'),
+    path('api/repos/create', platform_api.api_repo_create, name='api_repo_create'),
+    path('api/repos/<int:pk>', platform_api.api_repo_update, name='api_repo_update'),
+    path('api/repos/<int:pk>/delete', platform_api.api_repo_delete, name='api_repo_delete'),
+    path('api/repos/<int:pk>/history', platform_api.api_repo_history, name='api_repo_history'),
+
+
     path('', views.home, name='home'),
     path('api/tp-progress/', views.get_tp_progress, name='get_tp_progress'),
     path('monitor/', views.sync_monitor, name='sync_monitor'),
@@ -10,6 +24,35 @@ urlpatterns = [
     path('monitor/sync-all/status/', views.sync_all_status, name='sync_all_status'),
     path('login/', views.login_view, name='login'),
     path('logout/', views.logout_view, name='logout'),
+    # JSON auth API for the Sentinel frontend (no trailing slash — matches fetch paths)
+    path('api/auth/login', views.api_login, name='api_login'),
+    path('api/auth/logout', views.api_logout, name='api_logout'),
+    path('api/auth/me', views.api_me, name='api_me'),
+    path('api/dashboard/summary', views.api_dashboard_summary, name='api_dashboard_summary'),
+    # User management + module access (Sentinel frontend)
+    path('api/users', views.api_users, name='api_users'),
+    path('api/users/create', views.api_user_create, name='api_user_create'),
+    path('api/users/<int:pk>', views.api_user_update, name='api_user_update'),
+    path('api/users/<int:pk>/delete', views.api_user_delete, name='api_user_delete'),
+    path('api/servers', views.api_servers, name='api_servers'),
+    path('api/servers/metrics', views.api_server_metrics, name='api_server_metrics'),
+    path('api/servers/create', views.api_server_create, name='api_server_create'),
+    path('api/servers/<int:pk>', views.api_server_update, name='api_server_update'),
+    path('api/servers/<int:pk>/delete', views.api_server_delete, name='api_server_delete'),
+    path('api/servers/<int:pk>/scan', views.api_server_scan, name='api_server_scan'),
+    path('api/data-analysis/stations', views.api_data_analysis_stations, name='api_data_analysis_stations'),
+    path('api/data-analysis/sync', views.api_station_sync, name='api_station_sync'),
+    # Documentation: Company → System → Documents
+    path('api/docs/companies', views.api_doc_companies, name='api_doc_companies'),
+    path('api/docs/companies/<int:pk>', views.api_doc_company_detail, name='api_doc_company_detail'),
+    path('api/docs/systems', views.api_doc_systems, name='api_doc_systems'),
+    path('api/docs/systems/<int:pk>', views.api_doc_system_detail, name='api_doc_system_detail'),
+    path('api/docs/contents', views.api_doc_contents, name='api_doc_contents'),
+    path('api/docs/folders', views.api_doc_folders, name='api_doc_folders'),
+    path('api/docs/folders/<int:pk>', views.api_doc_folder_detail, name='api_doc_folder_detail'),
+    path('api/docs/documents', views.api_doc_documents, name='api_doc_documents'),
+    path('api/docs/documents/<int:pk>', views.api_doc_document_detail, name='api_doc_document_detail'),
+    path('api/docs/documents/<int:pk>/download', views.api_doc_download, name='api_doc_download'),
     path('turnover/', views.turnover, name='turnover'),
     path('pnl/', views.pnl, name='pnl'),
     path('atl/', views.atl, name='atl'),

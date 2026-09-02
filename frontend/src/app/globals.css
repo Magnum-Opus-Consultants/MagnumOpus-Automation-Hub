@@ -1,0 +1,171 @@
+@import "tailwindcss";
+
+/* Dark mode is opt-in via a `.dark` class on <html>, set by the theme toggle
+   (and pre-applied by an inline script in layout.tsx to avoid a flash). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ── Design tokens: Helix (Filament 5.6) ──────────────────────────────────────
+   Structure copied from the Helix admin panels; primary is Blue.
+   Ramps are lifted verbatim from Filament's Color class
+   (vendor/filament/support/src/Colors/Color.php):
+       primary = Blue      gray = Zinc
+       danger  = Red       success = Green      warning = Amber
+
+   The Filament look: zinc canvas, panels one step lighter, a hairline ring
+   instead of borders, rounded-xl panels, rounded-lg controls, Inter.
+
+   Every token below is a `var()` indirection so light and dark can swap the
+   underlying value while the utility names stay identical. */
+@theme inline {
+  --color-brand: var(--c-brand);
+  --color-brand-hover: var(--c-brand-hover);
+  --color-brand-pressed: var(--c-brand-pressed);
+  --color-brand-tint: var(--c-brand-tint);
+  --color-brand-tint-2: var(--c-brand-tint-2);
+  --color-brand-bar: var(--c-brand-bar);
+
+  --color-canvas: var(--c-canvas);
+  --color-surface: var(--c-surface);
+  --color-subtle: var(--c-subtle);
+  --color-nav: var(--c-nav);
+  --color-stroke: var(--c-stroke);
+  --color-stroke-soft: var(--c-stroke-soft);
+
+  --color-ink: var(--c-ink);
+  --color-ink-2: var(--c-ink-2);
+  --color-ink-3: var(--c-ink-3);
+  --color-ink-inv: var(--c-ink-inv);
+
+  --color-good: var(--c-good);
+  --color-good-bg: var(--c-good-bg);
+  --color-warnx: var(--c-warnx);
+  --color-warnx-bg: var(--c-warnx-bg);
+  --color-bad: var(--c-bad);
+  --color-bad-bg: var(--c-bad-bg);
+  --color-infox: var(--c-infox);
+  --color-infox-bg: var(--c-infox-bg);
+
+  --font-sans: var(--font-inter), "Inter", ui-sans-serif, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* ── Light ─────────────────────────────────────────────────────────────────── */
+:root {
+  color-scheme: light;
+
+  --c-brand: oklch(0.546 0.245 262.881);            /* blue-600 */
+  --c-brand-hover: oklch(0.623 0.214 259.815);      /* blue-500 */
+  --c-brand-pressed: oklch(0.488 0.243 264.376);    /* blue-700 */
+  --c-brand-tint: oklch(0.97 0.014 254.604);        /* blue-50  */
+  --c-brand-tint-2: oklch(0.932 0.032 255.585);     /* blue-100 */
+  --c-brand-bar: oklch(1 0 0);
+
+  --c-canvas: oklch(0.985 0 0);                     /* zinc-50  */
+  --c-surface: oklch(1 0 0);                        /* white    */
+  --c-subtle: oklch(0.967 0.001 286.375);           /* zinc-100 */
+  --c-nav: oklch(1 0 0);                            /* white sidebar */
+  --c-stroke: oklch(0.92 0.004 286.32);             /* zinc-200 */
+  --c-stroke-soft: oklch(0.967 0.001 286.375);      /* zinc-100 */
+
+  --c-ink: oklch(0.141 0.005 285.823);              /* zinc-950 */
+  --c-ink-2: oklch(0.552 0.016 285.938);            /* zinc-500 */
+  --c-ink-3: oklch(0.705 0.015 286.067);            /* zinc-400 */
+  --c-ink-inv: oklch(1 0 0);
+
+  /* Light mode: 700-level text on a 50-level tint. */
+  --c-good: oklch(0.527 0.154 150.069);             /* green-700 */
+  --c-good-bg: oklch(0.982 0.018 155.826);          /* green-50  */
+  --c-warnx: oklch(0.555 0.163 48.998);             /* amber-700 */
+  --c-warnx-bg: oklch(0.987 0.022 95.277);          /* amber-50  */
+  --c-bad: oklch(0.505 0.213 27.518);               /* red-700   */
+  --c-bad-bg: oklch(0.971 0.013 17.38);             /* red-50    */
+  --c-infox: oklch(0.488 0.243 264.376);            /* blue-700  */
+  --c-infox-bg: oklch(0.97 0.014 254.604);          /* blue-50   */
+
+  --ring-tint: color-mix(in oklab, oklch(0.141 0.005 285.823) 5%, transparent);
+  --ring-tint-strong: color-mix(in oklab, oklch(0.141 0.005 285.823) 10%, transparent);
+}
+
+/* ── Dark ──────────────────────────────────────────────────────────────────── */
+.dark {
+  color-scheme: dark;
+
+  /* On dark, the brand lifts a step so it stays legible on zinc-900/950. */
+  --c-brand: oklch(0.623 0.214 259.815);            /* blue-500 */
+  --c-brand-hover: oklch(0.707 0.165 254.624);      /* blue-400 */
+  --c-brand-pressed: oklch(0.546 0.245 262.881);    /* blue-600 */
+  --c-brand-tint: color-mix(in oklab, oklch(0.623 0.214 259.815) 15%, transparent);
+  --c-brand-tint-2: color-mix(in oklab, oklch(0.623 0.214 259.815) 25%, transparent);
+  --c-brand-bar: oklch(0.141 0.005 285.823);
+
+  --c-canvas: oklch(0.141 0.005 285.823);           /* zinc-950 */
+  --c-surface: oklch(0.21 0.006 285.885);           /* zinc-900 */
+  --c-subtle: oklch(0.274 0.006 286.033);           /* zinc-800 */
+  --c-nav: oklch(0.141 0.005 285.823);              /* sidebar = canvas */
+  --c-stroke: color-mix(in oklab, white 10%, transparent);
+  --c-stroke-soft: color-mix(in oklab, white 6%, transparent);
+
+  --c-ink: oklch(0.985 0 0);                        /* zinc-50  */
+  --c-ink-2: oklch(0.705 0.015 286.067);            /* zinc-400 */
+  --c-ink-3: oklch(0.552 0.016 285.938);            /* zinc-500 */
+  --c-ink-inv: oklch(0.141 0.005 285.823);
+
+  /* Dark mode: 400-level text on a 12% tint. */
+  --c-good: oklch(0.792 0.209 151.711);             /* green-400 */
+  --c-good-bg: color-mix(in oklab, oklch(0.792 0.209 151.711) 12%, transparent);
+  --c-warnx: oklch(0.828 0.189 84.429);             /* amber-400 */
+  --c-warnx-bg: color-mix(in oklab, oklch(0.828 0.189 84.429) 12%, transparent);
+  --c-bad: oklch(0.704 0.191 22.216);               /* red-400   */
+  --c-bad-bg: color-mix(in oklab, oklch(0.704 0.191 22.216) 12%, transparent);
+  --c-infox: oklch(0.707 0.165 254.624);            /* blue-400  */
+  --c-infox-bg: color-mix(in oklab, oklch(0.707 0.165 254.624) 12%, transparent);
+
+  --ring-tint: color-mix(in oklab, white 10%, transparent);
+  --ring-tint-strong: color-mix(in oklab, white 15%, transparent);
+}
+
+body {
+  background: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Filament's panel edge — a tinted ring rather than a border. The tint flips
+   between dark-on-light and white-on-dark via --ring-tint. */
+@utility ring-panel {
+  box-shadow: 0 0 0 1px var(--ring-tint);
+}
+/* Slightly stronger edge for interactive controls (inputs, secondary buttons). */
+@utility ring-control {
+  box-shadow: 0 0 0 1px var(--ring-tint-strong);
+}
+
+@utility focus-ring {
+  &:focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+  }
+}
+
+* {
+  scrollbar-color: var(--ring-tint-strong) transparent;
+}
+
+/* ── Login success animation ── */
+@keyframes sentinel-overlay { from { opacity: 0; } to { opacity: 1; } }
+@keyframes sentinel-pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  60% { transform: scale(1.1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes sentinel-check { to { stroke-dashoffset: 0; } }
+@keyframes sentinel-fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes sentinel-ring {
+  0% { transform: scale(0.8); opacity: 0.5; }
+  100% { transform: scale(2); opacity: 0; }
+}

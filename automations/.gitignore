@@ -1,1 +1,3 @@
-automations/onedrive_token.json
+onedrive_token.json
+.env
+onedrive_token.json.*
