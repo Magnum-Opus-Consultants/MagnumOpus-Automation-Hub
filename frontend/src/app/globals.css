@@ -54,11 +54,14 @@
 :root {
   color-scheme: light;
 
-  --c-brand: oklch(0.546 0.245 262.881);            /* blue-600 */
-  --c-brand-hover: oklch(0.623 0.214 259.815);      /* blue-500 */
-  --c-brand-pressed: oklch(0.488 0.243 264.376);    /* blue-700 */
-  --c-brand-tint: oklch(0.97 0.014 254.604);        /* blue-50  */
-  --c-brand-tint-2: oklch(0.932 0.032 255.585);     /* blue-100 */
+  /* Taken from the logo: the mark runs #006EFE -> #13C1FE on a #020A1C
+     ground. The brand is that blue darkened 12% so white button text clears
+     4.5:1 (measured 5.55); hover is the mark's blue itself at 4.50. */
+  --c-brand: #0061E0;
+  --c-brand-hover: #006EFE;
+  --c-brand-pressed: #004FB7;
+  --c-brand-tint: color-mix(in oklab, #0061E0 8%, white);
+  --c-brand-tint-2: color-mix(in oklab, #0061E0 16%, white);
   --c-brand-bar: oklch(1 0 0);
 
   --c-canvas: oklch(0.985 0 0);                     /* zinc-50  */
@@ -91,18 +94,22 @@
 .dark {
   color-scheme: dark;
 
-  /* On dark, the brand lifts a step so it stays legible on zinc-900/950. */
-  --c-brand: oklch(0.623 0.214 259.815);            /* blue-500 */
-  --c-brand-hover: oklch(0.707 0.165 254.624);      /* blue-400 */
-  --c-brand-pressed: oklch(0.546 0.245 262.881);    /* blue-600 */
-  --c-brand-tint: color-mix(in oklab, oklch(0.623 0.214 259.815) 15%, transparent);
-  --c-brand-tint-2: color-mix(in oklab, oklch(0.623 0.214 259.815) 25%, transparent);
-  --c-brand-bar: oklch(0.141 0.005 285.823);
+  /* On dark the brand lifts toward the mark's cyan end so it stays legible
+     against the navy ground. */
+  --c-brand: #1E86FF;
+  --c-brand-hover: #13C1FE;
+  --c-brand-pressed: #0061E0;
+  --c-brand-tint: color-mix(in oklab, #1E86FF 15%, transparent);
+  --c-brand-tint-2: color-mix(in oklab, #1E86FF 25%, transparent);
+  --c-brand-bar: #020A1C;
 
-  --c-canvas: oklch(0.141 0.005 285.823);           /* zinc-950 */
-  --c-surface: oklch(0.21 0.006 285.885);           /* zinc-900 */
-  --c-subtle: oklch(0.274 0.006 286.033);           /* zinc-800 */
-  --c-nav: oklch(0.141 0.005 285.823);              /* sidebar = canvas */
+  /* The logo's own ground, with the panels stepped toward its cyan so a
+     surface reads as a surface - at a smaller step it measured 1.07 against
+     the canvas, which looks like one flat sheet. */
+  --c-canvas: #020A1C;
+  --c-surface: #041C33;
+  --c-subtle: #052942;
+  --c-nav: #020A1C;                                 /* sidebar = canvas */
   --c-stroke: color-mix(in oklab, white 10%, transparent);
   --c-stroke-soft: color-mix(in oklab, white 6%, transparent);
 

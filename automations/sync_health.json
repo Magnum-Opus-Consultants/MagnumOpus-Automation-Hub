@@ -12,124 +12,124 @@
     "records": 0
   },
   "ppg": {
-    "last_check": "2026-08-30T20:24:18.650541+02:00",
+    "last_check": "2026-09-03T16:15:18.796522+02:00",
     "status": "success",
     "message": "Already processed: 2026-08-30",
     "records": 644
   },
   "ccc": {
-    "last_check": "2026-08-30T20:24:18.632212+02:00",
+    "last_check": "2026-09-03T16:16:48.475879+02:00",
     "status": "success",
     "message": "Already processed: 2026-08-30",
     "records": 423
   },
   "fax": {
-    "last_check": "2026-08-28T11:21:31.747698+02:00",
+    "last_check": "2026-09-03T16:31:48.261291+02:00",
     "status": "success",
-    "message": "Email 2026-08-23: 513 rows",
-    "records": 513
+    "message": "Already processed: 2026-08-30",
+    "records": 515
   },
   "ccd": {
-    "last_check": "2026-08-30T20:24:18.550637+02:00",
+    "last_check": "2026-09-03T16:18:18.387783+02:00",
     "status": "success",
     "message": "Already processed: 2026-08-30",
     "records": 301
   },
   "con": {
-    "last_check": "2026-08-28T11:21:38.443974+02:00",
+    "last_check": "2026-09-03T16:36:18.226255+02:00",
     "status": "success",
-    "message": "Email 2026-08-23: 605 rows",
-    "records": 605
+    "message": "Already processed: 2026-08-30",
+    "records": 608
   },
   "jfk": {
-    "last_check": "2026-08-30T20:24:18.507678+02:00",
+    "last_check": "2026-09-03T16:21:18.366113+02:00",
     "status": "success",
     "message": "Already processed: 2026-08-30",
     "records": 661
   },
   "dor": {
-    "last_check": "2026-08-28T11:21:40.276609+02:00",
+    "last_check": "2026-09-03T16:37:48.105804+02:00",
     "status": "success",
-    "message": "Email 2026-08-23: 453 rows",
-    "records": 453
+    "message": "Already processed: 2026-08-30",
+    "records": 457
   },
   "atl": {
-    "last_check": "2026-08-28T11:21:34.197062+02:00",
+    "last_check": "2026-09-03T16:33:18.131497+02:00",
     "status": "success",
-    "message": "Email 2026-08-23: 540 rows",
-    "records": 540
+    "message": "Already processed: 2026-08-30",
+    "records": 547
   },
   "hnl": {
-    "last_check": "2026-08-30T20:24:18.637396+02:00",
+    "last_check": "2026-09-03T16:19:48.184783+02:00",
     "status": "success",
     "message": "Already processed: 2026-08-30",
     "records": 736
   },
   "turnover": {
-    "last_check": "2026-09-02T10:25:06.302773+02:00",
+    "last_check": "2026-09-03T16:39:27.246343+02:00",
     "status": "success",
-    "message": "Synced 12632 records",
-    "records": 12632
+    "message": "Already processed 12 branches",
+    "records": 12229
   },
   "lax": {
-    "last_check": "2026-08-28T11:21:29.718212+02:00",
+    "last_check": "2026-09-03T16:30:18.300941+02:00",
     "status": "success",
-    "message": "Email 2026-08-23: 579 rows",
-    "records": 579
+    "message": "Already processed: 2026-08-30",
+    "records": 581
   },
   "wip_accrual": {
-    "last_check": "2026-08-28T11:22:11.216219+02:00",
-    "status": "success",
-    "message": "Email 2026-08-28: 14552 rows",
-    "records": 14552
+    "last_check": "2026-09-03T16:40:59.491556+02:00",
+    "status": "error",
+    "message": "Refused sync: 13624 new rows vs 27998 existing (>50% shrink)",
+    "records": 27998
   },
   "ics": {
-    "last_check": "2026-08-30T20:24:17.197548+02:00",
-    "status": "error",
-    "message": "429 Client Error: Too Many Requests for url: https://graph.microsoft.com/v1.0/users/ethan.sevenster@moc-pty.com/messages?$top=500&$orderby=receivedDateTime%20desc&$select=id,subject,receivedDateTime,from,hasAttachments",
-    "records": 0
+    "last_check": "2026-09-03T16:25:48.513696+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-30",
+    "records": 621
   },
   "ord": {
-    "last_check": "2026-08-30T20:24:18.607045+02:00",
+    "last_check": "2026-09-03T16:27:18.452925+02:00",
     "status": "success",
     "message": "Already processed: 2026-08-30",
     "records": 593
   },
   "imp": {
-    "last_check": "2026-08-28T11:21:27.811663+02:00",
+    "last_check": "2026-09-03T16:28:48.286884+02:00",
     "status": "success",
-    "message": "Email 2026-08-23: 662 rows",
-    "records": 662
+    "message": "Already processed: 2026-08-30",
+    "records": 666
   },
   "condor_dor": {
-    "last_check": "2026-04-14T19:28:00.820907+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-09-03T16:45:32.012640+02:00",
+    "status": "success",
+    "message": "1421 rows across 4 files",
+    "records": 1421
   },
   "lcl": {
-    "last_check": "2026-08-30T20:24:17.908233+02:00",
-    "status": "error",
-    "message": "429 Client Error: Too Many Requests for url: https://graph.microsoft.com/v1.0/users/ethan.sevenster@moc-pty.com/messages?$top=500&$orderby=receivedDateTime%20desc&$select=id,subject,receivedDateTime,from,hasAttachments",
-    "records": 0
+    "last_check": "2026-09-03T16:22:49.037972+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-30",
+    "records": 534
   },
   "hou": {
-    "last_check": "2026-08-30T20:24:18.142785+02:00",
+    "last_check": "2026-09-03T16:24:21.322812+02:00",
     "status": "success",
     "message": "Already processed: 2026-08-30",
     "records": 584
   },
   "creditor": {
-    "last_check": "2026-08-28T12:16:05.966745+02:00",
+    "last_check": "2026-09-03T16:44:02.878339+02:00",
     "status": "success",
-    "message": "14 groups, 5406 rows",
-    "records": 5406
+    "message": "14 groups, 5449 rows",
+    "records": 5449
   },
   "import_ops": {
-    "last_check": "2026-04-14T16:28:00.740150+02:00",
-    "status": "error",
-    "message": "Extra data: line 1 column 6324 (char 6323)",
-    "records": 0
+    "last_check": "2026-09-03T16:42:25.634970+02:00",
+    "status": "success",
+    "message": "Already up to date (19702 total)",
+    "records": 19702
   },
   "tp3_auto": {
     "last_check": "2026-04-12T16:16:08.820243+02:00",
@@ -144,9 +144,9 @@
     "records": 0
   },
   "dfw": {
-    "last_check": "2026-08-28T11:21:36.395243+02:00",
+    "last_check": "2026-09-03T16:34:48.152942+02:00",
     "status": "success",
-    "message": "Email 2026-08-23: 554 rows",
-    "records": 554
+    "message": "Already processed: 2026-08-30",
+    "records": 555
   }
 }

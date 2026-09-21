@@ -985,8 +985,10 @@ def get_ppg_last_sync():
 
 def process_dor_excel_file(file_content, filename):
     """Process DOR Excel file - reads 'GL PL Period Analysis' sheet"""
-    # Same logic as PPG
-    return process_ppg_excel_file(file_content, filename.replace('DOR', 'PPG'))
+    # Reuses the PPG parser, which hard-codes "PPG" as the division in
+    # field 0. Relabel it or these rows land in dor_pnl.division as PPG.
+    rows = process_ppg_excel_file(file_content, filename.replace('DOR', 'PPG'))
+    return [('DOR', r[1], r[2], r[3], r[4], r[5], r[6], r[7]) for r in rows]
 
 
 def sync_dor_data():
@@ -1155,8 +1157,10 @@ def get_dor_last_sync():
 
 def process_con_excel_file(file_content, filename):
     """Process CON Excel file - reads 'GL PL Period Analysis' sheet"""
-    # Same logic as PPG
-    return process_ppg_excel_file(file_content, filename.replace('CON', 'PPG'))
+    # Reuses the PPG parser, which hard-codes "PPG" as the division in
+    # field 0. Relabel it or these rows land in dor_pnl.division as PPG.
+    rows = process_ppg_excel_file(file_content, filename.replace('CON', 'PPG'))
+    return [('CON', r[1], r[2], r[3], r[4], r[5], r[6], r[7]) for r in rows]
 
 
 def process_atl_excel_file(file_content, filename):

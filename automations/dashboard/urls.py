@@ -1,6 +1,16 @@
 from django.urls import path
 from . import views
 from . import api_platform as platform_api
+from . import api_public as public_api
+from . import client_requests as cr
+from . import workspace_access as wsa
+from . import handbook as hb
+from . import awa_api as awa
+from . import management_api as mgmt
+from . import github_views
+from . import pricing_api
+from . import projects_api as projects
+from . import sites_api as sites
 
 urlpatterns = [
     # ── Sentinel platform modules: domains, repositories ──
@@ -14,6 +24,119 @@ urlpatterns = [
     path('api/repos/<int:pk>', platform_api.api_repo_update, name='api_repo_update'),
     path('api/repos/<int:pk>/delete', platform_api.api_repo_delete, name='api_repo_delete'),
     path('api/repos/<int:pk>/history', platform_api.api_repo_history, name='api_repo_history'),
+
+    # GitHub: create a repository on the connected account, import one that
+    # already exists, and read commits without needing a local clone.
+    path('api/github/status', github_views.api_github_status, name='api_github_status'),
+    path('api/github/create', github_views.api_github_create, name='api_github_create'),
+    path('api/github/import', github_views.api_github_import, name='api_github_import'),
+    path('api/repos/<int:pk>/github-delete', github_views.api_github_delete, name='api_github_delete'),
+    path('api/repos/<int:pk>/commits', github_views.api_github_commits, name='api_github_commits'),
+    path('api/repos/<int:pk>/documentation', github_views.api_repo_documentation, name='api_repo_documentation'),
+    path('api/repos/<int:pk>/docs/save', github_views.api_repo_doc_save, name='api_repo_doc_save'),
+    path('api/repos/<int:pk>/docs/import', github_views.api_repo_doc_import, name='api_repo_doc_import'),
+    path('api/repos/<int:pk>/docs/<int:doc_id>/delete', github_views.api_repo_doc_delete, name='api_repo_doc_delete'),
+
+    # Token-authenticated public API for external agents (see api_public.py).
+    path('api/v1/whoami', public_api.whoami, name='public_whoami'),
+    path('api/v1/activity', public_api.activity_feed, name='public_activity'),
+    path('api/activity', github_views.api_activity, name='api_activity'),
+    path('api/v1/tasks', public_api.tasks, name='public_tasks'),
+    path('api/v1/tasks/<int:pk>', public_api.task_detail, name='public_task_detail'),
+
+    path('api/client-requests', cr.api_client_requests, name='api_client_requests'),
+    path('api/client-requests/create', cr.api_client_request_create, name='api_client_request_create'),
+    path('api/client-requests/<int:pk>', cr.api_client_request_update, name='api_client_request_update'),
+    path('api/client-requests/<int:pk>/send', cr.api_client_request_send, name='api_client_request_send'),
+    path('api/client-requests/<int:pk>/delete', cr.api_client_request_delete, name='api_client_request_delete'),
+    # No auth - the token in the URL is the authorisation.
+    path('api/public/client-request/<str:token>', cr.public_client_request, name='public_client_request'),
+    path('api/public/client-request/<str:token>/attach', cr.public_attach, name='public_attach'),
+    path('api/public/client-request/<str:token>/attach/<int:pk>/delete', cr.public_attach_delete, name='public_attach_delete'),
+    path('api/client-requests/attachments/<int:pk>/download', cr.attachment_download, name='attachment_download'),
+
+    # The CargoWise report runs, which used to live in their own repository
+    # behind their own systemd timer.
+    # Projects as records rather than a string on a task: the Gantt, the
+    # project detail, its history, and the reporting figures.
+    # The weekly management report: eight sections, plus the records it needs
+    # that the tracker never held - tickets, risks, SLAs, priorities, actions.
+    # The Pricing Report: the CargoWise pricing export and the turnover
+    # analysis rows appended under it, loaded into the database.
+    path('api/pricing/report', pricing_api.api_pricing_report, name='api_pricing_report'),
+    path('api/pricing/upload', pricing_api.api_pricing_upload, name='api_pricing_upload'),
+    path('api/pricing/imports/<int:pk>/activate', pricing_api.api_pricing_activate, name='api_pricing_activate'),
+
+    path('api/management/report', mgmt.api_management_report, name='api_management_report'),
+    # The V3 template shape, which is the document management actually reads.
+    path('api/management/up-report', mgmt.api_up_report, name='api_up_report'),
+    path('api/management/up-dashboard', mgmt.api_up_dashboard, name='api_up_dashboard'),
+    path('api/management/up-report.pdf', mgmt.api_up_report_pdf, name='api_up_report_pdf'),
+    path('api/management/up-report/email', mgmt.api_up_report_email, name='api_up_report_email'),
+    path('api/management/client-note', mgmt.api_client_note_save, name='api_client_note_save'),
+    path('api/management/focus-matrix', mgmt.api_focus_matrix_save, name='api_focus_matrix_save'),
+    path('api/management/header', mgmt.api_report_header_save, name='api_report_header_save'),
+    path('api/management/save', mgmt.api_management_save, name='api_management_save'),
+    path('api/management/chase', mgmt.api_management_chase, name='api_management_chase'),
+    path('api/management/send', mgmt.api_management_send, name='api_management_send'),
+    path('api/management/actions', mgmt.api_action_save, name='api_action_save'),
+    path('api/management/actions/<int:pk>/delete', mgmt.api_action_delete, name='api_action_delete'),
+    path('api/management/risks', mgmt.api_risk_save, name='api_risk_save'),
+    path('api/management/tickets', mgmt.api_ticket_save, name='api_ticket_save'),
+    path('api/management/focus', mgmt.api_focus_save, name='api_focus_save'),
+    path('api/management/focus/<int:pk>/delete', mgmt.api_focus_delete, name='api_focus_delete'),
+    path('api/management/agreements', mgmt.api_agreement_save, name='api_agreement_save'),
+
+    path('api/projects', projects.api_projects, name='api_projects'),
+    path('api/projects/gantt', projects.api_project_gantt, name='api_project_gantt'),
+    path('api/projects/metrics', projects.api_project_metrics, name='api_project_metrics'),
+    path('api/projects/<str:name>', projects.api_project_update, name='api_project_update'),
+    path('api/projects/<str:name>/activity', projects.api_project_activity, name='api_project_activity'),
+
+    path('api/awa/reports', awa.api_awa_reports, name='api_awa_reports'),
+    path('api/awa/runs', awa.api_awa_runs, name='api_awa_runs'),
+    path('api/awa/runs/<int:pk>', awa.api_awa_run_detail, name='api_awa_run_detail'),
+    path('api/awa/run', awa.api_awa_run, name='api_awa_run'),
+
+    path('api/sites', sites.api_sites, name='api_sites'),
+    # The published sites themselves. nginx serves these in production; this
+    # route is what makes a local preview show its images.
+    path('sites/', sites.serve_site_file, name='site_root'),
+    path('sites/<path:rest>', sites.serve_site_file, name='site_file'),
+    path('api/sites/create', sites.api_site_create, name='api_site_create'),
+    path('api/sites/<int:pk>', sites.api_site_update, name='api_site_update'),
+    path('api/sites/<int:pk>/preview', sites.api_site_preview, name='api_site_preview'),
+    path('api/sites/<int:pk>/publish', sites.api_site_publish, name='api_site_publish'),
+    path('api/sites/<int:pk>/delete', sites.api_site_delete, name='api_site_delete'),
+    path('api/sites/<int:pk>/blocks', sites.api_block_save, name='api_block_save'),
+    path('api/sites/<int:pk>/blocks/reorder', sites.api_blocks_reorder, name='api_blocks_reorder'),
+    path('api/sites/<int:pk>/blocks/<int:block>/delete', sites.api_block_delete, name='api_block_delete'),
+
+    path('api/handbook', hb.api_handbook, name='api_handbook'),
+    path('api/handbook/create', hb.api_handbook_save, name='api_handbook_create'),
+    path('api/handbook/<int:pk>', hb.api_handbook_save, name='api_handbook_update'),
+    path('api/handbook/<int:pk>/delete', hb.api_handbook_delete, name='api_handbook_delete'),
+    path('api/handbook/server-access', hb.api_server_access, name='api_server_access'),
+    path('api/handbook/server-access/<int:pk>/reveal', hb.api_server_secret, name='api_server_secret'),
+
+    path('api/tasks', platform_api.api_planner_tasks, name='api_tasks'),
+    path('api/tasks/projects', platform_api.api_task_projects, name='api_task_projects'),
+    path('api/tasks/projects/create', platform_api.api_project_create, name='api_project_create'),
+    path('api/tasks/projects/update', platform_api.api_project_update, name='api_project_update'),
+    path('api/tasks/projects/delete', platform_api.api_project_delete, name='api_project_delete'),
+    path('api/tasks/projects/move', platform_api.api_project_move, name='api_project_move'),
+    path('api/tasks/lists/create', platform_api.api_list_create, name='api_list_create'),
+    path('api/tasks/lists/delete', platform_api.api_list_delete, name='api_list_delete'),
+    path('api/tasks/workspaces/members', wsa.api_workspace_members, name='api_workspace_members'),
+    path('api/tasks/workspaces/members/add', wsa.api_workspace_member_add, name='api_workspace_member_add'),
+    path('api/tasks/workspaces/members/remove', wsa.api_workspace_member_remove, name='api_workspace_member_remove'),
+    path('api/tasks/my-access', wsa.api_my_access, name='api_my_access'),
+    path('api/tasks/workspaces/save', platform_api.api_workspace_save, name='api_workspace_save'),
+    path('api/tasks/workspaces/delete', platform_api.api_workspace_delete, name='api_workspace_delete'),
+    path('api/tasks/create', platform_api.api_planner_task_create, name='api_task_create'),
+    path('api/tasks/<int:pk>', platform_api.api_planner_task_update, name='api_task_update'),
+    path('api/tasks/<int:pk>/delete', platform_api.api_planner_task_delete, name='api_task_delete'),
+    path('api/tasks/<int:pk>/timer', platform_api.api_task_timer, name='api_task_timer'),
 
 
     path('', views.home, name='home'),

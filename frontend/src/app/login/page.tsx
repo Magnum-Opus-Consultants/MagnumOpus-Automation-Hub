@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 
+import { Logo } from "@/components/Sidebar";
+
 const STATS = [
   { value: "24/7", label: "Monitoring" },
   { value: "1hr", label: "Sync cycle" },
@@ -98,7 +100,8 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <div className="relative text-sm text-ink-3">
+        <div className="relative flex items-center gap-2 text-sm text-ink-3">
+          <Logo className="h-5 w-5" />
           Sentinel — Magnum Opus Consultants
         </div>
       </section>

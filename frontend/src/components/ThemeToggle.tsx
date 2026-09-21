@@ -28,6 +28,33 @@ function read(): Theme {
  * click. Renders a placeholder until mounted so the server and client markup
  * agree — the real value isn't knowable during SSR.
  */
+/**
+ * The theme state on its own, so a caller can render its own control.
+ *
+ * Returns null until mounted: the applied theme lives on <html> and in storage,
+ * neither of which exists during SSR, so there is nothing honest to show yet.
+ */
+export function useTheme(): [Theme | null, (next: Theme) => void] {
+  const [theme, setTheme] = useState<Theme | null>(null);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTheme(document.documentElement.classList.contains("dark") ? "dark" : read());
+  }, []);
+
+  function apply(next: Theme) {
+    setTheme(next);
+    document.documentElement.classList.toggle("dark", next === "dark");
+    try {
+      localStorage.setItem(KEY, next);
+    } catch {
+      // Preference just won't persist; the switch still works this session.
+    }
+  }
+
+  return [theme, apply];
+}
+
 export function ThemeToggle() {
   const [theme, setTheme] = useState<Theme | null>(null);
 

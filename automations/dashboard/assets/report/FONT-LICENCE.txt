@@ -1,0 +1,10 @@
+Carlito is a sans-serif typeface by Lukasz Dziedzic, metrically compatible
+with Calibri, released under the SIL Open Font License 1.1.
+
+It is bundled here on purpose. The Up Management Report template is set in
+Calibri, which is licensed by Microsoft and cannot be redistributed to the
+Linux server that generates the PDF. Carlito has identical metrics, so the
+generated document lays out exactly as the Word original does, and the OFL
+permits bundling and redistribution.
+
+Full licence: https://scripts.sil.org/OFL

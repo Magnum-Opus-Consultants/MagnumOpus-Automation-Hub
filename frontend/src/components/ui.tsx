@@ -6,8 +6,10 @@
  * 5% ring instead of borders, rounded-xl cards, rounded-lg controls, Inter.
  * Tokens live in globals.css.
  */
+import * as React from "react";
 import { useEffect, useState } from "react";
 import { Sidebar, Icon, type Me } from "@/components/Sidebar";
+import { motion, useReducedMotion } from "@/components/motion";
 
 /* ── Tone system ─────────────────────────────────────────────────────────── */
 export type Tone = "neutral" | "info" | "good" | "warn" | "bad" | "accent";
@@ -36,6 +38,7 @@ export function AppShell({
   // No topbar: the sidebar already shows which page is active, and page-level
   // actions belong to PageHead inside the content area.
   const [collapsed, setCollapsed] = useState(false);
+  const still = useReducedMotion();
 
   useEffect(() => {
     try {
@@ -59,22 +62,38 @@ export function AppShell({
 
   return (
     <div className="flex min-h-screen bg-canvas text-ink">
-      {collapsed ? (
-        // Collapsed to a slim rail rather than removed entirely: the way back is
-        // always visible and in the same place, so it reads as closed, not broken.
-        <aside className="sticky top-0 hidden h-screen w-12 shrink-0 flex-col items-center self-start border-r border-stroke bg-nav py-2 lg:flex">
-          <button
-            onClick={() => setRail(false)}
-            title="Expand sidebar"
-            aria-label="Show sidebar"
-            className="flex h-8 w-8 items-center justify-center rounded-md text-ink-2 transition hover:bg-subtle hover:text-ink focus-ring"
-          >
-            <Icon name="expand" className="h-4 w-4" />
-          </button>
-        </aside>
-      ) : (
-        <Sidebar active={active} me={me} onCollapse={() => setRail(true)} />
-      )}
+      {/* One container that changes width, rather than two elements swapped:
+          swapping has nothing to tween between, which is why the rail used to
+          snap. The panels inside cross-fade while the width travels. */}
+      <motion.div
+        className="sticky top-0 hidden h-screen shrink-0 self-start overflow-hidden border-r border-stroke bg-nav lg:block"
+        initial={false}
+        animate={{ width: collapsed ? 48 : 240 }}
+        transition={still ? { duration: 0 }
+                          : { duration: 0.26, ease: [0.32, 0.72, 0, 1] }}
+      >
+        {collapsed ? (
+          // Collapsed to a slim rail rather than removed entirely: the way back
+          // is always visible and in the same place, so it reads as closed, not
+          // broken.
+          <div className="flex h-full w-12 flex-col items-center py-2">
+            <button
+              onClick={() => setRail(false)}
+              title="Expand sidebar"
+              aria-label="Show sidebar"
+              className="flex h-8 w-8 items-center justify-center rounded-md text-ink-2 transition hover:bg-subtle hover:text-ink focus-ring"
+            >
+              <Icon name="expand" className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          // Held at its full width while the container narrows, so the contents
+          // slide out of view instead of reflowing into a 48px column.
+          <div className="h-full w-60">
+            <Sidebar active={active} me={me} onCollapse={() => setRail(true)} />
+          </div>
+        )}
+      </motion.div>
       <main className={`mx-auto w-full min-w-0 flex-1 px-5 py-4 ${wide ? "max-w-[1600px]" : "max-w-7xl"}`}>
         {children}
       </main>
@@ -196,11 +215,14 @@ const FIELD =
 function Label({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="text-sm font-medium leading-6 text-ink">
+      {/* The label is a fixed-height line and the hint sits under the control.
+          Inline hints wrapped to a second line, which pushed the input down and
+          knocked paired fields in a two-column grid out of alignment. */}
+      <span className="block h-6 truncate text-sm font-medium leading-6 text-ink">
         {label}
-        {hint && <span className="font-normal text-ink-3"> · {hint}</span>}
       </span>
       {children}
+      {hint && <span className="mt-1 block text-xs leading-snug text-ink-3">{hint}</span>}
     </label>
   );
 }
@@ -221,11 +243,29 @@ export function AreaInput({ label, value, onChange, hint, rows = 4 }: { label: s
   );
 }
 
-export function SelectInput({ label, value, onChange, options, hint }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[]; hint?: string }) {
+/**
+ * A select. Give an option a `group` and the list is split under headings -
+ * a flat run of ten statuses is a wall to read, four labelled groups of two
+ * or three is not. Options without a group stay at the top level, so every
+ * existing caller is unaffected.
+ */
+export function SelectInput({ label, value, onChange, options, hint }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string; group?: string }[]; hint?: string }) {
+  const ungrouped = options.filter((o) => !o.group);
+  const groups: string[] = [];
+  options.forEach((o) => {
+    if (o.group && !groups.includes(o.group)) groups.push(o.group);
+  });
   return (
     <Label label={label} hint={hint}>
       <select value={value} onChange={(e) => onChange(e.target.value)} className={FIELD}>
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        {ungrouped.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        {groups.map((g) => (
+          <optgroup key={g} label={g}>
+            {options.filter((o) => o.group === g).map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </optgroup>
+        ))}
       </select>
     </Label>
   );
@@ -259,19 +299,138 @@ export function Pill({ active, children, ...rest }: React.ButtonHTMLAttributes<H
 
 /* ── Dialog ──────────────────────────────────────────────────────────────── */
 
-export function Modal({ title, onClose, children, footer, wide }: { title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode; wide?: boolean }) {
+/**
+ * A dialog.
+ *
+ * Long forms sit at the top, so the box does not shift under the pointer as
+ * content grows or a field appears. A `compact` dialog — a confirmation, a
+ * short question — is centred instead: it is small enough not to move, and
+ * anchoring two lines of text to the ceiling just looks like a mistake.
+ */
+export function Modal({ title, onClose, children, footer, wide, compact, xl }: { title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode; wide?: boolean; compact?: boolean; xl?: boolean }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-10">
-      <div className={`w-full rounded-xl bg-surface shadow-2xl ring-panel ${wide ? "max-w-4xl" : "max-w-2xl"}`}>
+    <div className={`fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/40 p-4 sm:p-10 ${
+      compact ? "items-center" : "items-start"}`}>
+      <div className={`w-full rounded-xl bg-surface shadow-2xl ring-panel ${
+        compact ? "max-w-md" : xl ? "max-w-6xl" : wide ? "max-w-4xl" : "max-w-2xl"}`}>
         <div className="flex items-start justify-between gap-4 px-6 pt-6 pb-4">
           <h2 className="text-base font-semibold leading-6 text-ink">{title}</h2>
           <button onClick={onClose} aria-label="Close" className="-mr-2 -mt-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-2 transition hover:bg-subtle hover:text-ink focus-ring">
             <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round"><path d="M4 4l12 12M16 4L4 16" /></svg>
           </button>
         </div>
-        <div className="max-h-[68vh] overflow-y-auto px-6 pb-2">{children}</div>
+        <div className="max-h-[76vh] overflow-y-auto px-6 pb-2">{children}</div>
         {footer && <div className="flex items-center justify-end gap-2 px-6 py-4">{footer}</div>}
       </div>
+    </div>
+  );
+}
+
+/**
+ * A confirmation, for something that cannot be undone.
+ *
+ * Deliberately not `window.confirm`: that dialog is suppressible per-site, so a
+ * destructive action can silently do nothing — which is exactly what happened
+ * on the task board. This one is part of the page and always appears.
+ */
+export function ConfirmDialog({
+  title, body, confirmLabel = "Delete", onConfirm, onClose, busy,
+}: {
+  title: string; body: React.ReactNode; confirmLabel?: string;
+  onConfirm: () => void; onClose: () => void; busy?: boolean;
+}) {
+  return (
+    <Modal title={title} onClose={onClose} compact
+           footer={
+             <>
+               <Button onClick={onClose}>Cancel</Button>
+               <Button variant="danger" icon="trash" spinning={busy} onClick={onConfirm}>
+                 {confirmLabel}
+               </Button>
+             </>
+           }>
+      <p className="text-sm leading-relaxed text-ink-2">{body}</p>
+    </Modal>
+  );
+}
+
+/* ── Context menu ────────────────────────────────────────────────────────── */
+
+export type MenuItem = {
+  label: string;
+  icon?: string;
+  onSelect: () => void;
+  danger?: boolean;
+  /** Draws a divider above this item. */
+  separated?: boolean;
+};
+
+/**
+ * A right-click menu, positioned at the pointer.
+ *
+ * It is nudged back inside the viewport rather than allowed to run off the
+ * bottom-right edge, because a menu opened on the last card in a column is
+ * exactly where a right-click lands most often.
+ */
+export function ContextMenu({
+  x, y, items, onClose,
+}: { x: number; y: number; items: MenuItem[]; onClose: () => void }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [pos, setPos] = React.useState({ left: x, top: y });
+
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const { width, height } = el.getBoundingClientRect();
+    setPos({
+      left: Math.max(8, Math.min(x, window.innerWidth - width - 8)),
+      top: Math.max(8, Math.min(y, window.innerHeight - height - 8)),
+    });
+  }, [x, y]);
+
+  React.useEffect(() => {
+    const away = () => onClose();
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    // `capture` so a click anywhere closes the menu before that click's own
+    // handler runs — otherwise dismissing it also opens whatever is underneath.
+    window.addEventListener("pointerdown", away, true);
+    window.addEventListener("keydown", key);
+    window.addEventListener("resize", away);
+    window.addEventListener("scroll", away, true);
+    return () => {
+      window.removeEventListener("pointerdown", away, true);
+      window.removeEventListener("keydown", key);
+      window.removeEventListener("resize", away);
+      window.removeEventListener("scroll", away, true);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      ref={ref}
+      role="menu"
+      style={{ left: pos.left, top: pos.top }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onContextMenu={(e) => e.preventDefault()}
+      className="fixed z-[60] min-w-44 overflow-hidden rounded-lg bg-surface py-1 shadow-2xl ring-panel"
+    >
+      {items.map((it) => (
+        <div key={it.label}>
+          {it.separated && <div className="my-1 border-t border-stroke" />}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => { onClose(); it.onSelect(); }}
+            className={`flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm transition ${
+              it.danger
+                ? "text-bad hover:bg-bad/10"
+                : "text-ink-2 hover:bg-subtle hover:text-ink"}`}
+          >
+            {it.icon && <Icon name={it.icon} className="h-3.5 w-3.5 shrink-0" />}
+            {it.label}
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

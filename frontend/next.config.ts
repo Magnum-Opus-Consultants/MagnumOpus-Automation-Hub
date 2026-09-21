@@ -20,6 +20,10 @@ const nextConfig: NextConfig = {
       // the React app and it hits the backend with no CORS. Trailing slashes are
       // preserved, so match whatever the Django route expects (usually a slash).
       { source: "/api/:path*", destination: `${BACKEND}/api/:path*` },
+      // Published client sites and the shared stock images. nginx serves these
+      // in production; without the rewrite a local preview renders the layout
+      // with every photograph broken, which is the thing you need to see.
+      { source: "/sites/:path*", destination: `${BACKEND}/sites/:path*` },
     ];
   },
 };

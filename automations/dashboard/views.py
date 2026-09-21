@@ -146,6 +146,10 @@ def api_me(request):
 # migration is needed. Superusers implicitly have every module.
 SENTINEL_MODULES = [
     {'key': 'data', 'label': 'Data Analysis', 'desc': 'Automated reports, station syncs and sync logs.'},
+    {'key': 'tasks', 'label': 'Project Tracker', 'desc': 'Tasks, subtasks and priorities.'},
+    {'key': 'client_requests', 'label': 'Client Requests', 'desc': 'Send clients questions and collect their answers.'},
+    {'key': 'handbook', 'label': 'Handbook', 'desc': 'How we work, and how to get access to what we run.'},
+    {'key': 'sites', 'label': 'Client Sites', 'desc': 'Generate and publish websites from client briefs.'},
     {'key': 'servers', 'label': 'Servers', 'desc': 'Server inventory, live monitoring, access and credentials.'},
     {'key': 'documentation', 'label': 'Documentation', 'desc': 'Company systems, folders and documents.'},
     {'key': 'domains', 'label': 'Domains', 'desc': 'Domain registrations, DNS, SSL and renewal dates.'},
@@ -214,14 +218,42 @@ def _require_module(request, key):
 @csrf_exempt
 @require_http_methods(["GET"])
 def api_users(request):
-    """List all users with their module access (admin only)."""
+    """Users with their module access and workspace allocations (admin only)."""
     err = _require_admin(request)
     if err:
         return err
+
+    # Imported here rather than at module scope: workspace_access imports from
+    # this module, and a top-level import would be circular.
+    from .models import Workspace, WorkspaceMember
+
     users = User.objects.order_by('-is_superuser', 'username')
+    grants = {}
+    for m in WorkspaceMember.objects.select_related('workspace', 'user'):
+        grants.setdefault(m.user_id, []).append({
+            'workspace': m.workspace.name,
+            'role': m.role,
+            'role_display': m.get_role_display(),
+            'notified': m.notified_at is not None,
+        })
+
+    rows = []
+    for u in users:
+        row = _user_dict(u)
+        row['workspaces'] = sorted(grants.get(u.id, []), key=lambda g: g['workspace'])
+        # A superuser reaches every workspace without a grant, so the count on
+        # its own would read as "no access" for the people who have the most.
+        row['sees_all_workspaces'] = u.is_superuser
+        rows.append(row)
+
     return JsonResponse({
-        'users': [_user_dict(u) for u in users],
+        'users': rows,
         'modules': SENTINEL_MODULES,
+        'workspaces': [
+            {'name': w.name, 'is_default': w.is_default}
+            for w in Workspace.objects.all()
+        ],
+        'roles': list(WorkspaceMember.ROLE_CHOICES),
     })
 
 
@@ -411,6 +443,17 @@ def api_data_analysis_stations(request):
             'status': s.get('status'),
         })
 
+    # The Pricing Report is not a OneDrive station - it is a workbook somebody
+    # downloads - but it is the same kind of thing to the reader: a source with
+    # a row count and a last-loaded time. So it is listed alongside them, with
+    # its own status worked out from the load rather than the health file.
+    pricing = _pricing_source_card()
+    out.append(pricing)
+    if pricing['status'] == 'healthy':
+        healthy += 1
+    elif pricing['status'] == 'stale':
+        stale += 1
+
     return JsonResponse({
         'stations': out,
         'healthy': healthy,
@@ -418,6 +461,44 @@ def api_data_analysis_stations(request):
         'error': error,
         'total': len(out),
     })
+
+
+def _pricing_source_card():
+    """The Pricing Report as one of the Data Analysis source cards."""
+    from .models import PricingImport
+
+    imp = PricingImport.objects.filter(is_active=True).first()
+    if not imp:
+        return {
+            'key': 'pricing', 'code': 'PRICING', 'name': 'Pricing Report',
+            'description': 'CargoWise pricing quotes with the turnover '
+                           'analysis appended. No workbook loaded yet.',
+            'records': 0, 'last_sync': None, 'time_ago': 'Not yet loaded',
+            'status': 'unknown',
+        }
+
+    age = django_timezone.now() - imp.loaded_at
+    days = age.days
+    # The workbook is a monthly-ish export, not a nightly feed, so it only
+    # counts as stale after a month rather than the stations' six hours.
+    if days >= 30:
+        status, ago = 'stale', f'{days}d ago'
+    elif days >= 1:
+        status, ago = 'healthy', f'{days}d ago'
+    else:
+        hours = age.seconds // 3600
+        status = 'healthy'
+        ago = f'{hours}h ago' if hours else 'Just now'
+    return {
+        'key': 'pricing', 'code': 'PRICING', 'name': 'Pricing Report',
+        'description': f'{imp.quote_rows:,} pricing quotes with '
+                       f'{imp.turnover_rows:,} turnover rows appended, '
+                       f'from {imp.filename}.',
+        'records': imp.total_rows,
+        'last_sync': imp.loaded_at.isoformat(),
+        'time_ago': ago,
+        'status': status,
+    }
 
 
 # Maps a station key to the existing per-station sync view (report sending excluded).
@@ -428,6 +509,7 @@ STATION_SYNC_VIEWS = {
     'jfk': 'sync_jfk', 'lax': 'sync_lax', 'lcl': 'sync_lcl', 'ord': 'sync_ord',
     'dfw': 'sync_dfw', 'condor_dor': 'sync_condor_dor', 'bravo_tran': 'sync_tfs',
     'import_ops': 'sync_import_ops', 'wip_accrual': 'sync_wip_accrual',
+    'pricing': 'sync_pricing',
 }
 
 
@@ -460,6 +542,80 @@ def api_station_sync(request):
         if 'Extra data' in msg or 'JSON' in msg.upper() or 'token' in msg.lower():
             msg = 'OneDrive not connected in this environment'
         return JsonResponse({'ok': False, 'detail': msg}, status=200)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def sync_pricing(request):
+    """Re-read the newest pricing workbook and make it the report's source.
+
+    Unlike the OneDrive stations there is no API to pull from: the pricing
+    export is a file somebody downloads. So the sync looks for the most recent
+    workbook with "pricing" in its name across the folders it could plausibly
+    be in, and loads that. If it cannot find one it says where it looked
+    instead of failing quietly - the fix is to drop the file in one of them.
+    """
+    import logging
+
+    from . import pricing_report
+
+    log = logging.getLogger(__name__)
+    path, searched = _newest_pricing_workbook()
+    if not path:
+        return JsonResponse({
+            'status': 'error',
+            'message': 'No pricing workbook found. Looked in: '
+                       + '; '.join(searched),
+        })
+
+    def run_sync():
+        try:
+            imp = pricing_report.load(path)
+            log.info('[pricing] synced %s: %s + %s rows', imp.filename,
+                     imp.quote_rows, imp.turnover_rows)
+        except Exception:
+            log.exception('[pricing] sync failed for %s', path)
+
+    threading.Thread(target=run_sync, daemon=True).start()
+    return JsonResponse({
+        'status': 'started',
+        'message': f'Reading {os.path.basename(path)} - a full workbook takes '
+                   'about a minute.',
+    })
+
+
+def _newest_pricing_workbook():
+    """The most recently modified pricing workbook, and where we looked.
+
+    Ordered by how canonical the location is, but the newest file wins across
+    all of them - somebody who just downloaded a fresh export should not have
+    to move it first.
+    """
+    candidates = []
+    roots = [getattr(django_settings, 'PRICING_SOURCE_DIR', None),
+             os.path.join(os.path.expanduser('~'), 'Downloads'),
+             os.path.join(os.path.expanduser('~'), 'OneDrive', 'AWA Data Analysis',
+                          'Pricing Report'),
+             '/opt/awa-data-services/pricing']
+    searched = []
+    for root in roots:
+        if not root:
+            continue
+        searched.append(root)
+        if not os.path.isdir(root):
+            continue
+        try:
+            for name in os.listdir(root):
+                if (name.lower().endswith(('.xlsx', '.xlsm'))
+                        and 'pricing' in name.lower()
+                        and not name.startswith('~$')):
+                    full = os.path.join(root, name)
+                    candidates.append((os.path.getmtime(full), full))
+        except OSError:
+            continue
+    if not candidates:
+        return None, searched
+    return max(candidates)[1], searched
 
 
 @login_required

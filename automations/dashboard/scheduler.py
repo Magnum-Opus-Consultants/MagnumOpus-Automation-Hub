@@ -6,7 +6,7 @@ from django.db import transaction
 import json
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 logger = logging.getLogger(__name__)
@@ -259,11 +259,31 @@ def _run_station_email_sync(key):
 
 
 def run_weekly_reports_job():
-    """Each morning, create today's recurring report tasks in the Planner."""
+    """Each morning, refresh today's recurring report tasks in the tracker.
+
+    Seeds today only and clears earlier unfinished copies. Previously this
+    seeded 7 days ahead and never purged, so each report title accumulated one
+    row per day - 108 copies of the same task by the time anyone looked.
+    Completed tasks are kept: they are the record that the report went out.
+    """
     try:
         from django.core.management import call_command
-        call_command('create_weekly_reports')
-    except Exception as e:
+        from django.utils import timezone
+
+        from .models import ProjectTask
+
+        today = timezone.localtime().date()
+        stale = ProjectTask.objects.filter(
+            project_name='Weekly Reports',
+            start_date__lt=today,
+        ).exclude(status='done')
+        n = stale.count()
+        if n:
+            stale.delete()
+            logger.info('[weekly_reports] purged %s stale task(s) before today', n)
+
+        call_command('create_weekly_reports', days=0)
+    except Exception:
         logger.exception('[weekly_reports] failed to create daily tasks')
 
 
@@ -1680,13 +1700,51 @@ def start_scheduler():
         ('creditor', run_creditor_email_sync_job, 'Ingest Creditor email attachments'),
         ('condor_dor', run_condor_dor_email_sync_job, 'Ingest Condor+DOR email attachments'),
     ]
-    for _key, _fn, _desc in _EMAIL_JOBS:
+    # IntervalTrigger counts from process start, so without an explicit
+    # next_run_time every restart pushes the first run out by a full interval —
+    # that is why stations sat stale for hours after a deploy. Seed the first
+    # run a couple of minutes out and stagger the jobs 90s apart: 21 syncs
+    # firing at once would exhaust memory on this box.
+    # Any answered reply that did not get a site when it arrived - a deploy
+    # mid-request, a full disk, a brief that raised. Idempotent, so it costs
+    # nothing on the runs where there is nothing to do.
+    def _autobuild_sweep():
+        from .site_autobuild import sweep
+        sweep()
+
+    scheduler.add_job(
+        _autobuild_sweep, trigger=IntervalTrigger(hours=1),
+        id='client_site_autobuild', name='Build sites for answered briefs',
+        replace_existing=True,
+        next_run_time=datetime.now() + timedelta(minutes=5),
+        coalesce=True, misfire_grace_time=1800,
+    )
+
+    # The CargoWise reports, at the hour their systemd timer used to fire
+    # (12:00 South African time). CronTrigger rather than an interval, because
+    # these are daily reports whose recipients expect them by lunchtime, and a
+    # deploy must not shift the hour.
+    def _awa_daily():
+        from .awa_reports import prune, run_batch
+        run_batch()
+        prune()
+
+    scheduler.add_job(
+        _awa_daily, trigger=CronTrigger(hour=10, minute=0),
+        id='awa_reports', name='CargoWise reports to SharePoint',
+        replace_existing=True, coalesce=True, misfire_grace_time=3600,
+    )
+
+    for _i, (_key, _fn, _desc) in enumerate(_EMAIL_JOBS):
         scheduler.add_job(
             _fn,
-            trigger=IntervalTrigger(hours=3),
+            trigger=IntervalTrigger(hours=1),
             id=f'{_key}_email_sync',
             name=_desc,
             replace_existing=True,
+            next_run_time=datetime.now() + timedelta(minutes=2, seconds=90 * _i),
+            coalesce=True,       # a missed window runs once, not once per miss
+            misfire_grace_time=1800,
         )
 
     # Check and send scheduled touchpoints every 5 minutes

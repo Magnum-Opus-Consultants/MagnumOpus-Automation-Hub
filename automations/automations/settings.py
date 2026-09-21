@@ -96,6 +96,34 @@ GOOGLE_TOKEN_FILE = str(BASE_DIR / 'token.json')
 ONEDRIVE_CLIENT_ID = '43fbe5a9-6b5b-4c81-9067-7aff9ac3ed5a'
 ONEDRIVE_TENANT_ID = 'b1504b1d-d096-409a-a0f0-6cc546dde993'
 ONEDRIVE_CLIENT_SECRET = os.getenv('ONEDRIVE_CLIENT_SECRET', '')
+
+# ── Copywriting for generated client sites ──────────────────────────────────
+# Google AI Studio, free tier. Optional: with no key the site generator falls
+# back to its industry content packs, which need no network at all.
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+# Ordered best-first. Override to pin a model or to change the fallback order
+# without a deploy.
+GEMINI_MODELS = os.getenv('GEMINI_MODELS', '')
+
+# ── AWA data services (CargoWise -> Excel -> SharePoint) ────────────────────
+# The report scripts stay on disk where they already are; this platform runs
+# them and records what happened. Paths are overridable so a workstation can
+# point at a checkout instead of the server's install.
+AWA_ROOT = os.getenv('AWA_ROOT', '/opt/awa-data-services')
+AWA_ENV_FILE = os.getenv('AWA_ENV_FILE', '/etc/awa-data-services/transit_report.env')
+# Blank means: use the virtualenv beside the scripts, which is where their
+# openpyxl lives. Set it only to override that.
+AWA_PYTHON = os.getenv('AWA_PYTHON', '')
+AWA_REPORT_TIMEOUT = int(os.getenv('AWA_REPORT_TIMEOUT', '1500'))
+AWA_NOTIFY_TO = os.getenv('AWA_NOTIFY_TO', 'Ethan.Sevenster@moc-pty.com')
+PLATFORM_BASE_URL = os.getenv('PLATFORM_BASE_URL', 'https://workspace.moc-pty.com')
+
+# ── Up Management Report ────────────────────────────────────────────────────
+# Off. This report goes to upper management, so the weekly send stays disabled
+# until it is turned on deliberately and a recipient list is set. Generating
+# and downloading the PDF works regardless; only the automatic email is gated.
+UP_REPORT_AUTOSEND = os.getenv('UP_REPORT_AUTOSEND', 'false')
+UP_REPORT_TO = os.getenv('UP_REPORT_TO', '')
 ONEDRIVE_REDIRECT_URI = 'http://localhost:8000/onedrive/callback'
 # Delegated scopes for the OneDrive file sync only. Mail.Read / Mail.Send are
 # registered as *Application* permissions and are used by the separate app-only

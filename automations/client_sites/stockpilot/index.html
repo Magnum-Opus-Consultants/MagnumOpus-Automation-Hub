@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>StockPilot — StockPilot live stock web app for wholesalers</title>
+<meta name="description" content="StockPilot live stock web app for wholesalers">
+<meta name="theme-color" content="#7c3aed">
+<link rel="canonical" href="https://workspace.moc-pty.com/sites/stockpilot/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="StockPilot — StockPilot live stock web app for wholesalers">
+<meta property="og:description" content="StockPilot live stock web app for wholesalers">
+<meta property="og:site_name" content="StockPilot">
+<meta property="og:url" content="https://workspace.moc-pty.com/sites/stockpilot/">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@500&amp;display=swap">
+<style>
+*,*::before,*::after{box-sizing:border-box}
+:root{
+  color-scheme:light;
+  --brand:#7c3aed; --brand-dark:#6d28d9; --accent:#db2777;
+  --brand-soft:#f5effe; --brand-edge:#ddccfa;
+  --ink:#1e1436; --muted:#6b6382; --bg:#ffffff; --wash:#faf7ff; --line:#e7e0f5;
+  --on-brand:#ffffff; --dark:#21113e; --dark-soft:#341a63;
+  --sh-sm:0 1px 2px rgba(30,20,54,0.05); --sh-md:0 6px 20px -6px rgba(30,20,54,0.08);
+  --sh-lg:0 24px 48px -20px rgba(30,20,54,0.12);
+  --r:14px; --r-lg:20px;
+  --pad:clamp(56px,6vw,88px);
+}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:'IBM Plex Sans', -apple-system, sans-serif;font-size:17px;line-height:1.65;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+h1,h2,h3{font-family:'IBM Plex Sans', -apple-system, sans-serif;line-height:1.14;margin:0 0 .5em;
+  letter-spacing:-.02em;text-wrap:balance}
+h1{font-size:clamp(2.15rem,1.2rem + 3.4vw,3.75rem);font-weight:700}
+h2{font-size:clamp(1.6rem,1.1rem + 1.7vw,2.5rem);font-weight:700}
+h3{font-size:1.09rem;font-weight:600;line-height:1.35;margin-bottom:.3em;
+  letter-spacing:-.01em}
+p{margin:0 0 1em}
+a{color:var(--brand);text-underline-offset:3px}
+img{max-width:100%;height:auto;display:block}
+ul,ol{margin:0;padding:0;list-style:none}
+::selection{background:var(--brand);color:var(--on-brand)}
+:focus-visible{outline:2px solid var(--brand);outline-offset:3px;border-radius:4px}
+
+.wrap{max-width:1120px;margin:0 auto;padding:0 clamp(20px,4vw,32px)}
+.sec{padding:var(--pad) 0;position:relative}
+.sec.wash{background:var(--wash)}
+.lead{font-size:1.1rem;line-height:1.6;color:var(--muted);max-width:62ch;margin:0}
+.eyebrow{margin:0 0 14px;font-family:'IBM Plex Mono', ui-monospace, monospace;font-size:.72rem;font-weight:600;
+  letter-spacing:.13em;text-transform:uppercase;color:var(--brand)}
+
+/* Section headers */
+.sec-head{max-width:64ch;margin:0 0 clamp(34px,4vw,52px)}
+.sec-head h2{margin:0 0 .35em}
+.sec-head.centre{margin-left:auto;margin-right:auto;text-align:center}
+.sec-head.centre .lead{margin:0 auto}
+
+/* Nav */
+.nav{position:sticky;top:0;z-index:20;background:rgba(255,255,255,0.86);
+  border-bottom:1px solid var(--line)}
+@supports (backdrop-filter:blur(10px)){
+  .nav{backdrop-filter:saturate(1.6) blur(12px)}
+}
+.nav .wrap{display:flex;align-items:center;gap:18px;min-height:66px}
+.brand{display:flex;align-items:center;gap:11px;font-family:'IBM Plex Sans', -apple-system, sans-serif;
+  font-weight:700;font-size:1.06rem;color:var(--ink);text-decoration:none;
+  letter-spacing:-.02em}
+.brand img{height:34px;width:auto;border-radius:8px}
+.brand .mark{display:grid;place-items:center;width:34px;height:34px;border-radius:10px;
+  background:linear-gradient(140deg,var(--brand),var(--accent));color:var(--on-brand);
+  font-size:.8rem;font-weight:700;letter-spacing:.02em;box-shadow:var(--sh-sm);
+  flex:0 0 34px}
+.nav nav{margin-left:auto;display:flex;align-items:center;gap:clamp(14px,2vw,28px)}
+.nav nav a{color:var(--muted);text-decoration:none;font-size:.94rem;font-weight:500;
+  transition:color .15s}
+.nav nav a:hover{color:var(--ink)}
+.nav .nav-cta{background:var(--brand);color:var(--on-brand);padding:9px 18px;
+  border-radius:999px;font-weight:600;font-size:.9rem;box-shadow:var(--sh-sm);
+  transition:background .15s,transform .15s}
+.nav .nav-cta:hover{background:var(--brand-dark);color:var(--on-brand);
+  transform:translateY(-1px)}
+@media(max-width:720px){.nav nav a:not(.nav-cta){display:none}}
+
+/* Buttons */
+.actions{display:flex;flex-wrap:wrap;gap:12px;margin-top:30px}
+.btn{display:inline-flex;align-items:center;justify-content:center;
+  background:var(--brand);color:var(--on-brand);padding:14px 30px;border-radius:999px;
+  text-decoration:none;font-weight:600;font-size:1rem;letter-spacing:-.01em;
+  box-shadow:0 8px 20px -10px rgba(124,58,237,0.22);
+  transition:background .16s,transform .16s,box-shadow .16s}
+.btn:hover{background:var(--brand-dark);transform:translateY(-2px);
+  box-shadow:0 14px 26px -12px rgba(124,58,237,0.22)}
+.btn-ghost{background:transparent;color:var(--ink);box-shadow:none;
+  border:1px solid var(--line)}
+.btn-ghost:hover{background:var(--wash);color:var(--ink);border-color:var(--brand-edge)}
+.btn-invert{background:var(--bg);color:var(--brand);box-shadow:var(--sh-md)}
+.btn-invert:hover{background:var(--bg);color:var(--brand-dark)}
+.btn-quiet{background:var(--brand-soft);color:var(--brand-dark);box-shadow:none;
+  padding:11px 22px;font-size:.94rem;margin-top:18px}
+.btn-quiet:hover{background:var(--brand-edge);color:var(--brand-dark)}
+
+/* Hero */
+.hero{padding:clamp(64px,7vw,112px) 0 clamp(56px,6vw,96px);isolation:isolate;
+  overflow:hidden}
+.hero::before{content:"";position:absolute;inset:-30% -10% auto -10%;height:150%;
+  z-index:-1;
+  background:
+    radial-gradient(46% 52% at 78% 12%,rgba(219,39,119,0.13) 0%,transparent 70%),
+    radial-gradient(52% 58% at 12% 0%,rgba(124,58,237,0.16) 0%,transparent 72%),
+    linear-gradient(180deg,var(--wash) 0%,var(--bg) 82%)}
+.hero h1{margin:0 0 20px;max-width:22ch}
+.hero .lead{font-size:clamp(1.06rem,1rem + .35vw,1.25rem);max-width:56ch}
+.hero-centre{text-align:center}
+.hero-centre .hero-text{max-width:44rem;margin:0 auto}
+.hero-centre h1{max-width:none}
+.hero-centre .lead{margin:0 auto}
+.hero-centre .actions,.hero-centre .ticks{justify-content:center}
+
+.hero-grid{display:grid;gap:clamp(36px,5vw,64px);align-items:center}
+@media(min-width:900px){.hero-grid{grid-template-columns:1.05fr .95fr}}
+.hero-media img{border-radius:var(--r-lg);box-shadow:var(--sh-lg);width:100%;
+  aspect-ratio:4/3;object-fit:cover}
+
+.hero-banner{color:#fff;background-size:cover;background-position:center;
+  padding:clamp(90px,12vw,168px) 0}
+.hero-banner::before{display:none}
+.hero-banner h1,.hero-banner .lead{color:#fff}
+.hero-banner .lead{opacity:.9}
+.hero-banner .eyebrow{color:#fff;opacity:.85}
+.hero-banner .btn-ghost{color:#fff;border-color:rgba(255,255,255,.45)}
+.hero-banner .btn-ghost:hover{background:rgba(255,255,255,.12);color:#fff}
+.hero-banner .ticks li{color:#fff}
+.hero-banner .hero-text{max-width:46rem}
+
+.hero-editorial h1{font-size:clamp(2.4rem,1rem + 5.4vw,4.6rem);max-width:24ch}
+.hero-editorial .rule{height:1px;background:var(--line);margin:clamp(28px,4vw,44px) 0}
+.hero-editorial-foot{display:grid;gap:24px}
+@media(min-width:820px){
+  .hero-editorial-foot{grid-template-columns:1.4fr .6fr;align-items:end}
+  .hero-editorial-foot .actions{margin-top:0;justify-content:flex-end}
+}
+
+.ticks{display:flex;flex-wrap:wrap;gap:10px 26px;margin-top:28px}
+.ticks li{display:flex;align-items:flex-start;gap:8px;font-size:.95rem;
+  color:var(--muted);font-weight:500}
+.ticks svg{width:18px;height:18px;flex:0 0 18px;margin-top:2px;color:var(--brand)}
+
+/* The drawn stand-in panel, for when the client has sent no imagery. */
+.panel-card{background:var(--bg);border:1px solid var(--line);border-radius:var(--r-lg);
+  padding:26px;box-shadow:var(--sh-lg);transform:rotate(-1.2deg)}
+.panel-top{display:flex;align-items:center;gap:12px;padding-bottom:18px;
+  border-bottom:1px solid var(--line);margin-bottom:18px}
+.panel-top .mark{display:grid;place-items:center;width:40px;height:40px;flex:0 0 40px;
+  border-radius:12px;background:linear-gradient(140deg,var(--brand),var(--accent));
+  color:var(--on-brand);font-weight:700;font-size:.9rem;font-family:'IBM Plex Sans', -apple-system, sans-serif}
+.panel-name{font-family:'IBM Plex Sans', -apple-system, sans-serif;font-weight:700;letter-spacing:-.02em}
+.panel-list li{display:flex;align-items:flex-start;gap:10px;padding:9px 0;
+  font-size:.95rem;color:var(--muted)}
+.panel-list svg{width:18px;height:18px;flex:0 0 18px;margin-top:2px;color:var(--brand)}
+.panel-bars{display:flex;gap:8px;margin-top:18px}
+.panel-bars i{height:8px;border-radius:999px;background:var(--brand-soft);flex:1}
+.panel-bars i:first-child{background:var(--brand);flex:2}
+.panel-bars i:nth-child(2){background:var(--brand-edge)}
+
+/* Trust strip */
+.strip{border-block:1px solid var(--line);background:var(--bg);padding:26px 0}
+.strip-lead{margin:0 0 14px;font-size:.78rem;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--muted);text-align:center}
+.pills{display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+.pill{border:1px solid var(--line);border-radius:999px;padding:7px 16px;
+  font-size:.88rem;font-weight:600;color:var(--muted);background:var(--wash)}
+
+/* Grids and cards */
+.grid{display:grid;gap:clamp(16px,2vw,22px)}
+/* One item centres rather than sitting in the first of three columns, which is
+   what a single stated figure did on the dark band. */
+.grid-1{max-width:34rem;margin-inline:auto}
+@media(min-width:620px){.grid-2,.grid-3{grid-template-columns:repeat(2,1fr)}}
+@media(min-width:960px){.grid-3{grid-template-columns:repeat(3,1fr)}}
+.card{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);
+  padding:clamp(22px,2.4vw,28px);box-shadow:var(--sh-sm);
+  transition:transform .18s,box-shadow .18s,border-color .18s}
+.card:hover{transform:translateY(-3px);box-shadow:var(--sh-md);
+  border-color:var(--brand-edge)}
+.card p{color:var(--muted);margin:0;font-size:.97rem}
+.card-icon{display:grid;place-items:center;width:44px;height:44px;border-radius:12px;
+  background:var(--brand-soft);color:var(--brand);margin-bottom:16px}
+.card-icon svg{width:22px;height:22px}
+.card-plain{border:0;box-shadow:none;background:transparent;padding:2px 0 2px 20px;
+  border-left:2px solid var(--brand-edge)}
+.card-plain:hover{transform:none;box-shadow:none}
+
+/* Why us */
+.feature-list{display:grid;gap:clamp(20px,2.4vw,30px)}
+@media(min-width:760px){.feature-list{grid-template-columns:repeat(2,1fr)}}
+.feature-list li{display:flex;gap:14px;align-items:flex-start}
+.feature-list .tick{display:grid;place-items:center;flex:0 0 32px;width:32px;height:32px;
+  border-radius:50%;background:var(--brand);color:var(--on-brand);margin-top:2px}
+.feature-list .tick svg{width:17px;height:17px}
+.feature-list h3{margin:0 0 .25em}
+.feature-list p{margin:0;color:var(--muted);font-size:.97rem}
+
+/* Steps */
+.steps{display:grid;gap:clamp(22px,3vw,34px)}
+@media(min-width:820px){.steps{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}}
+.steps li{position:relative;padding-top:6px}
+@media(min-width:820px){
+  .steps li:not(:last-child)::after{content:"";position:absolute;left:56px;top:28px;
+    right:-16px;height:1px;
+    background:linear-gradient(90deg,var(--brand-edge),transparent)}
+}
+.step-no{display:grid;place-items:center;width:44px;height:44px;border-radius:50%;
+  background:var(--brand);color:var(--on-brand);font-family:'IBM Plex Sans', -apple-system, sans-serif;
+  font-weight:700;font-size:1.05rem;margin-bottom:18px;
+  box-shadow:0 8px 18px -10px rgba(124,58,237,0.22)}
+.steps h3{margin:0 0 .3em}
+.steps p{margin:0;color:var(--muted);font-size:.97rem;max-width:34ch}
+
+/* Numbers, on the dark band */
+.sec.dark{background:
+    radial-gradient(60% 100% at 85% 0%,rgba(124,58,237,0.16) 0%,transparent 68%),
+    linear-gradient(160deg,var(--dark) 0%,var(--dark-soft) 100%);
+  color:#fff}
+.sec.dark h2{color:#fff}
+.stats .grid{gap:clamp(24px,3vw,40px);text-align:center}
+.stat{display:flex;flex-direction:column;gap:6px}
+.figure{font-family:'IBM Plex Sans', -apple-system, sans-serif;font-size:clamp(2.2rem,1.4rem + 2.2vw,3.2rem);
+  font-weight:700;line-height:1;letter-spacing:-.03em;
+  background:linear-gradient(176deg,#fff 42%,rgba(255,255,255,.78));
+  -webkit-background-clip:text;background-clip:text;color:transparent}
+.figure-label{font-size:.92rem;color:rgba(255,255,255,.66);font-weight:500}
+
+/* Gallery */
+.gallery{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+.gallery figure{margin:0;overflow:hidden;border-radius:var(--r);box-shadow:var(--sh-sm)}
+.gallery img{width:100%;aspect-ratio:4/3;object-fit:cover;transition:transform .35s}
+.gallery figure:hover img{transform:scale(1.04)}
+
+/* Quote */
+.quote blockquote{margin:0;max-width:54ch;padding-left:clamp(20px,3vw,32px);
+  border-left:3px solid var(--brand)}
+.quote .quote-mark{display:none}
+.quote p{font-family:'IBM Plex Sans', -apple-system, sans-serif;
+  font-size:clamp(1.3rem,1rem + 1.2vw,2rem);line-height:1.36;font-weight:600;
+  letter-spacing:-.02em;margin:0}
+.quote cite{display:block;margin-top:22px;font-family:'IBM Plex Sans', -apple-system, sans-serif;font-size:.94rem;
+  font-style:normal;font-weight:600;color:var(--muted)}
+
+/* Pricing */
+.price{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);
+  padding:clamp(24px,2.6vw,32px);display:flex;flex-direction:column;
+  box-shadow:var(--sh-sm)}
+.price h3{font-size:1.3rem}
+.price p{color:var(--muted)}
+.price .ticks{flex-direction:column;gap:10px;margin-top:6px;flex:1}
+.price .btn-quiet{margin-top:auto;align-self:flex-start}
+.price.featured{border-color:var(--brand);box-shadow:var(--sh-md);position:relative}
+.price.featured::before{content:"Most chosen";position:absolute;top:-11px;left:24px;
+  background:var(--brand);color:var(--on-brand);font-size:.7rem;font-weight:700;
+  letter-spacing:.08em;text-transform:uppercase;padding:4px 12px;border-radius:999px}
+
+/* FAQ */
+.faq{max-width:60rem;border-top:1px solid var(--line)}
+.faq details{border-bottom:1px solid var(--line)}
+.faq summary{cursor:pointer;list-style:none;display:flex;align-items:center;
+  justify-content:space-between;gap:16px;padding:20px 2px;font-weight:600;
+  font-family:'IBM Plex Sans', -apple-system, sans-serif;font-size:1.04rem;letter-spacing:-.01em}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary:hover{color:var(--brand)}
+.chev{flex:0 0 12px;width:12px;height:12px;border-right:2px solid var(--muted);
+  border-bottom:2px solid var(--muted);transform:rotate(45deg);
+  transition:transform .2s;margin-right:4px}
+.faq details[open] .chev{transform:rotate(225deg)}
+.answer{padding:0 2px 22px;color:var(--muted);max-width:70ch}
+.answer p:last-child{margin:0}
+
+/* Prose */
+.split{display:grid;gap:clamp(28px,4vw,52px);align-items:start}
+@media(min-width:880px){.split{grid-template-columns:1.15fr .85fr}}
+.media img{border-radius:var(--r-lg);box-shadow:var(--sh-md);width:100%;
+  aspect-ratio:4/3;object-fit:cover}
+.prose{color:var(--muted);max-width:66ch;font-size:1.03rem}
+.prose p:last-child{margin-bottom:0}
+.prose-wide{max-width:70ch}
+.sec-head.centre + .prose-wide{margin:0 auto;text-align:center}
+
+/* CTA band */
+.band{background:linear-gradient(135deg,var(--brand) 0%,var(--brand-dark) 58%,
+  var(--dark) 100%);color:var(--on-brand);text-align:center;overflow:hidden}
+.band::after{content:"";position:absolute;inset:auto -20% -60% -20%;height:120%;
+  background:radial-gradient(50% 60% at 50% 0%,rgba(255,255,255,.16),transparent 70%);
+  pointer-events:none}
+.band h2{color:var(--on-brand);margin:0 0 .4em;position:relative}
+.band .lead{color:rgba(255,255,255,.88);margin:0 auto;position:relative}
+.band .actions{justify-content:center;position:relative}
+
+/* Contact */
+.contact-grid{display:grid;gap:16px;margin-top:8px}
+@media(min-width:620px){
+  .contact-grid{grid-template-columns:repeat(auto-fit,minmax(238px,1fr))}
+}
+.contact-card{background:var(--bg);border:1px solid var(--line);border-radius:var(--r);
+  padding:22px;display:flex;flex-direction:column;gap:4px;box-shadow:var(--sh-sm);
+  text-align:left}
+.contact-label{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);font-weight:600}
+.contact-value{font-weight:600;font-size:1rem;overflow-wrap:anywhere;line-height:1.45}
+.contact-value a{text-decoration:none}
+.contact-value a:hover{text-decoration:underline}
+.sec-head.centre ~ .actions{justify-content:center}
+
+/* Footer */
+.foot{background:var(--dark);color:rgba(255,255,255,.66);padding:clamp(44px,5vw,64px) 0 28px;
+  font-size:.92rem}
+.foot-top{display:grid;gap:26px;padding-bottom:28px;
+  border-bottom:1px solid rgba(255,255,255,.14)}
+@media(min-width:760px){.foot-top{grid-template-columns:1.4fr 1fr;align-items:start}}
+.foot-brand{display:flex;align-items:center;gap:11px;color:#fff;
+  font-family:'IBM Plex Sans', -apple-system, sans-serif;font-weight:700;font-size:1.1rem;letter-spacing:-.02em}
+.foot-brand .mark{display:grid;place-items:center;width:34px;height:34px;flex:0 0 34px;
+  border-radius:10px;background:linear-gradient(140deg,var(--brand),var(--accent));
+  color:var(--on-brand);font-size:.8rem}
+.foot-brand img{height:34px;width:auto;border-radius:8px}
+.foot-tag{margin:12px 0 0;max-width:44ch}
+.foot-links{display:flex;flex-wrap:wrap;gap:10px 24px}
+@media(min-width:760px){.foot-links{justify-content:flex-end}}
+.foot-links a{color:rgba(255,255,255,.66);text-decoration:none}
+.foot-links a:hover{color:#fff}
+.foot-base{display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between;
+  padding-top:22px;font-size:.84rem}
+
+/* Motion. Opt-in, on load only: no JavaScript to go wrong. */
+@media(prefers-reduced-motion:no-preference){
+  .card,.stat,.steps li,.feature-list li,.gallery figure,.contact-card{
+    animation:rise .55s cubic-bezier(.22,.68,.35,1) backwards;
+    animation-delay:calc(var(--i,0) * 70ms)}
+  @keyframes rise{from{opacity:0;transform:translateY(14px)}}
+  .hero-text>*{animation:rise .6s cubic-bezier(.22,.68,.35,1) backwards}
+  .hero-text>*:nth-child(2){animation-delay:60ms}
+  .hero-text>*:nth-child(3){animation-delay:120ms}
+  .hero-text>*:nth-child(4){animation-delay:180ms}
+  .panel-card{animation:rise .7s cubic-bezier(.22,.68,.35,1) 120ms backwards}
+}
+
+@media print{
+  .nav,.band,.btn{display:none}
+  .sec{padding:18px 0;break-inside:avoid}
+  body{font-size:12pt}
+}
+</style>
+<script type="application/ld+json">{"@context": "https://schema.org", "@type": "Organization", "name": "StockPilot", "description": "StockPilot live stock web app for wholesalers", "url": "https://workspace.moc-pty.com/sites/stockpilot/", "email": "hello@stockpilot.example"}</script>
+</head><body>
+
+<header class="nav"><div class="wrap">
+  <a class="brand" href="#top"><span class="mark">S</span><span>StockPilot</span></a>
+  <nav><a href="#about">About</a><a href="#services">Services</a><a href="#faq">FAQ</a><a class="nav-cta" href="#contact">Get in touch</a></nav>
+</div></header>
+
+<main>
+<section class="sec hero hero-split" id="top"><div class="wrap"><div class="hero-grid"><div class="hero-text"><p class="eyebrow">Software and systems</p><h1>See live stock across your branches without phoning</h1><p class="lead">We build a web app for branch managers and sales reps at wholesalers. You get live stock levels across your branches.</p><div class="actions"><a class="btn" href="#contact">Get in touch</a></div><ul class="ticks"><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.2 12.4l2.6 2.6 5-5.4"/></svg><span>Live stock levels per branch</span></li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.2 12.4l2.6 2.6 5-5.4"/></svg><span>Transfers between branches</span></li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.2 12.4l2.6 2.6 5-5.4"/></svg><span>Works on a bad signal</span></li></ul></div><div class="hero-media"><img src="../_stock/software/software-1.jpg" alt=""></div></div></div></section><section class="sec" id="about"><div class="wrap"><header class="sec-head"><p class="eyebrow">About us</p><h2>About StockPilot</h2></header><div class="split"><div class="prose"><p>We build a web app that lets wholesalers see live stock across their branches instead of phoning each other. Our system is made for branch managers and sales reps. We serve wholesalers with three to twenty branches. Our app works on a bad signal in a warehouse, which the big ERPs do not.</p></div><ul class="ticks"><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.2 12.4l2.6 2.6 5-5.4"/></svg><span>Operations teams</span></li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.2 12.4l2.6 2.6 5-5.4"/></svg><span>Finance and admin</span></li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.2 12.4l2.6 2.6 5-5.4"/></svg><span>Field and logistics</span></li><li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.2 12.4l2.6 2.6 5-5.4"/></svg><span>Owner-managers</span></li></ul><div class="media"><img src="../_stock/software/software-2.jpg" alt="" loading="lazy"></div></div></div></section><section class="sec wash features"><div class="wrap"><header class="sec-head"><p class="eyebrow">Why us</p><h2>Why choose StockPilot</h2></header><ul class="feature-list"><li style="--i:0"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.2 12.4l2.6 2.6 5-5.4"/></svg></span><div><h3>Bad signal support</h3><p>It works on a bad signal in a warehouse, which the big ERPs do not.</p></div></li><li style="--i:1"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.2 12.4l2.6 2.6 5-5.4"/></svg></span><div><h3>Branch visibility</h3><p>See live stock across your branches instead of phoning each other.</p></div></li><li style="--i:2"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.2 12.4l2.6 2.6 5-5.4"/></svg></span><div><h3>Built for your size</h3><p>Designed specifically for wholesalers with three to twenty branches.</p></div></li><li style="--i:3"><span class="tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M8.2 12.4l2.6 2.6 5-5.4"/></svg></span><div><h3>Accounting connection</h3><p>Includes an API for your accounting system.</p></div></li></ul></div></section><section class="sec stepped"><div class="wrap"><header class="sec-head"><p class="eyebrow">How it works</p><h2>How it works</h2></header><ol class="steps"><li style="--i:0"><span class="step-no">1</span><h3>Share your needs</h3><p>Tell us about your branches and your current system.</p></li><li style="--i:1"><span class="step-no">2</span><h3>Build the web app</h3><p>We build your live stock app with branch transfers and reorder dashboard.</p></li><li style="--i:2"><span class="step-no">3</span><h3>Connect your accounts</h3><p>We set up the API for your accounting system.</p></li><li style="--i:3"><span class="step-no">4</span><h3>Launch</h3><p>Launch your new system in the first quarter of 2027.</p></li></ol></div></section><section class="sec wash" id="services"><div class="wrap"><header class="sec-head"><p class="eyebrow">What we do</p><h2>What we offer</h2><p class="lead">Software features for your wholesale business</p></header><div class="grid grid-3"><article class="card" style="--i:0"><span class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s6.5-5.7 6.5-10.4A6.5 6.5 0 005.5 10.6C5.5 15.3 12 21 12 21z"/><circle cx="12" cy="10.4" r="2.4"/></svg></span><h3>Live stock levels per branch</h3><p>See your stock levels in real time across all your branches.</p></article><article class="card" style="--i:1"><span class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s6.5-5.7 6.5-10.4A6.5 6.5 0 005.5 10.6C5.5 15.3 12 21 12 21z"/><circle cx="12" cy="10.4" r="2.4"/></svg></span><h3>Transfers between branches</h3><p>Manage stock transfers between your branches in the app.</p></article><article class="card" style="--i:2"><span class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10"/><path d="M10 20V4"/><path d="M16 20v-7"/><path d="M2 20h20"/></svg></span><h3>Reorder dashboard</h3><p>Use our reorder dashboard to manage your stock replenishment.</p></article><article class="card" style="--i:3"><span class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 5.5a3 3 0 010 5.6"/><path d="M18 20c0-2.6-1-4.3-2.5-5.2"/></svg></span><h3>Mobile view for reps</h3><p>Sales reps get a mobile view to check stock on the go.</p></article><article class="card" style="--i:4"><span class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 8l-4 4 4 4"/><path d="M15 8l4 4-4 4"/></svg></span><h3>Integrations</h3><p>We provide an API for your accounting system.</p></article></div></div></section><section class="sec" id="faq"><div class="wrap"><header class="sec-head"><p class="eyebrow">FAQ</p><h2>Questions we get asked</h2></header><div class="faq"><details open><summary>Who is this web app for?<span class="chev"></span></summary><div class="answer"><p>It is for branch managers and sales reps at wholesalers with three to twenty branches.</p></div></details><details><summary>Does it work with bad warehouse signal?<span class="chev"></span></summary><div class="answer"><p>Yes, it works on a bad signal in a warehouse, which the big ERPs do not.</p></div></details><details><summary>Can we see stock across different branches?<span class="chev"></span></summary><div class="answer"><p>Yes, wholesalers can see live stock across their branches instead of phoning each other.</p></div></details><details><summary>Does it connect to our accounting system?<span class="chev"></span></summary><div class="answer"><p>Yes, we provide an API for your accounting system.</p></div></details><details><summary>When will it launch?<span class="chev"></span></summary><div class="answer"><p>We need it launched in the first quarter of 2027.</p></div></details></div></div></section><section class="sec band"><div class="wrap"><h2>Get ready for the launch in the first quarter of 2027</h2><p class="lead">Contact us to discuss your branches.</p><div class="actions"><a class="btn btn-invert" href="#contact">Contact us</a></div></div></section><section class="sec wash" id="contact"><div class="wrap"><header class="sec-head"><p class="eyebrow">Contact</p><h2>Get in touch</h2></header><div class="prose-wide"><div class="prose"><p>Contact StockPilot to find out more about our web app.</p></div></div><div class="contact-grid"><div class="contact-card" style="--i:0"><span class="card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18v12H3z"/><path d="M3 7l9 6 9-6"/></svg></span><span class="contact-label">Email</span><span class="contact-value"><a href="mailto:hello@stockpilot.example">hello@stockpilot.example</a></span></div></div><div class="actions"><a class="btn" href="mailto:hello@stockpilot.example">Send an email</a></div></div></section>
+</main>
+
+<footer class="foot"><div class="wrap">
+  <div class="foot-top">
+    <div>
+      <span class="foot-brand"><span class="mark">S</span><span>StockPilot</span></span>
+      <p class="foot-tag">StockPilot live stock web app for wholesalers</p>
+    </div>
+    <div class="foot-links"><a href="#about">About</a><a href="#services">Services</a><a href="#faq">FAQ</a><a href="#contact">Contact</a></div>
+  </div>
+  <div class="foot-base">
+    <span>&copy; 2026 StockPilot. All rights reserved.</span>
+    <span>Built by Magnum Opus Consultants</span>
+  </div>
+</div></footer>
+
+</body></html>

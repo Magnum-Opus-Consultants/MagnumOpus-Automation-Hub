@@ -28,6 +28,13 @@ const STATUS_TONE: Record<StationStatus, Tone> = {
   error: "bad",
   unknown: "neutral",
 };
+// Sort weight: worst first, so what needs attention is never below the fold.
+const STATUS_ORDER: Record<StationStatus, number> = {
+  error: 0,
+  unknown: 1,
+  stale: 2,
+  healthy: 3,
+};
 const STATUS_DOT: Record<StationStatus, string> = {
   healthy: "bg-good",
   stale: "bg-warnx",
@@ -148,12 +155,18 @@ export default function DataAnalysisPage() {
     error: stations?.filter((s) => s.status === "error").length ?? 0,
     unknown: stations?.filter((s) => s.status === "unknown").length ?? 0,
   };
-  const shown = (stations ?? []).filter((s) =>
-    filter === "All" ? true
-      : filter === "Failed" ? s.status === "error"
-      : filter === "Stale" ? s.status === "stale" || s.status === "unknown"
-      : s.status === "healthy",
-  );
+  const shown = (stations ?? [])
+    .filter((s) =>
+      filter === "All" ? true
+        : filter === "Failed" ? s.status === "error"
+        : filter === "Stale" ? s.status === "stale" || s.status === "unknown"
+        : s.status === "healthy",
+    )
+    // Anything needing attention sorts to the top; healthy sources sink. Within
+    // a status the backend's order is preserved, so the list stays stable
+    // across refreshes instead of reshuffling.
+    .slice()
+    .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]);
 
   return (
     <AppShell active="Data Analysis" me={me} wide>
