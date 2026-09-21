@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(taskkill //F //FI \"IMAGENAME eq py.exe\")"
+    ]
+  }
+}

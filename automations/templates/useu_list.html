@@ -1,0 +1,2464 @@
+{% extends "base.html" %}
+
+{% block title %}US-EU List — Automations{% endblock %}
+
+{% block extra_styles %}
+.page-banner {
+    background: linear-gradient(135deg, #054B70 0%, #076a9e 55%, #0a82c4 100%);
+    border-radius: 14px;
+    padding: 28px 32px;
+    margin-bottom: 22px;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    flex-wrap: wrap;
+    box-shadow: 0 10px 30px rgba(5,75,112,0.22);
+}
+.page-banner::before {
+    content: ''; position: absolute; top: -60px; right: -40px;
+    width: 220px; height: 220px; border-radius: 50%;
+    background: rgba(255,255,255,0.08);
+}
+.page-banner::after {
+    content: ''; position: absolute; bottom: -80px; right: 120px;
+    width: 160px; height: 160px; border-radius: 50%;
+    background: rgba(255,255,255,0.05);
+}
+.page-banner > * { position: relative; z-index: 1; }
+.banner-eyebrow {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.75);
+    margin-bottom: 6px;
+}
+.banner-title {
+    font-size: 28px;
+    font-weight: 700;
+    letter-spacing: -0.3px;
+}
+.banner-subtitle {
+    font-size: 13px;
+    color: rgba(255,255,255,0.85);
+    margin-top: 4px;
+    max-width: 500px;
+}
+.banner-stats {
+    display: flex;
+    gap: 10px;
+    align-items: stretch;
+    flex-wrap: wrap;
+}
+.banner-stats > div {
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.18);
+    border-radius: 10px;
+    padding: 12px 18px;
+    min-width: 92px;
+    backdrop-filter: blur(4px);
+}
+.banner-stat-value {
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1.1;
+}
+.banner-stat-label {
+    font-size: 10px;
+    color: rgba(255,255,255,0.85);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-top: 2px;
+    font-weight: 600;
+}
+.list-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+}
+.list-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.list-card-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.search-box {
+    padding: 7px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    background: var(--surface);
+    color: var(--text-primary);
+    width: 260px;
+}
+.search-box:focus {
+    outline: none;
+    border-color: #054B70;
+}
+.table-wrap {
+    overflow-x: auto;
+}
+.list-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+/* Filter icon + popup (Excel-style) */
+.list-table th { position: relative; }
+.filter-icon {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 4px;
+    font-size: 10px;
+    color: var(--text-secondary, #a0a0a0);
+    cursor: pointer;
+    border-radius: 3px;
+    opacity: 0.55;
+}
+.filter-icon:hover { opacity: 1; background: rgba(0,0,0,0.08); color: #054B70; }
+.filter-icon.active { opacity: 1; color: #054B70; background: rgba(5,75,112,0.15); }
+.filter-popup {
+    position: fixed;
+    z-index: 9999;
+    width: 260px;
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #c8c6c4);
+    border-radius: 6px;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.15);
+    padding: 10px;
+    font-size: 13px;
+    color: var(--text-primary, #323130);
+}
+.filter-popup .fp-sorts { display: flex; gap: 6px; margin-bottom: 6px; }
+.filter-popup .fp-btn {
+    flex: 1;
+    padding: 5px 8px;
+    border: 1px solid var(--border, #c8c6c4);
+    border-radius: 4px;
+    background: var(--surface, #fff);
+    color: var(--text-primary, #323130);
+    cursor: pointer;
+    font-size: 12px;
+}
+.filter-popup .fp-btn:hover { background: #f3f2f1; }
+.filter-popup .fp-search {
+    width: 100%;
+    padding: 5px 8px;
+    border: 1px solid var(--border, #c8c6c4);
+    border-radius: 4px;
+    margin-bottom: 6px;
+    background: var(--surface, #fff);
+    color: var(--text-primary, #323130);
+}
+.filter-popup .fp-list {
+    max-height: 220px;
+    overflow-y: auto;
+    border: 1px solid var(--border, #e5e5e5);
+    border-radius: 4px;
+    padding: 6px;
+    margin-bottom: 8px;
+    background: var(--surface, #fff);
+}
+.filter-popup .fp-list label {
+    display: block;
+    padding: 2px 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.filter-popup .fp-list label:hover { background: #f3f2f1; }
+.filter-popup .fp-node { margin: 2px 0; }
+.filter-popup .fp-sub { padding-left: 18px; }
+.filter-popup .fp-day { padding-left: 22px; display: block; }
+.filter-popup .fp-tog {
+    display: inline-block;
+    width: 14px;
+    text-align: center;
+    cursor: pointer;
+    color: #605e5c;
+    font-weight: bold;
+    user-select: none;
+}
+.filter-popup .fp-tog:hover { color: #054B70; }
+.filter-popup .fp-all-lbl { font-weight: 500; border-bottom: 1px solid #eee; padding-bottom: 4px; margin-bottom: 4px; display: block; }
+.filter-popup .fp-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.filter-popup .fp-apply { background: #054B70; color: #fff; border-color: #054B70; }
+.filter-popup .fp-apply:hover { background: #076a9e; }
+
+/* Hide TP date columns (TP1..TP10) — only the Sent columns remain visible. */
+#listTable thead th:nth-child(8),
+#listTable thead th:nth-child(10),
+#listTable thead th:nth-child(12),
+#listTable thead th:nth-child(14),
+#listTable thead th:nth-child(16),
+#listTable thead th:nth-child(18),
+#listTable thead th:nth-child(20),
+#listTable thead th:nth-child(22),
+#listTable thead th:nth-child(24),
+#listTable thead th:nth-child(26),
+#listTable tbody td:nth-child(8),
+#listTable tbody td:nth-child(10),
+#listTable tbody td:nth-child(12),
+#listTable tbody td:nth-child(14),
+#listTable tbody td:nth-child(16),
+#listTable tbody td:nth-child(18),
+#listTable tbody td:nth-child(20),
+#listTable tbody td:nth-child(22),
+#listTable tbody td:nth-child(24),
+#listTable tbody td:nth-child(26) {
+    display: none;
+}
+.list-table th {
+    text-align: left;
+    padding: 10px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+}
+.list-table th:hover {
+    color: var(--text-primary);
+}
+.list-table th .sort-arrow {
+    margin-left: 4px;
+    font-size: 10px;
+    opacity: 0.4;
+}
+.list-table th.sorted .sort-arrow {
+    opacity: 1;
+}
+.list-table td {
+    padding: 9px 14px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+.list-table tbody tr:hover td {
+    background: rgba(5, 75, 112, 0.04);
+}
+.status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+}
+.status-active {
+    background: #e6f4ea;
+    color: #1e7e34;
+}
+.status-inactive {
+    background: #fff3cd;
+    color: #856404;
+}
+.status-faulty {
+    background: #fde8e8;
+    color: #c0392b;
+}
+.status-undeliverable {
+    background: #fde8e8;
+    color: #c0392b;
+}
+.status-lost {
+    background: #fff3e0;
+    color: #e65100;
+}
+.status-optedout {
+    background: #f0e6f6;
+    color: #6c3483;
+}
+.status-hubspot {
+    background: #e8f0fe;
+    color: #1a56db;
+}
+.status-autoreply {
+    background: #fff3cd;
+    color: #856404;
+}
+.tp-sent-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    background: #e6f4ea;
+    color: #1e7e34;
+}
+.pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    border-top: 1px solid var(--border);
+    font-size: 13px;
+    color: var(--text-secondary);
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.pagination-buttons {
+    display: flex;
+    gap: 4px;
+}
+.pagination-buttons button {
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-primary);
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 12px;
+}
+.pagination-buttons button:hover {
+    background: var(--surface2);
+}
+.pagination-buttons button.active {
+    background: #054B70;
+    color: #fff;
+    border-color: #054B70;
+}
+.pagination-buttons button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+.per-page-select {
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    font-size: 12px;
+    background: var(--surface);
+    color: var(--text-primary);
+}
+
+/* Editable cell styles */
+.editable-cell {
+    cursor: pointer;
+    position: relative;
+    min-width: 80px;
+}
+.editable-cell:hover {
+    background: rgba(5, 75, 112, 0.08);
+    border-radius: 3px;
+}
+.editable-cell input[type="text"],
+.editable-cell input[type="date"] {
+    width: 100%;
+    min-width: 100px;
+    padding: 4px 6px;
+    border: 1px solid #054B70;
+    border-radius: 4px;
+    font-size: 12px;
+    background: var(--surface);
+    color: var(--text-primary);
+    outline: none;
+    box-sizing: border-box;
+}
+.editable-cell select {
+    width: 100%;
+    padding: 4px 6px;
+    border: 1px solid #054B70;
+    border-radius: 4px;
+    font-size: 12px;
+    background: var(--surface);
+    color: var(--text-primary);
+    outline: none;
+}
+.cell-saving {
+    opacity: 0.5;
+}
+.cell-saved {
+    animation: cellFlash 0.6s ease;
+}
+@keyframes cellFlash {
+    0% { background: rgba(30, 126, 52, 0.2); }
+    100% { background: transparent; }
+}
+.status-select {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid transparent;
+    cursor: pointer;
+    appearance: auto;
+}
+
+/* Send All controls */
+.send-all-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+    flex-wrap: wrap;
+}
+.send-all-bar select {
+    padding: 7px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 13px;
+    background: var(--surface);
+    color: var(--text-primary);
+}
+.send-all-btn {
+    padding: 9px 22px;
+    background: linear-gradient(135deg, #054B70 0%, #0770a5 100%);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 2px 6px rgba(5,75,112,0.25);
+    transition: transform 0.08s, box-shadow 0.15s, background 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+.send-all-btn:hover { background: linear-gradient(135deg, #043d5c 0%, #065d8b 100%); box-shadow: 0 4px 10px rgba(5,75,112,0.35); transform: translateY(-1px); }
+.send-all-btn:active { transform: translateY(0); }
+.send-all-btn:disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }
+.send-all-btn.stop {
+    background: linear-gradient(135deg, #c0392b 0%, #e14836 100%);
+    box-shadow: 0 2px 6px rgba(192,57,43,0.25);
+}
+.send-all-btn.stop:hover { background: linear-gradient(135deg, #a02820 0%, #c0392b 100%); box-shadow: 0 4px 10px rgba(192,57,43,0.35); }
+
+/* Schedule Touchpoints */
+.tp-schedule-bar {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+}
+.tp-schedule-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    user-select: none;
+}
+.tp-schedule-toggle .arrow { transition: transform 0.2s; font-size: 10px; }
+.tp-schedule-toggle .arrow.open { transform: rotate(90deg); }
+.tp-schedule-grid {
+    display: none;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+    margin-top: 16px;
+}
+.tp-schedule-grid.open { display: grid; }
+.tp-schedule-item {
+    background: var(--surface2, #f8f9fa);
+    border: 1px solid var(--border, #edebe9);
+    border-radius: 8px;
+    padding: 12px 14px;
+}
+.tp-schedule-item label {
+    display: block;
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 8px;
+}
+.tp-schedule-item .flatpickr-input,
+.tp-schedule-item input[type="text"] {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1px solid var(--border, #edebe9);
+    border-radius: 6px;
+    font-size: 13px;
+    background: var(--surface, #fff);
+    color: var(--text-primary);
+    box-sizing: border-box;
+    transition: border-color 0.15s;
+}
+.tp-schedule-item .flatpickr-input:focus,
+.tp-schedule-item input[type="text"]:focus {
+    outline: none;
+    border-color: #054B70;
+    box-shadow: 0 0 0 3px rgba(5, 75, 112, 0.1);
+}
+.tp-schedule-item .schedule-status {
+    font-size: 11px;
+    color: #1e7e34;
+    min-height: 16px;
+    margin-top: 6px;
+}
+.tp-schedule-item .schedule-status.pending { color: var(--text-secondary); }
+.sched-clear-btn {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #edebe9);
+    border-radius: 6px;
+    color: #a5281b;
+    font-size: 14px;
+    font-weight: 700;
+    width: 34px;
+    height: 34px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    line-height: 1;
+    transition: all 0.15s;
+}
+.sched-clear-btn:hover { background: #fdecea; border-color: #c0392b; color: #c0392b; }
+
+.tp-card-schedule {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border, #edebe9);
+}
+.tp-card-schedule-label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary, #797775);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    margin-bottom: 6px;
+}
+.tp-card-datepicker {
+    flex: 1;
+    min-width: 0;
+    padding: 6px 10px;
+    border: 1px solid var(--border, #edebe9);
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-primary, #1b1a19);
+    background: var(--surface, #fff);
+    outline: none;
+    transition: border-color 0.15s;
+}
+.tp-card-datepicker:focus {
+    border-color: #054B70;
+    box-shadow: 0 0 0 2px rgba(5,75,112,0.12);
+}
+.tp-card-datepicker::placeholder { color: #b8b6b4; }
+.tp-card-schedule .sched-clear-btn { width: 28px; height: 28px; font-size: 13px; }
+.tp-card-schedule .schedule-status { display: block; margin-top: 4px; font-size: 11px; }
+
+/* Sending spinner */
+@keyframes spin { to { transform: rotate(360deg); } }
+.send-spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2.5px solid var(--border);
+    border-top-color: #054B70;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    vertical-align: middle;
+}
+
+.send-progress-panel {
+    display: none;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+}
+.progress-bar-wrap {
+    height: 8px;
+    background: var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    margin: 8px 0;
+}
+.progress-bar-fill {
+    height: 100%;
+    background: #054B70;
+    border-radius: 4px;
+    transition: width 0.3s;
+    width: 0%;
+}
+.progress-stats {
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: flex;
+    gap: 16px;
+}
+.progress-stats .sent-count { color: #1e7e34; font-weight: 600; }
+.progress-stats .fail-count { color: #c0392b; font-weight: 600; }
+.eligible-count {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* TP column header groups */
+.tp-header { background: rgba(5, 75, 112, 0.06); }
+
+[data-theme="dark"] .status-active { background: #1b3a1b; color: #6fcf6f; }
+[data-theme="dark"] .status-inactive { background: #3a3a1b; color: #cfcf6f; }
+[data-theme="dark"] .status-faulty { background: #3a1b1b; color: #f06f6f; }
+[data-theme="dark"] .status-undeliverable { background: #3a1b1b; color: #f06f6f; }
+[data-theme="dark"] .status-lost { background: #3a2a1b; color: #f0a06f; }
+[data-theme="dark"] .status-optedout { background: #2d1b3a; color: #c08fdf; }
+[data-theme="dark"] .status-hubspot { background: #1b2a3a; color: #6fa8f0; }
+[data-theme="dark"] .status-autoreply { background: #3a3a1b; color: #cfcf6f; }
+[data-theme="dark"] .tp-sent-badge { background: #1b3a1b; color: #6fcf6f; }
+[data-theme="dark"] .list-table tbody tr:hover td { background: rgba(108, 180, 216, 0.06); }
+[data-theme="dark"] .editable-cell:hover { background: rgba(108, 180, 216, 0.1); }
+[data-theme="dark"] .tp-header { background: rgba(108, 180, 216, 0.06); }
+
+/* Page sub-navigation tabs */
+.page-nav-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 20px;
+    border-bottom: 2px solid var(--border);
+}
+.page-nav-tab {
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.15s;
+}
+.page-nav-tab:hover { color: var(--text-primary); }
+.page-nav-tab.active { color: #054B70; border-bottom-color: #054B70; }
+[data-theme="dark"] .page-nav-tab.active { color: #6cb4d8; border-bottom-color: #6cb4d8; }
+
+/* Contact Modal */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal-box {
+    background: var(--surface, #fff);
+    border-radius: 10px;
+    width: 480px;
+    max-width: 95vw;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+}
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border, #edebe9);
+}
+.modal-header h3 { margin: 0; font-size: 16px; font-weight: 700; color: var(--text-primary, #1b1a19); }
+.modal-close {
+    background: none; border: none; font-size: 20px; cursor: pointer;
+    color: var(--text-secondary, #797775); padding: 0; line-height: 1;
+}
+.modal-body { padding: 20px 24px; }
+.modal-field { margin-bottom: 14px; }
+.modal-field label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary, #797775);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.modal-field input, .modal-field select {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border, #edebe9);
+    border-radius: 6px;
+    font-size: 14px;
+    background: var(--surface2, #f8f8f8);
+    color: var(--text-primary, #1b1a19);
+    box-sizing: border-box;
+}
+.modal-footer {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    padding: 14px 24px;
+    border-top: 1px solid var(--border, #edebe9);
+}
+.modal-btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.modal-btn-primary { background: #054B70; color: #fff; }
+.modal-btn-primary:hover { background: #043d5c; }
+.modal-btn-cancel { background: var(--surface2, #f0f0f0); color: var(--text-primary, #333); }
+.modal-btn-danger { background: #c0392b; color: #fff; }
+.modal-btn-danger:hover { background: #a5281b; }
+
+/* Row action buttons */
+.row-actions { display: flex; gap: 4px; white-space: nowrap; }
+.row-action-btn {
+    background: none;
+    border: 1px solid var(--border, #edebe9);
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 11px;
+    cursor: pointer;
+    color: var(--text-secondary, #797775);
+}
+.row-action-btn:hover { background: var(--surface2, #f0f0f0); }
+/* TP Stats Summary */
+.tp-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    margin-bottom: 20px;
+}
+.tp-stat-card {
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #edebe9);
+    border-radius: 8px;
+    padding: 14px 16px;
+}
+.tp-stat-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border, #edebe9);
+}
+.tp-stat-card-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary, #1b1a19);
+}
+.tp-stat-card-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+}
+.tp-stat-card-badge.done { background: #e6f4ea; color: #1e7e34; }
+.tp-stat-card-badge.sending { background: #e8f0fe; color: #1a56db; animation: pulse-badge 1.5s infinite; }
+@keyframes pulse-badge { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+.tp-stat-card-badge.none { background: var(--surface2, #f3f2f1); color: var(--text-secondary, #797775); }
+.tp-stat-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    color: var(--text-secondary, #797775);
+    margin-bottom: 3px;
+}
+.tp-stat-row span:last-child {
+    font-weight: 600;
+    color: var(--text-primary, #1b1a19);
+}
+
+/* Flatpickr theme overrides */
+.flatpickr-day.flatpickr-disabled {
+    color: #c8c6c4 !important;
+    background: repeating-linear-gradient(
+        45deg, transparent, transparent 3px, rgba(0,0,0,0.03) 3px, rgba(0,0,0,0.03) 6px
+    ) !important;
+    text-decoration: line-through;
+    cursor: not-allowed !important;
+}
+.flatpickr-day.flatpickr-disabled:hover {
+    background: repeating-linear-gradient(
+        45deg, transparent, transparent 3px, rgba(0,0,0,0.03) 3px, rgba(0,0,0,0.03) 6px
+    ) !important;
+    border-color: transparent !important;
+}
+.flatpickr-day.selected {
+    background: #054B70 !important;
+    border-color: #054B70 !important;
+}
+.flatpickr-day.today {
+    border-color: #054B70 !important;
+}
+.flatpickr-day:hover {
+    background: #edf4f8 !important;
+}
+.flatpickr-months .flatpickr-month {
+    background: #054B70 !important;
+    color: #fff !important;
+}
+.flatpickr-current-month .flatpickr-monthDropdown-months {
+    color: #fff !important;
+    background: #054B70 !important;
+}
+.flatpickr-current-month .flatpickr-monthDropdown-months option {
+    color: #1b1a19 !important;
+    background: #fff !important;
+}
+.flatpickr-current-month input.cur-year {
+    color: #fff !important;
+}
+.flatpickr-weekdays { background: #054B70 !important; }
+.flatpickr-weekday { color: rgba(255,255,255,0.7) !important; font-weight: 600; }
+.flatpickr-calendar { z-index: 9999 !important; }
+.flatpickr-monthDropdown-months { z-index: 10000 !important; }
+
+/* Context menu */
+.ctx-menu {
+    display: none;
+    position: absolute;
+    z-index: 2000;
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #edebe9);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    min-width: 160px;
+    padding: 4px 0;
+}
+.ctx-menu.open { display: block; }
+.ctx-menu-item {
+    display: block;
+    width: 100%;
+    padding: 8px 16px;
+    border: none;
+    background: none;
+    text-align: left;
+    font-size: 13px;
+    cursor: pointer;
+    color: var(--text-primary, #1b1a19);
+}
+.ctx-menu-item:hover { background: var(--surface2, #f3f2f1); }
+.ctx-menu-item.danger { color: #c0392b; }
+.ctx-menu-item.danger:hover { background: #fdecea; }
+
+/* Toast notifications */
+.toast-container {
+    position: fixed; top: 20px; right: 20px; z-index: 9999;
+    display: flex; flex-direction: column; gap: 10px;
+    pointer-events: none;
+}
+.toast {
+    min-width: 300px; max-width: 440px; padding: 14px 16px;
+    border-radius: 10px; font-size: 13px; line-height: 1.4;
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #edebe9);
+    box-shadow: 0 6px 24px rgba(0,0,0,0.15);
+    display: flex; gap: 12px; align-items: flex-start;
+    pointer-events: auto;
+    animation: toastSlideIn 0.25s ease-out;
+    border-left: 4px solid #054B70;
+}
+.toast.error { border-left-color: #c0392b; }
+.toast.warning { border-left-color: #d78f08; }
+.toast.success { border-left-color: #1e7e34; }
+.toast-icon {
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 13px; flex-shrink: 0; color: #fff;
+    background: #054B70;
+}
+.toast.error .toast-icon { background: #c0392b; }
+.toast.warning .toast-icon { background: #d78f08; }
+.toast.success .toast-icon { background: #1e7e34; }
+.toast-body { flex: 1; }
+.toast-title { font-weight: 700; color: var(--text-primary); margin-bottom: 2px; }
+.toast-msg { color: var(--text-secondary); }
+.toast-close {
+    background: none; border: none; font-size: 16px; color: var(--text-secondary);
+    cursor: pointer; padding: 0; margin-left: 8px; line-height: 1;
+}
+.toast-close:hover { color: var(--text-primary); }
+.toast.hiding { animation: toastSlideOut 0.2s ease-in forwards; }
+@keyframes toastSlideIn {
+    from { transform: translateX(110%); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+@keyframes toastSlideOut {
+    to { transform: translateX(110%); opacity: 0; }
+}
+{% endblock %}
+
+{% block content %}
+<div class="toast-container" id="toastContainer"></div>
+<script>
+window.showToast = function(message, opts) {
+    opts = opts || {};
+    const type = opts.type || 'info';
+    const title = opts.title || ({info:'Notice', error:'Error', warning:'Heads up', success:'Done'})[type];
+    const duration = opts.duration == null ? 5000 : opts.duration;
+    const iconChar = ({info:'i', error:'!', warning:'!', success:'✓'})[type];
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+    const el = document.createElement('div');
+    el.className = 'toast ' + type;
+    el.innerHTML = `
+        <div class="toast-icon">${iconChar}</div>
+        <div class="toast-body">
+            <div class="toast-title"></div>
+            <div class="toast-msg"></div>
+        </div>
+        <button class="toast-close" aria-label="Close">&times;</button>`;
+    el.querySelector('.toast-title').textContent = title;
+    el.querySelector('.toast-msg').textContent = message;
+    const remove = () => {
+        el.classList.add('hiding');
+        setTimeout(() => el.remove(), 250);
+    };
+    el.querySelector('.toast-close').onclick = remove;
+    container.appendChild(el);
+    if (duration > 0) setTimeout(remove, duration);
+};
+</script>
+<div class="page-nav-tabs">
+    <a href="{% url 'useu_list' %}" class="page-nav-tab active">US-EU List</a>
+    <a href="{% url 'email_templates' %}" class="page-nav-tab">Email Templates</a>
+    <a href="{% url 'reporting' %}" class="page-nav-tab">Reporting</a>
+</div>
+
+<div class="page-banner">
+    <div style="flex:1; min-width:260px;">
+        <div class="banner-eyebrow">Database · Organizational contacts</div>
+        <div class="banner-title">US-EU Contact List</div>
+        <div class="banner-subtitle">Track every contact's touchpoint journey, scheduled sends and delivery status in one place.</div>
+    </div>
+    <div class="banner-stats">
+        <div>
+            <div class="banner-stat-value">{{ total_rows|default:"0" }}</div>
+            <div class="banner-stat-label">Total Contacts</div>
+        </div>
+        <div>
+            <div class="banner-stat-value">{{ active_count|default:"0" }}</div>
+            <div class="banner-stat-label">Active</div>
+        </div>
+        <div>
+            <div class="banner-stat-value">{{ faulty_count|default:"0" }}</div>
+            <div class="banner-stat-label">Faulty Data</div>
+        </div>
+    </div>
+</div>
+
+<div class="tp-stats-grid">
+    {% for tp in tp_stats %}
+    <div class="tp-stat-card">
+        <div class="tp-stat-card-header">
+            <span class="tp-stat-card-title">TP {{ tp.num }}</span>
+            {% if tp.is_sending %}
+            <span class="tp-stat-card-badge sending">Sending...</span>
+            {% elif tp.sent > 0 and tp.remaining == 0 %}
+            <span class="tp-stat-card-badge done">Complete</span>
+            {% elif tp.sent > 0 %}
+            <span class="tp-stat-card-badge none">In Progress</span>
+            {% else %}
+            <span class="tp-stat-card-badge none">Not Started</span>
+            {% endif %}
+        </div>
+        <div class="tp-stat-row"><span>Total</span><span>{{ tp.total }}</span></div>
+        <div class="tp-stat-row"><span>Sent</span><span>{{ tp.sent }}</span></div>
+        <div class="tp-stat-row"><span>Remaining</span><span>{{ tp.remaining }}</span></div>
+        {% if tp.undeliverable > 0 %}
+        <div class="tp-stat-row"><span>Undeliverable</span><span style="color:#c0392b;">{{ tp.undeliverable }}</span></div>
+        {% endif %}
+        {% if tp.last_sent %}
+        <div class="tp-stat-row"><span>Last sent</span><span>{{ tp.last_sent }}</span></div>
+        {% endif %}
+        <div class="tp-card-schedule">
+            <label class="tp-card-schedule-label">Scheduled date &amp; time (PST)</label>
+            <div style="display:flex;gap:6px;align-items:center;">
+                <input type="text" class="tp-datepicker tp-card-datepicker" id="schedDate{{ tp.num }}" data-tp="{{ tp.num }}" placeholder="Pick date &amp; time (PST)...">
+                <button class="sched-clear-btn" onclick="clearSchedule({{ tp.num }})" title="Clear">&times;</button>
+            </div>
+            <span class="schedule-status pending" id="schedStatus{{ tp.num }}"></span>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="list-card">
+    <!-- Send All bar -->
+    <div class="send-all-bar" data-tp-type="tp1">
+        <label style="font-size:13px;font-weight:600;color:var(--text-primary);">Send Touchpoint:</label>
+        <select id="tpSelect">
+            <option value="1">TP 1</option>
+            <option value="2">TP 2</option>
+            <option value="3">TP 3</option>
+            <option value="4">TP 4</option>
+            <option value="5">TP 5</option>
+            <option value="6">TP 6</option>
+            <option value="7">TP 7</option>
+            <option value="8">TP 8</option>
+            <option value="9">TP 9</option>
+            <option value="10">TP 10</option>
+        </select>
+        <button class="send-all-btn" id="sendAllBtn" onclick="startSendAll()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+            <span id="sendAllBtnLabel">Send All</span>
+        </button>
+        <button class="send-all-btn stop" id="stopSendBtn" onclick="stopSending()" style="display:none;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+            <span id="stopSendBtnLabel">Stop Sending</span>
+        </button>
+        <span class="eligible-count" id="eligibleCount"></span>
+        <div id="progressPanel" style="display:none;margin-left:12px;font-size:13px;color:var(--text-secondary);align-items:center;gap:8px;">
+            <span class="send-spinner" id="sendSpinner"></span>
+            <span id="progCurrent"></span>
+        </div>
+    </div>
+    
+
+    <!-- Persistent Progress Status -->
+    <div class="tp-status" data-tp-type="tp1" style="margin: 10px 0; padding: 14px 18px; background: linear-gradient(135deg, #054B70 0%, #076a9e 100%); color: #fff; border-radius: 8px; font-size: 14px; display: none; box-shadow: 0 2px 8px rgba(5,75,112,0.3);"></div>
+
+    <div class="list-card-header">
+        <div class="list-card-title">Contacts</div>
+        <div style="display:flex;gap:10px;align-items:center;flex:1;justify-content:flex-end;flex-wrap:wrap;">
+            <select id="statusFilter" onchange="applyStatusFilter()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--surface);color:var(--text-primary);min-width:140px;cursor:pointer;">
+                <option value="">All Statuses ({{ total_rows }})</option>
+            </select>
+            <script>
+            (function(){
+                const sc = {{ status_counts|safe }};
+                const sel = document.getElementById('statusFilter');
+                ['Active','Inactive','Undeliverable','Lost','Moved to HubSpot'].forEach(s => {
+                    const o = document.createElement('option');
+                    o.value = s; o.textContent = s + (sc[s] ? ' (' + sc[s] + ')' : ' (0)');
+                    sel.appendChild(o);
+                });
+            })();
+            </script>
+            <select id="sentFieldFilter" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--surface);color:var(--text-primary);cursor:pointer;" title="Show only contacts with this touchpoint sent (optionally within a date range). Click Apply to activate.">
+                <option value="">Any TP</option>
+                <option value="tp1_sent_on">TP1 Sent</option>
+                <option value="tp2_sent_on">TP2 Sent</option>
+                <option value="tp3_sent_on">TP3 Sent</option>
+                <option value="tp4_sent_on">TP4 Sent</option>
+                <option value="tp5_sent_on">TP5 Sent</option>
+                <option value="tp6_sent_on">TP6 Sent</option>
+                <option value="tp7_sent_on">TP7 Sent</option>
+                <option value="tp8_sent_on">TP8 Sent</option>
+                <option value="tp9_sent_on">TP9 Sent</option>
+                <option value="tp10_sent_on">TP10 Sent</option>
+            </select>
+            <input type="date" id="sentFromFilter" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--surface);color:var(--text-primary);" title="Sent date from">
+            <span style="color:var(--text-secondary);font-size:13px;">to</span>
+            <input type="date" id="sentToFilter" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;background:var(--surface);color:var(--text-primary);" title="Sent date to">
+            <button type="button" onclick="applyDateFilter()" class="modal-btn modal-btn-primary" style="padding:6px 14px;font-size:13px;white-space:nowrap;" title="Apply date filter">Apply</button>
+            <button type="button" onclick="clearDateFilter()" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:var(--surface);color:var(--text-primary);font-size:13px;cursor:pointer;" title="Clear date filter">Clear</button>
+            <input type="text" class="search-box" id="searchBox" placeholder="Search by name, email, org..." style="flex:0 1 300px;">
+            <button class="modal-btn modal-btn-primary" onclick="openAddModal()" style="white-space:nowrap;">+ Add Contact</button>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table class="list-table" id="listTable">
+            <thead>
+                <tr>
+                    <th data-col="1">Org. Name <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="2">Contact Name <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="3">Email <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="4">Phone <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="5">Status <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="27">Deal Lost Reason <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="6">Last Touchpoint <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="7" class="tp-header">TP1 <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="8" class="tp-header">TP1 Sent <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="9" class="tp-header">TP2 <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="10" class="tp-header">TP2 Sent <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="11" class="tp-header">TP3 <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="12" class="tp-header">TP3 Sent <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="13" class="tp-header">TP4 <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="14" class="tp-header">TP4 Sent <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="15" class="tp-header">TP5 <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="16" class="tp-header">TP5 Sent <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="17" class="tp-header">TP6 <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="18" class="tp-header">TP6 Sent <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="19" class="tp-header">TP7 <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="20" class="tp-header">TP7 Sent <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="21" class="tp-header">TP8 <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="22" class="tp-header">TP8 Sent <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="23" class="tp-header">TP9 <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="24" class="tp-header">TP9 Sent <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="25" class="tp-header">TP10 <span class="sort-arrow">&#9650;</span></th>
+                    <th data-col="26" class="tp-header">TP10 Sent <span class="sort-arrow">&#9650;</span></th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+    <div class="pagination">
+        <div>
+            Showing <span id="showStart">0</span>–<span id="showEnd">0</span> of <span id="showTotal">0</span>
+            &nbsp; | &nbsp; Per page:
+            <select class="per-page-select" id="perPage" onchange="changePerPage()">
+                <option value="50">50</option>
+                <option value="100" selected>100</option>
+                <option value="250">250</option>
+                <option value="500">500</option>
+            </select>
+        </div>
+        <div class="pagination-buttons" id="pagBtns"></div>
+    </div>
+</div>
+
+<!-- Right-click context menu -->
+<div class="ctx-menu" id="ctxMenu">
+    <button class="ctx-menu-item" id="ctxEdit">Edit Contact</button>
+    <button class="ctx-menu-item danger" id="ctxDelete">Delete Contact</button>
+</div>
+
+<!-- Add/Edit Contact Modal -->
+<div class="modal-overlay" id="contactModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="modalTitle">Add Contact</h3>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="modalContactId">
+            <div class="modal-field">
+                <label>Organization Name</label>
+                <input type="text" id="modalOrgName">
+            </div>
+            <div class="modal-field">
+                <label>Contact Name</label>
+                <input type="text" id="modalContactName">
+            </div>
+            <div class="modal-field">
+                <label>Email</label>
+                <input type="email" id="modalEmail">
+            </div>
+            <div class="modal-field">
+                <label>Phone</label>
+                <input type="text" id="modalPhone">
+            </div>
+            <div class="modal-field">
+                <label>TP1 Date</label>
+                <input type="text" id="modalTp1Date" class="tp-datepicker-modal" placeholder="Select date...">
+            </div>
+            <input type="hidden" id="modalStatus" value="Active">
+            <div class="modal-field">
+                <label>Deal Lost Reason</label>
+                <select id="modalDealLostReason">
+                    <option value="">—</option>
+                    <option value="Not interested">Not interested</option>
+                    <option value="Already have a current service provider">Already have a current service provider</option>
+                    <option value="No reason given">No reason given</option>
+                </select>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="modal-btn modal-btn-cancel" onclick="closeModal()">Cancel</button>
+            <button class="modal-btn modal-btn-primary" id="modalSaveBtn" onclick="saveContact()">Save</button>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const CSRF = '{{ csrf_token }}';
+    // Row format:
+    // 0:id, 1:org_name, 2:contact_name, 3:email, 4:phone, 5:status, 6:last_touch,
+    // 7:tp1, 8:tp1_sent, 9:tp2, 10:tp2_sent, 11:tp3, 12:tp3_sent,
+    // 13:tp4, 14:tp4_sent, 15:tp5, 16:tp5_sent, 17:tp6, 18:tp6_sent,
+    // 19:tp7, 20:tp7_sent, 21:tp8, 22:tp8_sent, 23:tp9, 24:tp9_sent,
+    // 25:tp10, 26:tp10_sent, 27:deal_lost_reason
+    let allRows = {{ rows_json|safe }};        // every row (after server-side date/status filters)
+    let filteredRows = allRows.slice();         // after per-column Excel filters
+    let pageData = [];                          // current page slice of filteredRows
+    let perPage = {{ per_page }};
+    let currentPage = {{ current_page }};
+    let totalFiltered = filteredRows.length;
+    let totalAll = {{ total_rows }};
+    let searchQuery = '{{ search|escapejs }}';
+    let sortCol = -1;
+    let sortAsc = true;
+    // Per-column filter: { colIndex: Set of allowed values (string) } — absence = no filter.
+    const colFilters = {};
+
+    // Map column index -> DB field name for editable cells
+    const FIELD_MAP = {
+        1: 'org_name', 2: 'contact_name', 3: 'email', 4: 'phone',
+        5: 'status', 6: 'last_touch',
+        7: 'touchpoint_1', 8: 'tp1_sent_on',
+        9: 'touchpoint_2', 10: 'tp2_sent_on',
+        11: 'touchpoint_3', 12: 'tp3_sent_on',
+        13: 'touchpoint_4', 14: 'tp4_sent_on',
+        15: 'touchpoint_5', 16: 'tp5_sent_on',
+        17: 'touchpoint_6', 18: 'tp6_sent_on',
+        19: 'touchpoint_7', 20: 'tp7_sent_on',
+        21: 'touchpoint_8', 22: 'tp8_sent_on',
+        23: 'touchpoint_9', 24: 'tp9_sent_on',
+        25: 'touchpoint_10', 26: 'tp10_sent_on',
+        27: 'deal_lost_reason',
+    };
+    const DATE_COLS = [8, 10, 12, 14, 16, 18, 20, 22, 24, 26];
+    const TP_STATUS_COLS = [7, 9, 11, 13, 15, 17, 19, 21, 23, 25];
+    const DBLCLICK_COLS = [1, 2, 4];
+    const EDITABLE_COLS = [1, 2, 3, 4, 5, ...TP_STATUS_COLS, ...DATE_COLS, 27];
+    const TOTAL_COLS = 27; // columns 1 through 27
+
+    // Build a lookup by contact ID for live updates
+    const dataById = {};
+    allRows.forEach(r => { dataById[r[0]] = r; });
+
+    const tbody = document.getElementById('tableBody');
+    const pagBtns = document.getElementById('pagBtns');
+    const searchBox = document.getElementById('searchBox');
+
+    function statusBadge(val) {
+        const v = (val || '').trim();
+        if (v === 'Active') return '<span class="status-badge status-active">Active</span>';
+        if (v === 'Inactive') return '<span class="status-badge status-inactive">Inactive</span>';
+        if (v === 'Undeliverable') return '<span class="status-badge status-undeliverable">Undeliverable</span>';
+        if (v === 'Lost') return '<span class="status-badge status-lost">Lost</span>';
+        if (v === 'Move to HubSpot') return '<span class="status-badge status-hubspot">Move to HubSpot</span>';
+        // Legacy statuses
+        if (v === 'Faulty Data') return '<span class="status-badge status-faulty">Faulty Data</span>';
+        if (v === 'Opted Out') return '<span class="status-badge status-optedout">Opted Out</span>';
+        if (v === 'Moved to HubSpot') return '<span class="status-badge status-hubspot">Moved to HubSpot</span>';
+        if (v === 'Automatic Reply') return '<span class="status-badge status-autoreply">Automatic Reply</span>';
+        return v;
+    }
+
+    function tpBadge(val) {
+        const v = (val || '').trim();
+        if (v === 'Sent') return '<span class="tp-sent-badge">Sent</span>';
+        return v;
+    }
+
+    function toISODate(val) {
+        if (!val) return '';
+        val = val.trim();
+        const parts = val.split('/');
+        if (parts.length === 3) {
+            let d = parts[0], m = parts[1], y = parts[2];
+            if (y.length === 4) return y + '-' + m.padStart(2, '0') + '-' + d.padStart(2, '0');
+        }
+        return val;
+    }
+
+    function fromISODate(val) {
+        if (!val) return '';
+        const parts = val.split('-');
+        if (parts.length === 3) return parseInt(parts[2]) + '/' + parseInt(parts[1]) + '/' + parts[0];
+        return val;
+    }
+
+    // Map field names back to column indices for live updates
+    const FIELD_TO_COL = {};
+    for (const [col, fname] of Object.entries(FIELD_MAP)) {
+        FIELD_TO_COL[fname] = parseInt(col);
+    }
+
+    function saveCell(rowId, field, value, td) {
+        td.classList.add('cell-saving');
+        fetch('{% url "useu_update_cell" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify({id: rowId, field: field, value: value})
+        })
+        .then(r => r.json())
+        .then(data => {
+            td.classList.remove('cell-saving');
+            if (data.ok) {
+                td.classList.add('cell-saved');
+                setTimeout(() => td.classList.remove('cell-saved'), 600);
+
+                // If TP1 was set, update TP2-TP10 dates in the row
+                if (data.tp_dates && Object.keys(data.tp_dates).length > 0) {
+                    const row = dataById[rowId];
+                    if (row) {
+                        for (const [fname, dateVal] of Object.entries(data.tp_dates)) {
+                            const col = FIELD_TO_COL[fname];
+                            if (col !== undefined) {
+                                row[col] = dateVal;
+                            }
+                        }
+                        renderPage();
+                    }
+                }
+            }
+        })
+        .catch(() => td.classList.remove('cell-saving'));
+    }
+
+    function makeEditableText(td, row, col) {
+        td.addEventListener('click', function(e) {
+            if (td.querySelector('input')) return;
+            const current = row[col] || '';
+            td.innerHTML = '<input type="text" value="' + current.replace(/"/g, '&quot;') + '">';
+            const input = td.querySelector('input');
+            input.focus();
+            input.select();
+            function commit() {
+                const newVal = input.value.trim();
+                row[col] = newVal;
+                td.textContent = newVal;
+                saveCell(row[0], FIELD_MAP[col], newVal, td);
+            }
+            input.addEventListener('blur', commit);
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+                if (e.key === 'Escape') { td.textContent = row[col] || ''; }
+            });
+        });
+    }
+
+    function makeEditableDblClick(td, row, col) {
+        td.addEventListener('dblclick', function(e) {
+            if (td.querySelector('input')) return;
+            const current = row[col] || '';
+            td.innerHTML = '<input type="text" value="' + current.replace(/"/g, '&quot;') + '">';
+            const input = td.querySelector('input');
+            input.focus();
+            input.select();
+            function commit() {
+                const newVal = input.value.trim();
+                row[col] = newVal;
+                td.textContent = newVal;
+                saveCell(row[0], FIELD_MAP[col], newVal, td);
+            }
+            input.addEventListener('blur', commit);
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+                if (e.key === 'Escape') { td.textContent = row[col] || ''; }
+            });
+        });
+    }
+
+    function makeEditableDate(td, row, col) {
+        td.addEventListener('click', function(e) {
+            if (td.querySelector('input')) return;
+            const current = row[col] || '';
+            const isoVal = toISODate(current);
+            td.innerHTML = '<input type="date" value="' + isoVal + '">';
+            const input = td.querySelector('input');
+            input.focus();
+            if (input.showPicker) { try { input.showPicker(); } catch(e) {} }
+            function commit() {
+                const newVal = input.value;
+                const displayVal = fromISODate(newVal);
+                row[col] = displayVal;
+                td.textContent = displayVal;
+                saveCell(row[0], FIELD_MAP[col], displayVal, td);
+            }
+            input.addEventListener('blur', commit);
+            input.addEventListener('change', function() { input.blur(); });
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') { td.textContent = row[col] || ''; }
+            });
+        });
+    }
+
+    const DEAL_LOST_OPTIONS = ['', 'Not interested', 'Already have a current service provider', 'No reason given'];
+    function makeEditableDealLost(td, row, col) {
+        td.addEventListener('click', function(e) {
+            if (td.querySelector('select')) return;
+            const current = (row[col] || '').trim();
+            let html = '<select class="status-select">';
+            DEAL_LOST_OPTIONS.forEach(opt => {
+                const label = opt || '—';
+                html += '<option value="' + opt + '"' + (opt === current ? ' selected' : '') + '>' + label + '</option>';
+            });
+            html += '</select>';
+            td.innerHTML = html;
+            const select = td.querySelector('select');
+            select.focus();
+            function commit() {
+                const newVal = select.value;
+                row[col] = newVal;
+                td.textContent = newVal;
+                td.className = 'editable-cell';
+                saveCell(row[0], FIELD_MAP[col], newVal, td);
+                makeEditableDealLost(td, row, col);
+            }
+            select.addEventListener('blur', commit);
+            select.addEventListener('change', function() { select.blur(); });
+        });
+    }
+
+    function makeEditableStatus(td, row, col) {
+        td.addEventListener('click', function(e) {
+            if (td.querySelector('select')) return;
+            const current = (row[col] || '').trim();
+            let html = '<select class="status-select">';
+            ['Active', 'Inactive', 'Undeliverable', 'Lost', 'Moved to HubSpot'].forEach(opt => {
+                html += '<option value="' + opt + '"' + (opt === current ? ' selected' : '') + '>' + opt + '</option>';
+            });
+            html += '</select>';
+            td.innerHTML = html;
+            const select = td.querySelector('select');
+            select.focus();
+            function commit() {
+                const newVal = select.value;
+                row[col] = newVal;
+                td.innerHTML = statusBadge(newVal);
+                td.className = 'editable-cell';
+                saveCell(row[0], FIELD_MAP[col], newVal, td);
+                makeEditableStatus(td, row, col);
+            }
+            select.addEventListener('blur', commit);
+            select.addEventListener('change', function() { select.blur(); });
+        });
+    }
+
+    function renderPage() {
+        tbody.innerHTML = '';
+
+        for (let i = 0; i < pageData.length; i++) {
+            const r = pageData[i];
+            const tr = document.createElement('tr');
+            tr.setAttribute('data-id', r[0]);
+
+            // Render columns in display order: 1-5, 27 (deal_lost_reason), 6, 7-26
+            const COL_ORDER = [1,2,3,4,5,27,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26];
+            for (const c of COL_ORDER) {
+                const td = document.createElement('td');
+
+                if (DBLCLICK_COLS.includes(c)) {
+                    td.className = 'editable-cell';
+                    td.textContent = r[c] || '';
+                    makeEditableDblClick(td, r, c);
+                } else if (c === 5) {
+                    td.className = 'editable-cell';
+                    td.innerHTML = statusBadge(r[c]);
+                    makeEditableStatus(td, r, c);
+                } else if (c === 27) {
+                    td.className = 'editable-cell';
+                    td.textContent = r[c] || '';
+                    makeEditableDealLost(td, r, c);
+                } else if (c === 6) {
+                    // Last Touchpoint: show "TP{n} - {date}" from last_touch + corresponding sent date
+                    const tpNum = (r[6] || '').trim();
+                    if (tpNum && parseInt(tpNum) >= 1 && parseInt(tpNum) <= 10) {
+                        const sentCol = 6 + (parseInt(tpNum) * 2);  // tp1_sent=8, tp2_sent=10, etc.
+                        const sentDate = (r[sentCol] || '').trim();
+                        td.textContent = sentDate ? 'TP' + tpNum + ' - ' + sentDate : 'TP' + tpNum;
+                    } else {
+                        td.textContent = tpNum;
+                    }
+                    td.style.whiteSpace = 'nowrap';
+                    td.style.fontSize = '12px';
+                } else if (TP_STATUS_COLS.includes(c)) {
+                    td.className = 'editable-cell';
+                    td.innerHTML = tpBadge(r[c]);
+                    td.setAttribute('data-col', c);
+                    makeEditableText(td, r, c);
+                } else if (DATE_COLS.includes(c)) {
+                    td.className = 'editable-cell';
+                    td.textContent = r[c] || '';
+                    td.setAttribute('data-col', c);
+                    makeEditableDate(td, r, c);
+                } else if (EDITABLE_COLS.includes(c)) {
+                    td.className = 'editable-cell';
+                    td.textContent = r[c] || '';
+                    makeEditableText(td, r, c);
+                } else {
+                    td.textContent = r[c] || '';
+                }
+
+                tr.appendChild(td);
+            }
+
+            // Right-click context menu
+            tr.addEventListener('contextmenu', function(e) {
+                e.preventDefault();
+                showContextMenu(e.pageX, e.pageY, r[0]);
+            });
+
+            tbody.appendChild(tr);
+        }
+
+        const start = (currentPage - 1) * perPage;
+        const end = start + pageData.length;
+        document.getElementById('showStart').textContent = totalFiltered ? start + 1 : 0;
+        document.getElementById('showEnd').textContent = end;
+        document.getElementById('showTotal').textContent = totalFiltered;
+        renderPagination();
+    }
+
+    function renderPagination() {
+        const totalPages = Math.ceil(totalFiltered / perPage) || 1;
+        let html = '';
+        html += '<button ' + (currentPage === 1 ? 'disabled' : '') + ' onclick="goPage(' + (currentPage - 1) + ')">&laquo;</button>';
+        let pages = [];
+        if (totalPages <= 7) {
+            for (let i = 1; i <= totalPages; i++) pages.push(i);
+        } else {
+            pages.push(1);
+            if (currentPage > 3) pages.push('...');
+            for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i++) pages.push(i);
+            if (currentPage < totalPages - 2) pages.push('...');
+            pages.push(totalPages);
+        }
+        pages.forEach(p => {
+            if (p === '...') html += '<button disabled>...</button>';
+            else html += '<button class="' + (p === currentPage ? 'active' : '') + '" onclick="goPage(' + p + ')">' + p + '</button>';
+        });
+        html += '<button ' + (currentPage === totalPages ? 'disabled' : '') + ' onclick="goPage(' + (currentPage + 1) + ')">&raquo;</button>';
+        pagBtns.innerHTML = html;
+    }
+
+    function updateEligibleCount() {
+        const tpNum = parseInt(document.getElementById('tpSelect').value);
+        // Use server-provided total for eligible count display
+        document.getElementById('eligibleCount').textContent = '';
+        fetch('{% url "useu_list" %}?page=1&per_page=1&search=', {
+            headers: {'X-Requested-With': 'XMLHttpRequest'}
+        }).catch(() => {});
+        // Simple estimate: just show total active
+        document.getElementById('eligibleCount').textContent = '';
+    }
+
+    document.getElementById('tpSelect').addEventListener('change', function() {
+        // Update data-tp-type when touchpoint changes
+        const selectedTP = this.value;
+        document.querySelector('[data-tp-type]').setAttribute('data-tp-type', `tp${selectedTP}`);
+    });
+
+    let statusFilter = '';
+    let sentFromFilter = '';
+    let sentToFilter = '';
+    let sentFieldFilter = '';
+
+    window.applyStatusFilter = function() {
+        statusFilter = document.getElementById('statusFilter').value;
+        currentPage = 1;
+        fetchPage(1, searchQuery, perPage);
+    };
+
+    window.applyDateFilter = function() {
+        sentFromFilter = document.getElementById('sentFromFilter').value;
+        sentToFilter = document.getElementById('sentToFilter').value;
+        sentFieldFilter = document.getElementById('sentFieldFilter').value;
+        currentPage = 1;
+        fetchPage(1, searchQuery, perPage);
+    };
+
+    window.clearDateFilter = function() {
+        document.getElementById('sentFromFilter').value = '';
+        document.getElementById('sentToFilter').value = '';
+        document.getElementById('sentFieldFilter').value = '';
+        sentFromFilter = '';
+        sentToFilter = '';
+        sentFieldFilter = '';
+        currentPage = 1;
+        fetchPage(1, searchQuery, perPage);
+    };
+
+    function fetchPage(page, search, pp) {
+        // Refetch the whole dataset from the server (all rows) with the outer
+        // filters (search / status / date) applied, then do the rest client-side.
+        let url = '{% url "useu_list" %}?search=' + encodeURIComponent(search || '');
+        if (statusFilter) url += '&status=' + encodeURIComponent(statusFilter);
+        if (sentFromFilter) url += '&sent_from=' + encodeURIComponent(sentFromFilter);
+        if (sentToFilter) url += '&sent_to=' + encodeURIComponent(sentToFilter);
+        if (sentFieldFilter) url += '&sent_field=' + encodeURIComponent(sentFieldFilter);
+        fetch(url, {headers: {'X-Requested-With': 'XMLHttpRequest'}})
+        .then(r => r.json())
+        .then(data => {
+            allRows = data.rows;
+            currentPage = 1;
+            Object.keys(dataById).forEach(k => delete dataById[k]);
+            allRows.forEach(r => { dataById[r[0]] = r; });
+            applyFiltersAndSort();
+        })
+        .catch(err => console.error('Fetch error:', err));
+    }
+
+    window.goPage = function(p) {
+        const totalPages = Math.ceil(totalFiltered / perPage) || 1;
+        if (p < 1 || p > totalPages) return;
+        currentPage = p;
+        applyFiltersAndSort();
+        document.querySelector('.list-card').scrollIntoView({behavior: 'smooth', block: 'start'});
+    };
+
+    window.changePerPage = function() {
+        perPage = parseInt(document.getElementById('perPage').value);
+        currentPage = 1;
+        applyFiltersAndSort();
+    };
+
+    // Search — client-side (covers org / contact / email).
+    let searchTimer;
+    searchBox.addEventListener('input', function() {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(function() {
+            searchQuery = searchBox.value.trim().toLowerCase();
+            currentPage = 1;
+            // Rebuild filteredRows inline so we can combine the search with colFilters.
+            const q = searchQuery;
+            filteredRows = allRows.filter(r => {
+                if (q) {
+                    const hay = ((r[1] || '') + ' ' + (r[2] || '') + ' ' + (r[3] || '')).toLowerCase();
+                    if (!hay.includes(q)) return false;
+                }
+                for (const col in colFilters) {
+                    const allowed = colFilters[col];
+                    if (!allowed) continue;
+                    const v = (r[col] == null ? '' : String(r[col]));
+                    if (!allowed.has(v)) return false;
+                }
+                return true;
+            });
+            if (sortCol >= 0) {
+                filteredRows.sort((a, b) => {
+                    const va = (a[sortCol] == null ? '' : String(a[sortCol]));
+                    const vb = (b[sortCol] == null ? '' : String(b[sortCol]));
+                    const cmp = cmpAuto(va, vb);
+                    return sortAsc ? cmp : -cmp;
+                });
+            }
+            totalFiltered = filteredRows.length;
+            const totalPages = Math.max(1, Math.ceil(totalFiltered / perPage));
+            if (currentPage > totalPages) currentPage = totalPages;
+            const start = (currentPage - 1) * perPage;
+            pageData = filteredRows.slice(start, start + perPage);
+            refreshFilterIcons();
+            renderPage();
+        }, 200);
+    });
+
+    // ── Filter + sort (Excel-style) across allRows ──────────────────────
+    function cmpAuto(a, b) {
+        // Auto: if both parse as numbers (or ISO dates), numeric compare; else alpha.
+        const na = parseFloat(a), nb = parseFloat(b);
+        if (!isNaN(na) && !isNaN(nb) && /^-?\d/.test(a) && /^-?\d/.test(b)) return na - nb;
+        return a.localeCompare(b, undefined, {numeric: true, sensitivity: 'base'});
+    }
+    function applyFiltersAndSort() {
+        filteredRows = allRows.filter(r => {
+            for (const col in colFilters) {
+                const allowed = colFilters[col];
+                if (!allowed) continue;
+                const v = (r[col] == null ? '' : String(r[col]));
+                if (!allowed.has(v)) return false;
+            }
+            return true;
+        });
+        if (sortCol >= 0) {
+            filteredRows.sort((a, b) => {
+                const va = (a[sortCol] == null ? '' : String(a[sortCol]));
+                const vb = (b[sortCol] == null ? '' : String(b[sortCol]));
+                const r = cmpAuto(va, vb);
+                return sortAsc ? r : -r;
+            });
+        }
+        totalFiltered = filteredRows.length;
+        const totalPages = Math.max(1, Math.ceil(totalFiltered / perPage));
+        if (currentPage > totalPages) currentPage = totalPages;
+        const start = (currentPage - 1) * perPage;
+        pageData = filteredRows.slice(start, start + perPage);
+        refreshFilterIcons();
+        renderPage();
+    }
+
+    function refreshFilterIcons() {
+        document.querySelectorAll('.list-table th[data-col]').forEach(th => {
+            const col = parseInt(th.dataset.col);
+            const icon = th.querySelector('.filter-icon');
+            if (!icon) return;
+            icon.classList.toggle('active', !!colFilters[col]);
+        });
+    }
+
+    // Close any open filter popup when clicking outside.
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.filter-popup') && !e.target.closest('.filter-icon')) {
+            document.querySelectorAll('.filter-popup').forEach(p => p.remove());
+        }
+    });
+
+    const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    const DATE_FILTER_COLS = new Set([8, 10, 12, 14, 16, 18, 20, 22, 24, 26]);
+
+    function parseDateVal(v) {
+        if (!v) return null;
+        const m = String(v).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        if (m) return { year: m[1], month: m[2], day: m[3] };
+        // dd-mm-yyyy fallback
+        const m2 = String(v).match(/^(\d{2})-(\d{2})-(\d{4})/);
+        if (m2) return { year: m2[3], month: m2[2], day: m2[1] };
+        return null;
+    }
+
+    function openFilterPopup(th, col) {
+        document.querySelectorAll('.filter-popup').forEach(p => p.remove());
+
+        const baseRows = allRows.filter(r => {
+            for (const c in colFilters) {
+                if (parseInt(c) === col) continue;
+                const allowed = colFilters[c];
+                if (!allowed) continue;
+                const v = (r[c] == null ? '' : String(r[c]));
+                if (!allowed.has(v)) return false;
+            }
+            return true;
+        });
+        const valueSet = new Set();
+        baseRows.forEach(r => valueSet.add(r[col] == null ? '' : String(r[col])));
+        const values = Array.from(valueSet).sort(cmpAuto);
+        const current = colFilters[col]; // Set or undefined
+        const isDateCol = DATE_FILTER_COLS.has(col);
+
+        const pop = document.createElement('div');
+        pop.className = 'filter-popup';
+        pop.innerHTML = `
+            <div class="fp-sorts">
+                <button type="button" class="fp-btn" data-sort="asc">Sort A → Z</button>
+                <button type="button" class="fp-btn" data-sort="desc">Sort Z → A</button>
+            </div>
+            <input type="text" class="fp-search" placeholder="Search values…">
+            <div class="fp-list"></div>
+            <div class="fp-actions">
+                <button type="button" class="fp-btn fp-clear">Clear filter</button>
+                <button type="button" class="fp-btn fp-cancel">Cancel</button>
+                <button type="button" class="fp-btn fp-apply">Apply</button>
+            </div>
+        `;
+        document.body.appendChild(pop);
+        const rect = th.getBoundingClientRect();
+        pop.style.top = (rect.bottom + 4) + 'px';
+        pop.style.left = Math.min(rect.left, window.innerWidth - 280) + 'px';
+        const listEl = pop.querySelector('.fp-list');
+
+        // Always-visible "(Select All)"
+        const allLbl = document.createElement('label');
+        allLbl.className = 'fp-all-lbl';
+        const allCb = document.createElement('input');
+        allCb.type = 'checkbox'; allCb.className = 'fp-all'; allCb.checked = true;
+        allLbl.appendChild(allCb);
+        allLbl.appendChild(document.createTextNode(' '));
+        const allStrong = document.createElement('b'); allStrong.textContent = '(Select All)';
+        allLbl.appendChild(allStrong);
+        listEl.appendChild(allLbl);
+
+        if (isDateCol) {
+            // Build Year → Month → dates tree
+            const tree = {};
+            const blanks = [];
+            for (const v of values) {
+                const p = parseDateVal(v);
+                if (!p) { blanks.push(v); continue; }
+                tree[p.year] = tree[p.year] || {};
+                tree[p.year][p.month] = tree[p.year][p.month] || [];
+                tree[p.year][p.month].push(v);
+            }
+            const years = Object.keys(tree).sort();
+            for (const year of years) {
+                const yEl = document.createElement('div'); yEl.className = 'fp-node';
+                const yLbl = document.createElement('label');
+                const yTog = document.createElement('span'); yTog.className = 'fp-tog'; yTog.textContent = '+';
+                const yCb  = document.createElement('input'); yCb.type = 'checkbox'; yCb.className = 'fp-year'; yCb.checked = true;
+                yLbl.appendChild(yTog); yLbl.appendChild(yCb);
+                yLbl.appendChild(document.createTextNode(' ' + year));
+                yEl.appendChild(yLbl);
+                const mWrap = document.createElement('div'); mWrap.className = 'fp-sub'; mWrap.style.display = 'none';
+                const months = Object.keys(tree[year]).sort();
+                for (const mm of months) {
+                    const mEl = document.createElement('div'); mEl.className = 'fp-node';
+                    const mLbl = document.createElement('label');
+                    const mTog = document.createElement('span'); mTog.className = 'fp-tog'; mTog.textContent = '+';
+                    const mCb  = document.createElement('input'); mCb.type = 'checkbox'; mCb.className = 'fp-month'; mCb.checked = true;
+                    mLbl.appendChild(mTog); mLbl.appendChild(mCb);
+                    mLbl.appendChild(document.createTextNode(' ' + MONTHS[parseInt(mm, 10) - 1]));
+                    mEl.appendChild(mLbl);
+                    const dWrap = document.createElement('div'); dWrap.className = 'fp-sub'; dWrap.style.display = 'none';
+                    for (const v of tree[year][mm].sort()) {
+                        const dLbl = document.createElement('label'); dLbl.className = 'fp-day';
+                        const dCb = document.createElement('input');
+                        dCb.type = 'checkbox'; dCb.className = 'fp-leaf'; dCb.value = v;
+                        dCb.checked = !current || current.has(v);
+                        dLbl.appendChild(dCb);
+                        dLbl.appendChild(document.createTextNode(' ' + v));
+                        dWrap.appendChild(dLbl);
+                    }
+                    mEl.appendChild(dWrap);
+                    mWrap.appendChild(mEl);
+                    // toggle month expansion
+                    mTog.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation();
+                        const open = dWrap.style.display === 'none';
+                        dWrap.style.display = open ? '' : 'none';
+                        mTog.textContent = open ? '−' : '+';
+                    });
+                    mCb.addEventListener('change', function() {
+                        dWrap.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = mCb.checked);
+                    });
+                }
+                yEl.appendChild(mWrap);
+                listEl.appendChild(yEl);
+                yTog.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation();
+                    const open = mWrap.style.display === 'none';
+                    mWrap.style.display = open ? '' : 'none';
+                    yTog.textContent = open ? '−' : '+';
+                });
+                yCb.addEventListener('change', function() {
+                    mWrap.querySelectorAll('input[type=checkbox]').forEach(cb => cb.checked = yCb.checked);
+                });
+            }
+            // Blanks at bottom
+            for (const b of blanks) {
+                const lbl = document.createElement('label'); lbl.className = 'fp-day';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox'; cb.className = 'fp-leaf'; cb.value = b;
+                cb.checked = !current || current.has(b);
+                lbl.appendChild(cb);
+                lbl.appendChild(document.createTextNode(' (Blanks)'));
+                listEl.appendChild(lbl);
+            }
+        } else {
+            for (const v of values) {
+                const lbl = document.createElement('label'); lbl.className = 'fp-day';
+                const cb = document.createElement('input');
+                cb.type = 'checkbox'; cb.className = 'fp-leaf'; cb.value = v;
+                cb.checked = !current || current.has(v);
+                lbl.appendChild(cb);
+                lbl.appendChild(document.createTextNode(' ' + (v === '' ? '(Blanks)' : v)));
+                listEl.appendChild(lbl);
+            }
+        }
+
+        allCb.addEventListener('change', function() {
+            pop.querySelectorAll('.fp-list input[type=checkbox]:not(.fp-all)').forEach(cb => cb.checked = this.checked);
+        });
+        pop.querySelector('.fp-search').addEventListener('input', function() {
+            const q = this.value.toLowerCase();
+            pop.querySelectorAll('.fp-list label').forEach(lbl => {
+                if (lbl.classList.contains('fp-all-lbl')) return;
+                lbl.style.display = lbl.textContent.toLowerCase().includes(q) ? '' : 'none';
+            });
+        });
+        pop.querySelectorAll('.fp-sorts .fp-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                sortCol = col;
+                sortAsc = this.dataset.sort === 'asc';
+                document.querySelectorAll('.list-table th').forEach(h => h.classList.remove('sorted'));
+                th.classList.add('sorted');
+                const arrow = th.querySelector('.sort-arrow');
+                if (arrow) arrow.innerHTML = sortAsc ? '&#9650;' : '&#9660;';
+                applyFiltersAndSort();
+                pop.remove();
+            });
+        });
+        pop.querySelector('.fp-clear').addEventListener('click', function() {
+            delete colFilters[col];
+            applyFiltersAndSort();
+            pop.remove();
+        });
+        pop.querySelector('.fp-cancel').addEventListener('click', () => pop.remove());
+        pop.querySelector('.fp-apply').addEventListener('click', function() {
+            const chosen = new Set();
+            pop.querySelectorAll('.fp-list input.fp-leaf').forEach(cb => {
+                if (cb.checked) chosen.add(cb.value);
+            });
+            const totalLeaves = pop.querySelectorAll('.fp-list input.fp-leaf').length;
+            if (chosen.size === totalLeaves || chosen.size === 0) {
+                delete colFilters[col];
+            } else {
+                colFilters[col] = chosen;
+            }
+            applyFiltersAndSort();
+            pop.remove();
+        });
+    }
+
+    // Attach filter icon + click-to-sort to each header.
+    document.querySelectorAll('.list-table th[data-col]').forEach(th => {
+        const col = parseInt(th.dataset.col);
+        const icon = document.createElement('span');
+        icon.className = 'filter-icon';
+        icon.innerHTML = '&#9660;';
+        icon.title = 'Filter / sort';
+        icon.addEventListener('click', function(e) {
+            e.stopPropagation();
+            openFilterPopup(th, col);
+        });
+        th.appendChild(icon);
+
+        // Clicking the header body (not the filter icon) toggles sort direction.
+        th.addEventListener('click', function(e) {
+            if (e.target.closest('.filter-icon')) return;
+            if (sortCol === col) sortAsc = !sortAsc;
+            else { sortCol = col; sortAsc = true; }
+            document.querySelectorAll('.list-table th').forEach(h => h.classList.remove('sorted'));
+            this.classList.add('sorted');
+            const arrow = this.querySelector('.sort-arrow');
+            if (arrow) arrow.innerHTML = sortAsc ? '&#9650;' : '&#9660;';
+            applyFiltersAndSort();
+        });
+    });
+
+    // Initial slice + render
+    applyFiltersAndSort();
+
+    // ── Send All ─────────────────────────────────────────────────────────────
+    let sendJobId = null;
+    let pollLastIdx = 0;
+
+    // Check for active job on page load (survives refresh)
+    const _resumeJobId = '{{ active_job_id|escapejs }}';
+    const _resumeTpNum = {{ active_tp_num }};
+    if (_resumeJobId) {
+        // Resume polling for the active send job
+        sendJobId = _resumeJobId;
+        pollLastIdx = 0;
+        document.getElementById('sendAllBtn').disabled = true;
+        { const _l = document.getElementById('sendAllBtnLabel'); if (_l) _l.textContent = 'Sending...'; }
+        document.getElementById('stopSendBtn').style.display = 'inline-block';
+        document.getElementById('stopSendBtn').disabled = false;
+        document.getElementById('progressPanel').style.display = 'inline-flex';
+        document.getElementById('sendSpinner').style.display = 'inline-block';
+        document.getElementById('progCurrent').textContent = 'Resuming...';
+        if (_resumeTpNum) {
+            document.getElementById('tpSelect').value = _resumeTpNum;
+            document.querySelector('[data-tp-type]').setAttribute('data-tp-type', 'tp' + _resumeTpNum);
+        }
+        // Show the blue status bar
+        const _statusBar = document.querySelector('.tp-status');
+        if (_statusBar) {
+            _statusBar.style.display = 'block';
+            _statusBar.innerHTML = '<strong>TP' + _resumeTpNum + ' sending...</strong> Resuming progress — please wait.';
+        }
+        setTimeout(pollProgress, 500);
+    } else {
+        document.getElementById('sendAllBtn').disabled = false;
+        { const _l = document.getElementById('sendAllBtnLabel'); if (_l) _l.textContent = 'Send All'; }
+        document.getElementById('stopSendBtn').style.display = 'none';
+        document.getElementById('stopSendBtn').disabled = false;
+    }
+
+    window.startSendAll = function() {
+        const tpNum = document.getElementById('tpSelect').value;
+        const btn = document.getElementById('sendAllBtn');
+        console.log('[SEND] startSendAll called. tpNum:', tpNum);
+
+        if (!confirm('Send TP' + tpNum + ' to all eligible contacts?')) return;
+
+        btn.disabled = true;
+        const sendLbl = document.getElementById('sendAllBtnLabel');
+        if (sendLbl) sendLbl.textContent = 'Sending...';
+        document.getElementById('stopSendBtn').style.display = 'inline-block';
+        document.getElementById('progressPanel').style.display = 'inline-flex';
+        document.getElementById('sendSpinner').style.display = 'inline-block';
+        document.getElementById('progCurrent').textContent = 'Starting...';
+        { const _sb = document.querySelector('.tp-status'); if (_sb) { _sb.style.display = 'block'; _sb.innerHTML = '<strong>TP' + tpNum + ' starting...</strong> Preparing to send.'; } }
+        console.log('[SEND] UI set to Sending. Posting to server...');
+
+        // Update data-tp-type when touchpoint changes
+        document.querySelector('[data-tp-type]').setAttribute('data-tp-type', `tp${tpNum}`);
+
+        fetch('{% url "send_all_touchpoint" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify({touchpoint_number: parseInt(tpNum)})
+        })
+        .then(r => {
+            console.log('[SEND] Server response status:', r.status);
+            return r.json();
+        })
+        .then(data => {
+            console.log('[SEND] Server response data:', JSON.stringify(data));
+            if (!data.ok) {
+                const err = data.error || '';
+                if (/template/i.test(err) && /not found/i.test(err)) {
+                    const m = err.match(/TP(\d+)/i);
+                    const tpN = m ? m[1] : '?';
+                    showToast(`You haven't created the email template for TP${tpN} yet. Go to Email Templates and add one, then try again.`, {type:'warning', title:`Template for TP${tpN} missing`, duration: 7000});
+                } else if (/no eligible/i.test(err)) {
+                    showToast('No contacts match the criteria (Active, has email, not already sent).', {type:'info', title:'Nothing to send'});
+                } else {
+                    showToast(err, {type:'error'});
+                }
+                btn.disabled = false;
+                { const _l = document.getElementById('sendAllBtnLabel'); if (_l) _l.textContent = 'Send All'; }
+                document.getElementById('stopSendBtn').style.display = 'none';
+                const _pp = document.getElementById('progressPanel'); if(_pp) _pp.style.display = 'none';
+                return;
+            }
+            sendJobId = data.job_id;
+            console.log('[SEND] Job started. sendJobId:', sendJobId);
+            pollLastIdx = 0;
+            pollProgress();
+        })
+        .catch(err => {
+            console.error('[SEND] Error starting send:', err);
+            showToast('Network error: ' + err.message, {type:'error'});
+            btn.disabled = false;
+            btn.textContent = 'Send All';
+            document.getElementById('stopSendBtn').style.display = 'none';
+        });
+    };
+
+    function pollProgress() {
+        if (!sendJobId) {
+            console.log('[POLL] pollProgress called but sendJobId is null, stopping poll');
+            return;
+        }
+        const tpNum = parseInt(document.getElementById('tpSelect').value);
+        const tpStatusCol = 5 + (tpNum * 2); // tp1 = col 7, tp2 = col 9
+        const tpSentCol = 6 + (tpNum * 2);   // tp1_sent = col 8, tp2_sent = col 10
+
+        console.log('[POLL] Polling progress. sendJobId:', sendJobId, 'pollLastIdx:', pollLastIdx);
+        fetch('{% url "send_all_progress" %}?job_id=' + sendJobId + '&last_idx=' + pollLastIdx)
+        .then(r => r.json())
+        .then(data => {
+            console.log('[POLL] Response:', JSON.stringify({ok:data.ok, total:data.total, sent:data.sent, failed:data.failed, done:data.done, stopped:data.stopped, current:data.current}));
+            if (!data.ok) { console.warn('[POLL] data.ok is false'); return; }
+
+            // Update rows in real-time
+            data.results.forEach(res => {
+                const row = dataById[res.id];
+                if (row && res.ok) {
+                    row[tpStatusCol] = 'Sent';
+                    row[tpSentCol] = res.sent_on;
+                    row[6] = String(tpNum); // last_touch
+
+                    // Update visible table row
+                    const tr = document.querySelector('tr[data-id="' + res.id + '"]');
+                    if (tr) {
+                        const tds = tr.querySelectorAll('td');
+                        // tpStatusCol-1 because td index starts at 0 for col 1
+                        if (tds[tpStatusCol - 1]) {
+                            tds[tpStatusCol - 1].innerHTML = '<span class="tp-sent-badge">Sent</span>';
+                            tds[tpStatusCol - 1].classList.add('cell-saved');
+                            setTimeout(() => tds[tpStatusCol - 1].classList.remove('cell-saved'), 600);
+                        }
+                        if (tds[tpSentCol - 1]) {
+                            tds[tpSentCol - 1].textContent = res.sent_on;
+                            tds[tpSentCol - 1].classList.add('cell-saved');
+                            setTimeout(() => tds[tpSentCol - 1].classList.remove('cell-saved'), 600);
+                        }
+                        // Last touch column (index 5, 0-based)
+                        if (tds[5]) {
+                            tds[5].textContent = String(tpNum);
+                            tds[5].classList.add('cell-saved');
+                            setTimeout(() => tds[5].classList.remove('cell-saved'), 600);
+                        }
+                    }
+                }
+            });
+            pollLastIdx = data.next_idx;
+
+            // Update blue status bar
+            const _sb = document.querySelector('.tp-status');
+            const _tpN = document.getElementById('tpSelect').value;
+
+            if (data.done) {
+                console.log('[POLL] Job DONE. stopped:', data.stopped, 'sent:', data.sent, 'total:', data.total);
+                document.getElementById('sendAllBtn').disabled = false;
+                { const _l = document.getElementById('sendAllBtnLabel'); if (_l) _l.textContent = 'Send All'; }
+                document.getElementById('stopSendBtn').style.display = 'none';
+                const _sp = document.getElementById('sendSpinner'); if(_sp) _sp.style.display = 'none';
+                if (data.stopped) {
+                    const _pc = document.getElementById('progCurrent'); if(_pc) _pc.textContent = 'Stopped. Sent ' + data.sent + ' of ' + data.total + '.';
+                    if (_sb) _sb.innerHTML = '<strong>TP' + _tpN + ' stopped.</strong> Sent ' + data.sent + ' of ' + data.total + '. Failed: ' + data.failed;
+                } else {
+                    const _pc = document.getElementById('progCurrent'); if(_pc) _pc.textContent = 'Complete! Sent ' + data.sent + ' of ' + data.total + '.';
+                    if (_sb) _sb.innerHTML = '<strong>TP' + _tpN + ' complete!</strong> Sent ' + data.sent + ' of ' + data.total + '. Failed: ' + data.failed;
+                }
+                if (_sb) setTimeout(() => { _sb.style.display = 'none'; }, 5000);
+                sendJobId = null;
+                updateEligibleCount();
+                setTimeout(() => {
+                    const _pp = document.getElementById('progressPanel'); if(_pp) _pp.style.display = 'none';
+                    const _pc = document.getElementById('progCurrent'); if(_pc) _pc.textContent = '';
+                }, 4000);
+            } else {
+                console.log('[POLL] Not done yet. sent:', data.sent, '/', data.total, 'current:', data.current);
+                if (_sb) {
+                    _sb.style.display = 'block';
+                    _sb.innerHTML = '<strong>TP' + _tpN + ' sending...</strong> Sent ' + data.sent + ' of ' + data.total + (data.failed ? ' (Failed: ' + data.failed + ')' : '') + (data.current ? ' — ' + data.current : '');
+                }
+                const progEl = document.getElementById('progCurrent');
+                if (progEl) {
+                    if (data.current) {
+                        progEl.textContent = 'Sent ' + data.sent + ' of ' + data.total + ' — ' + data.current;
+                    } else {
+                        progEl.textContent = 'Sent ' + data.sent + ' of ' + data.total + '...';
+                    }
+                }
+                setTimeout(pollProgress, 1000);
+            }
+        })
+        .catch(err => { console.error('[POLL] Error:', err); setTimeout(pollProgress, 2000); });
+    }
+
+    function resetSendUI(message) {
+        sendJobId = null;
+        const sendBtn = document.getElementById('sendAllBtn');
+        const sendLbl = document.getElementById('sendAllBtnLabel');
+        const stopBtn = document.getElementById('stopSendBtn');
+        const stopLbl = document.getElementById('stopSendBtnLabel');
+        const progPanel = document.getElementById('progressPanel');
+        const progCur = document.getElementById('progCurrent');
+        if (sendBtn) { sendBtn.disabled = false; }
+        if (sendLbl) sendLbl.textContent = 'Send All';
+        if (stopBtn) { stopBtn.style.display = 'none'; stopBtn.disabled = false; }
+        if (stopLbl) stopLbl.textContent = 'Stop Sending';
+        if (progCur && message) { progCur.textContent = message; }
+        if (progPanel && message) { progPanel.style.display = 'inline-block'; }
+        updateEligibleCount();
+        if (message) {
+            setTimeout(() => {
+                if (progPanel) progPanel.style.display = 'none';
+                if (progCur) progCur.textContent = '';
+            }, 4000);
+        }
+    }
+
+    window.stopSending = function() {
+        console.log('[STOP] stopSending called. sendJobId:', sendJobId);
+        if (!sendJobId) {
+            console.warn('[STOP] No sendJobId — cannot stop. Resetting UI anyway.');
+            resetSendUI('');
+            return;
+        }
+        if (!confirm('Stop sending? Emails already sent will not be undone.')) return;
+
+        const btn = document.getElementById('stopSendBtn');
+        const lbl = document.getElementById('stopSendBtnLabel');
+        btn.disabled = true;
+        if (lbl) lbl.textContent = 'Stopping...';
+        console.log('[STOP] Sending stop request for job:', sendJobId);
+
+        fetch('{% url "stop_sending" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify({job_id: sendJobId})
+        })
+        .then(r => {
+            console.log('[STOP] Server response status:', r.status);
+            return r.json();
+        })
+        .then(data => {
+            console.log('[STOP] Server response:', JSON.stringify(data));
+            if (data.ok) {
+                console.log('[STOP] Stop confirmed. Resetting UI.');
+                resetSendUI('Stopped.');
+            } else {
+                console.error('[STOP] Stop failed:', data.error);
+                showToast(data.error, {type:'error', title:'Stop failed'});
+                btn.disabled = false;
+                if (lbl) lbl.textContent = 'Stop Sending';
+            }
+        })
+        .catch(err => {
+            console.error('[STOP] Fetch error:', err);
+            // Reset UI anyway on error - don't leave it stuck
+            resetSendUI('Stopped (connection error).');
+        });
+    };
+
+    renderPage();
+
+    // ── Send-date validation (no Mon/Fri/weekends/US holidays) ─
+    function getUSHolidays(year) {
+        const holidays = [];
+        // New Year's Day
+        holidays.push(new Date(year, 0, 1).toISOString().slice(0,10));
+        // MLK Day - 3rd Monday of Jan
+        let d = new Date(year, 0, 1); let mon = 0;
+        while (mon < 3) { if (d.getDay() === 1) mon++; if (mon < 3) d.setDate(d.getDate() + 1); }
+        holidays.push(d.toISOString().slice(0,10));
+        // Presidents Day - 3rd Monday of Feb
+        d = new Date(year, 1, 1); mon = 0;
+        while (mon < 3) { if (d.getDay() === 1) mon++; if (mon < 3) d.setDate(d.getDate() + 1); }
+        holidays.push(d.toISOString().slice(0,10));
+        // Memorial Day - last Monday of May
+        d = new Date(year, 4, 31);
+        while (d.getDay() !== 1) d.setDate(d.getDate() - 1);
+        holidays.push(d.toISOString().slice(0,10));
+        // Juneteenth
+        holidays.push(new Date(year, 5, 19).toISOString().slice(0,10));
+        // Independence Day
+        holidays.push(new Date(year, 6, 4).toISOString().slice(0,10));
+        // Labor Day - 1st Monday of Sep
+        d = new Date(year, 8, 1);
+        while (d.getDay() !== 1) d.setDate(d.getDate() + 1);
+        holidays.push(d.toISOString().slice(0,10));
+        // Columbus Day - 2nd Monday of Oct
+        d = new Date(year, 9, 1); mon = 0;
+        while (mon < 2) { if (d.getDay() === 1) mon++; if (mon < 2) d.setDate(d.getDate() + 1); }
+        holidays.push(d.toISOString().slice(0,10));
+        // Veterans Day
+        holidays.push(new Date(year, 10, 11).toISOString().slice(0,10));
+        // Thanksgiving - 4th Thursday of Nov
+        d = new Date(year, 10, 1); let thu = 0;
+        while (thu < 4) { if (d.getDay() === 4) thu++; if (thu < 4) d.setDate(d.getDate() + 1); }
+        holidays.push(d.toISOString().slice(0,10));
+        // Christmas
+        holidays.push(new Date(year, 11, 25).toISOString().slice(0,10));
+        return holidays;
+    }
+
+    function isBlockedDate(dateStr) {
+        if (!dateStr) return false;
+        const d = new Date(dateStr + 'T00:00:00');
+        const day = d.getDay(); // 0=Sun,1=Mon,...,5=Fri,6=Sat
+        if (day === 1 || day === 5) return 'No sends on ' + ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][day];
+        const holidays = getUSHolidays(d.getFullYear());
+        if (holidays.includes(dateStr)) return 'This is a US public holiday';
+        return false;
+    }
+
+    // ── Context Menu ───────────────────────────────────────────
+    const ctxMenu = document.getElementById('ctxMenu');
+    let ctxContactId = null;
+
+    window.showContextMenu = function(x, y, contactId) {
+        ctxContactId = contactId;
+        ctxMenu.style.left = x + 'px';
+        ctxMenu.style.top = y + 'px';
+        ctxMenu.classList.add('open');
+    };
+
+    document.addEventListener('click', function() {
+        ctxMenu.classList.remove('open');
+    });
+
+    document.getElementById('ctxEdit').addEventListener('click', function() {
+        ctxMenu.classList.remove('open');
+        if (ctxContactId) openEditModal(ctxContactId);
+    });
+
+    document.getElementById('ctxDelete').addEventListener('click', function() {
+        ctxMenu.classList.remove('open');
+        if (ctxContactId) deleteContact(ctxContactId);
+    });
+
+    // ── Add / Edit / Delete Contacts ────────────────────────────
+    window.openAddModal = function() {
+        document.getElementById('modalTitle').textContent = 'Add Contact';
+        document.getElementById('modalContactId').value = '';
+        document.getElementById('modalOrgName').value = '';
+        document.getElementById('modalContactName').value = '';
+        document.getElementById('modalEmail').value = '';
+        document.getElementById('modalPhone').value = '';
+        if (modalTp1Fp) modalTp1Fp.clear();
+        document.getElementById('modalStatus').value = 'Active';
+        document.getElementById('modalDealLostReason').value = '';
+        document.getElementById('contactModal').classList.add('open');
+    };
+
+    window.openEditModal = function(contactId) {
+        const row = dataById[contactId];
+        if (!row) return;
+        document.getElementById('modalTitle').textContent = 'Edit Contact';
+        document.getElementById('modalContactId').value = contactId;
+        document.getElementById('modalOrgName').value = row[1] || '';
+        document.getElementById('modalContactName').value = row[2] || '';
+        document.getElementById('modalEmail').value = row[3] || '';
+        document.getElementById('modalPhone').value = row[4] || '';
+        // Set TP1 date via flatpickr
+        const tp1 = (row[7] || '').trim();
+        if (tp1 && tp1.match(/^\d{2}-\d{2}-\d{4}$/) && modalTp1Fp) {
+            const p = tp1.split('-');
+            modalTp1Fp.setDate(p[2] + '-' + p[1] + '-' + p[0], false);
+        } else if (modalTp1Fp) {
+            modalTp1Fp.clear();
+        }
+        document.getElementById('modalStatus').value = row[5] || 'Active';
+        document.getElementById('modalDealLostReason').value = row[27] || '';
+        document.getElementById('contactModal').classList.add('open');
+    };
+
+    window.closeModal = function() {
+        document.getElementById('contactModal').classList.remove('open');
+    };
+
+    window.saveContact = function() {
+        const id = document.getElementById('modalContactId').value;
+        // Get date from flatpickr (YYYY-MM-DD) and convert to DD-MM-YYYY
+        const tp1Raw = modalTp1Fp ? modalTp1Fp.input.value : '';
+        let tp1Display = '';
+        if (tp1Raw && tp1Raw.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            const p = tp1Raw.split('-');
+            tp1Display = p[2] + '-' + p[1] + '-' + p[0];
+        }
+        const payload = {
+            org_name: document.getElementById('modalOrgName').value,
+            contact_name: document.getElementById('modalContactName').value,
+            email: document.getElementById('modalEmail').value,
+            phone: document.getElementById('modalPhone').value,
+            tp1_date: tp1Display,
+            status: document.getElementById('modalStatus').value,
+            deal_lost_reason: document.getElementById('modalDealLostReason').value,
+        };
+
+        const url = id ? '/useu-list/' + id + '/edit/' : '/useu-list/add/';
+        fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify(payload)
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.ok) {
+                closeModal();
+                location.reload();
+            } else {
+                showToast(data.error || 'Unknown error', {type:'error'});
+            }
+        })
+        .catch(() => showToast('Network error', {type:'error'}));
+    };
+
+    window.deleteContact = function(contactId) {
+        if (!confirm('Delete this contact? This cannot be undone.')) return;
+        fetch('/useu-list/' + contactId + '/delete/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.ok) {
+                location.reload();
+            } else {
+                showToast(data.error || 'Unknown error', {type:'error'});
+            }
+        })
+        .catch(() => showToast('Network error', {type:'error'}));
+    };
+
+    // ── Schedule Touchpoints ─────────────────────────────────────
+    window.toggleSchedule = function() {
+        const grid = document.getElementById('scheduleGrid');
+        const arrow = document.getElementById('scheduleArrow');
+        grid.classList.toggle('open');
+        arrow.classList.toggle('open');
+    };
+
+    window.clearSchedule = function(tpNum) {
+        if (!confirm('Clear schedule for Touchpoint ' + tpNum + '? This will clear the date for all contacts.')) return;
+        const el = document.getElementById('schedDate' + tpNum);
+        if (el._flatpickr) el._flatpickr.clear();
+        setSchedule(tpNum, '');
+    };
+
+    window.setSchedule = function(tpNum, dateStr) {
+        const status = document.getElementById('schedStatus' + tpNum);
+        status.textContent = 'Saving...';
+        status.className = 'schedule-status pending';
+
+        fetch('{% url "set_touchpoint_schedule" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify({touchpoint_number: tpNum, scheduled_date: dateStr})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.ok) {
+                if (dateStr) {
+                    status.textContent = 'Set for ' + data.date + ' (' + data.updated + ' contacts updated)';
+                    status.className = 'schedule-status';
+                } else {
+                    status.textContent = 'Cleared';
+                    status.className = 'schedule-status pending';
+                }
+            } else {
+                status.textContent = 'Error: ' + (data.error || 'Unknown');
+                status.className = 'schedule-status pending';
+            }
+        })
+        .catch(() => {
+            status.textContent = 'Network error';
+            status.className = 'schedule-status pending';
+        });
+    };
+
+    // ── Flatpickr date pickers (disable Mon/Fri/weekends/holidays) ──
+    const _fpHolidays = {};
+    function _getHolidaysForYear(y) {
+        if (_fpHolidays[y]) return _fpHolidays[y];
+        _fpHolidays[y] = getUSHolidays(y);
+        return _fpHolidays[y];
+    }
+
+    const fpConfig = {
+        dateFormat: 'Y-m-d H:i',
+        altInput: true,
+        altFormat: 'd M Y, H:i',
+        enableTime: true,
+        time_24hr: true,
+        minuteIncrement: 15,
+        defaultHour: 9,
+        defaultMinute: 0,
+        // South African Standard Time (UTC+2, no DST) — labels are local PST
+        allowInput: false,
+        disable: [
+            function(date) {
+                const day = date.getDay();
+                // 1=Mon, 5=Fri
+                if (day === 1 || day === 5) return true;
+                const iso = date.getFullYear() + '-' +
+                    String(date.getMonth()+1).padStart(2,'0') + '-' +
+                    String(date.getDate()).padStart(2,'0');
+                const hols = _getHolidaysForYear(date.getFullYear());
+                return hols.includes(iso);
+            }
+        ],
+    };
+
+    // Init schedule date pickers
+    document.querySelectorAll('.tp-datepicker').forEach(function(el) {
+        const tpNum = el.getAttribute('data-tp');
+        flatpickr(el, Object.assign({}, fpConfig, {
+            onChange: function(selectedDates, dateStr) {
+                setSchedule(parseInt(tpNum), dateStr);
+            }
+        }));
+    });
+
+    // Init modal TP1 date picker
+    const modalTp1Fp = flatpickr('#modalTp1Date', Object.assign({}, fpConfig));
+
+    // Load existing schedules on page load
+    fetch('{% url "get_touchpoint_schedules" %}')
+    .then(r => r.json())
+    .then(data => {
+        if (data.ok && data.schedules) {
+            for (const [tp, dateVal] of Object.entries(data.schedules)) {
+                const input = document.getElementById('schedDate' + tp);
+                const status = document.getElementById('schedStatus' + tp);
+                if (input && dateVal && input._flatpickr) {
+                    // Convert DD-MM-YYYY to YYYY-MM-DD for flatpickr
+                    let isoVal = dateVal;
+                    if (dateVal.match(/^\d{2}-\d{2}-\d{4}$/)) {
+                        const parts = dateVal.split('-');
+                        isoVal = parts[2] + '-' + parts[1] + '-' + parts[0];
+                    }
+                    input._flatpickr.setDate(isoVal, false);
+                    if (status) {
+                        status.textContent = 'Scheduled: ' + dateVal;
+                        status.className = 'schedule-status';
+                    }
+                }
+            }
+        }
+    });
+})();
+</script>
+{% endblock %}

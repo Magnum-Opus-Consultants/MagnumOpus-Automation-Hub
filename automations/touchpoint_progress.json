@@ -1,0 +1,47 @@
+{
+  "tp1": {
+    "total_contacts": 3,
+    "sent_count": 3,
+    "failed_count": 0,
+    "status": "idle",
+    "last_updated": "2026-04-27T19:47:25.482147",
+    "started_at": null,
+    "current_email": "ethansevenster5@gmail.com"
+  },
+  "tp2": {
+    "total_contacts": 5,
+    "sent_count": 5,
+    "failed_count": 0,
+    "status": "idle",
+    "last_updated": "2026-04-16T09:50:37.677614",
+    "started_at": null,
+    "current_email": "jennifer.thomas@agility.com"
+  },
+  "tp8": {
+    "total_contacts": 2,
+    "sent_count": 2,
+    "failed_count": 0,
+    "status": "idle",
+    "last_updated": "2026-04-15T07:41:25.228258",
+    "started_at": null,
+    "current_email": "nobody@invalid-fake-domain-zxqzxq.invalid"
+  },
+  "tp3": {
+    "total_contacts": 10,
+    "sent_count": 10,
+    "failed_count": 0,
+    "status": "idle",
+    "last_updated": "2026-04-16T09:52:15.130923",
+    "started_at": null,
+    "current_email": "jennifer.thomas@agility.com"
+  },
+  "tp4": {
+    "total_contacts": 6,
+    "sent_count": 6,
+    "failed_count": 0,
+    "status": "idle",
+    "last_updated": "2026-04-16T09:57:18.194841",
+    "started_at": null,
+    "current_email": "jennifer.thomas@agility.com"
+  }
+}

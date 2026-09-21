@@ -1,0 +1,18 @@
+venv/
+**/venv/
+automations/venv/
+node_modules/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+
+# AWS / SMTP credentials never go in git
+*credentials*.csv
+*_credentials.csv
+ses-smtp-user.*
+
+# Power BI artifacts
+*.pbix
+.pbix_extract/

@@ -1,0 +1,707 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Sync Monitor - MOC Automations{% endblock %}
+
+{% block extra_styles %}
+/* Banner header — mirrors login left panel */
+.monitor-banner {
+    background: #054B70;
+    border-radius: 8px;
+    padding: 32px 36px 28px;
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+}
+
+.monitor-banner::before {
+    content: '';
+    position: absolute;
+    top: -80px;
+    right: -60px;
+    width: 260px;
+    height: 260px;
+    border-radius: 50%;
+    background: rgba(148, 188, 204, 0.12);
+    pointer-events: none;
+}
+
+.monitor-banner::after {
+    content: '';
+    position: absolute;
+    bottom: -60px;
+    left: 240px;
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
+    background: rgba(148, 188, 204, 0.08);
+    pointer-events: none;
+}
+
+.banner-eyebrow {
+    font-size: 10px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    position: relative;
+    z-index: 1;
+}
+
+.banner-title {
+    font-size: 26px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 4px;
+    position: relative;
+    z-index: 1;
+}
+
+.banner-subtitle {
+    font-size: 13px;
+    color: rgba(255,255,255,0.55);
+    margin-bottom: 28px;
+    position: relative;
+    z-index: 1;
+}
+
+.banner-stats {
+    display: flex;
+    gap: 36px;
+    flex-wrap: wrap;
+    position: relative;
+    z-index: 1;
+}
+
+.banner-stat {
+    border-top: 2px solid rgba(148, 188, 204, 0.35);
+    padding-top: 10px;
+    min-width: 64px;
+}
+
+.banner-stat-num {
+    font-size: 26px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1;
+}
+
+.banner-stat-num.healthy { color: #6fcf7c; }
+.banner-stat-num.stale   { color: #f4b560; }
+.banner-stat-num.error   { color: #f27b7e; }
+
+.banner-stat-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.45);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-top: 3px;
+}
+
+/* Card */
+.card {
+    background: #fff;
+    border: 1px solid #edebe9;
+    border-radius: 6px;
+    margin-bottom: 16px;
+    overflow: hidden;
+}
+
+.card-header {
+    padding: 14px 20px;
+    border-bottom: 1px solid #edebe9;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #faf9f8;
+}
+
+.card-header-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.card-header svg {
+    width: 16px;
+    height: 16px;
+    fill: #054B70;
+}
+
+.card-title {
+    color: #323130;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.auto-refresh {
+    font-size: 11px;
+    color: #a19f9d;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.auto-refresh svg {
+    width: 12px;
+    height: 12px;
+    fill: #a19f9d;
+}
+
+/* Table */
+.monitor-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.monitor-table th {
+    text-align: left;
+    padding: 10px 20px;
+    font-size: 10px;
+    font-weight: 600;
+    color: #a19f9d;
+    text-transform: uppercase;
+    letter-spacing: 0.7px;
+    border-bottom: 1px solid #edebe9;
+    background: #faf9f8;
+}
+
+.monitor-table td {
+    padding: 13px 20px;
+    font-size: 13px;
+    color: #323130;
+    border-bottom: 1px solid #f3f2f1;
+    vertical-align: middle;
+}
+
+.monitor-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.monitor-table tbody tr {
+    border-left: 3px solid transparent;
+}
+
+/* Status badges */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+.status-badge .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.status-badge.healthy { background: #e6f4e6; color: #107c10; }
+.status-badge.healthy .dot { background: #107c10; }
+
+.status-badge.stale { background: #fdf1e6; color: #ca5010; }
+.status-badge.stale .dot { background: #ca5010; }
+
+.status-badge.error { background: #fde7e9; color: #d13438; }
+.status-badge.error .dot { background: #d13438; }
+
+.status-badge.unknown { background: #f3f2f1; color: #a19f9d; }
+.status-badge.unknown .dot { background: #c8c6c4; }
+
+.station-link {
+    color: #054B70;
+    text-decoration: none;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+}
+
+.station-link:hover { text-decoration: underline; }
+
+.sync-time {
+    font-size: 13px;
+    color: #323130;
+}
+
+.sync-time .time-part {
+    font-weight: 500;
+}
+
+.sync-time .date-part {
+    color: #a19f9d;
+    font-size: 11px;
+    margin-left: 4px;
+}
+
+.time-ago {
+    font-size: 12px;
+    color: #a19f9d;
+}
+
+.time-ago.stale {
+    color: #ca5010;
+    font-weight: 500;
+}
+
+.records-count {
+    font-size: 13px;
+    font-weight: 500;
+    color: #323130;
+    font-variant-numeric: tabular-nums;
+}
+
+.msg-text {
+    font-size: 12px;
+    color: #a19f9d;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.msg-text.has-error { color: #d13438; }
+
+/* Sync All button */
+.btn-sync {
+    background: rgba(255,255,255,0.15);
+    color: #fff;
+    border: 1px solid rgba(255,255,255,0.25);
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: background 0.15s ease;
+    letter-spacing: 0.3px;
+    backdrop-filter: blur(4px);
+}
+
+.btn-sync:hover { background: rgba(255,255,255,0.25); }
+.btn-sync:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-sync svg {
+    width: 13px;
+    height: 13px;
+    fill: currentColor;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.btn-sync.syncing svg { animation: spin 1s linear infinite; }
+
+/* Row flash when data updates */
+.row-updated { animation: rowFlash 2s ease-out forwards; }
+@keyframes rowFlash {
+    0%   { background: rgba(16, 124, 16, 0.15); }
+    100% { background: transparent; }
+}
+
+/* 30s auto-refresh countdown bar */
+.refresh-bar-wrap { height: 3px; background: transparent; overflow: hidden; }
+.refresh-bar { height: 100%; background: #94BCCC; width: 100%; }
+
+/* Sync progress panel */
+.sync-panel {
+    background: #f0f6fa;
+    border: 1px solid #c0dae8;
+    border-radius: 6px;
+    padding: 14px 20px;
+    margin-bottom: 16px;
+}
+.sync-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+}
+.sync-panel-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #054B70;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.sync-panel-label svg { animation: spin 1s linear infinite; }
+.sync-panel-count { font-size: 12px; color: #605e5c; font-weight: 500; }
+.sync-bar-outer {
+    height: 6px;
+    background: #d0e8f0;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+.sync-bar-inner {
+    height: 100%;
+    background: #054B70;
+    border-radius: 3px;
+    width: 0%;
+    transition: width 0.5s ease;
+}
+.sync-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.sync-chip {
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+    background: #dce8f0;
+    color: #054B70;
+    transition: background 0.4s, color 0.4s;
+}
+.sync-chip.done { background: #107c10; color: #fff; }
+{% endblock %}
+
+{% block content %}
+<!-- Banner replaces plain page-header + summary cards -->
+<div class="monitor-banner">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;position:relative;z-index:1;">
+        <div>
+            <div class="banner-eyebrow">MOC Automations</div>
+            <div class="banner-title">Sync Monitor</div>
+            <div class="banner-subtitle">Real-time health status for all station email syncs</div>
+        </div>
+        <button class="btn-sync" id="syncAllBtn" onclick="syncAll()" style="margin-top:4px;">
+            <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+            Sync All
+        </button>
+    </div>
+    <div class="banner-stats">
+        <div class="banner-stat">
+            <div class="banner-stat-num">{{ total_stations }}</div>
+            <div class="banner-stat-label">Stations</div>
+        </div>
+        <div class="banner-stat">
+            <div class="banner-stat-num healthy" id="healthy-count">{{ healthy_count }}</div>
+            <div class="banner-stat-label">Healthy</div>
+        </div>
+        <div class="banner-stat">
+            <div class="banner-stat-num stale" id="stale-count">{{ stale_count }}</div>
+            <div class="banner-stat-label">Stale</div>
+        </div>
+        <div class="banner-stat">
+            <div class="banner-stat-num error" id="error-count">{{ error_count }}</div>
+            <div class="banner-stat-label">Errors</div>
+        </div>
+    </div>
+</div> <!-- /monitor-banner -->
+
+<!-- Sync progress panel (hidden until Sync All is clicked) -->
+<div class="sync-panel" id="sync-panel" style="display:none;">
+    <div class="sync-panel-header">
+        <span class="sync-panel-label">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="#054B70"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+            <span id="sync-panel-title">Syncing all stations...</span>
+        </span>
+        <span class="sync-panel-count" id="sync-panel-count">0 / {{ total_stations }}</span>
+    </div>
+    <div class="sync-bar-outer">
+        <div class="sync-bar-inner" id="sync-bar"></div>
+    </div>
+    <div class="sync-chips" id="sync-chips"></div>
+</div>
+
+<!-- Station table -->
+<div class="card">
+    <div class="card-header">
+        <div class="card-header-left">
+            <svg viewBox="0 0 24 24"><path d="M19.5 3.5L18 2l-1.5 1.5L15 2l-1.5 1.5L12 2l-1.5 1.5L9 2 7.5 3.5 6 2v14H3v3c0 1.66 1.34 3 3 3h12c1.66 0 3-1.34 3-3V2l-1.5 1.5zM15 20H6c-.55 0-1-.45-1-1v-1h10v2zm4-1c0 .55-.45 1-1 1s-1-.45-1-1v-3H8V5h11v14z"/></svg>
+            <span class="card-title">All Stations</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+            <span class="auto-refresh" id="refresh-label">
+                <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                Auto-refreshes every 30s
+            </span>
+        </div>
+    </div>
+    <!-- 30s countdown bar -->
+    <div class="refresh-bar-wrap"><div class="refresh-bar" id="refresh-bar"></div></div>
+    <div style="overflow-x: auto;">
+    <table class="monitor-table" id="station-table">
+        <thead>
+            <tr>
+                <th>Station</th>
+                <th>Status</th>
+                <th>Last Sync</th>
+                <th>Time Ago</th>
+                <th>Records</th>
+                <th>Message</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for station in stations %}
+            <tr>
+                <td>
+                    <a href="/{{ station.code_lower }}/" class="station-link">{{ station.code }}</a>
+                </td>
+                <td>
+                    <span class="status-badge {{ station.status }}">
+                        <span class="dot"></span>
+                        {% if station.status == 'healthy' %}Healthy
+                        {% elif station.status == 'stale' %}Stale
+                        {% elif station.status == 'error' %}Error
+                        {% else %}Unknown{% endif %}
+                    </span>
+                </td>
+                <td>
+                    {% if station.last_sync %}
+                        <span class="sync-time">
+                            <span class="time-part">{{ station.last_sync.time }}</span>
+                            <span class="date-part">{{ station.last_sync.date }}</span>
+                        </span>
+                    {% else %}
+                        <span style="color:#c8c6c4;font-size:12px;">Never</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <span class="time-ago {% if station.status == 'stale' %}stale{% endif %}">
+                        {{ station.time_ago|default:"--" }}
+                    </span>
+                </td>
+                <td>
+                    <span class="records-count">
+                        {% if station.records is not None %}{{ station.records|intcomma }}{% else %}--{% endif %}
+                    </span>
+                </td>
+                <td>
+                    <span class="msg-text {% if station.status == 'error' %}has-error{% endif %}"
+                          title="{{ station.message }}">
+                        {{ station.message|default:"--" }}
+                    </span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var TOTAL = {{ total_stations }};
+var lastSyncTimes = {};   // code -> "time|date" string
+var syncInProgress = false;
+var syncedSet = {};
+var fastPollTimer = null;
+var autoRefreshTimer = null;
+
+function getCookie(name) {
+    var v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+    return v ? v[2] : null;
+}
+
+var SYNC_SVG = '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>';
+
+/* ── Countdown bar ── */
+function startCountdown() {
+    var bar = document.getElementById('refresh-bar');
+    if (!bar) return;
+    bar.style.transition = 'none';
+    bar.style.width = '100%';
+    requestAnimationFrame(function() {
+        requestAnimationFrame(function() {
+            bar.style.transition = 'width 30s linear';
+            bar.style.width = '0%';
+        });
+    });
+}
+
+/* ── Build a single table row ── */
+function buildRow(s, flash) {
+    var statusLabel = s.status === 'healthy' ? 'Healthy' :
+                      s.status === 'stale'   ? 'Stale'   :
+                      s.status === 'error'   ? 'Error'   : 'Unknown';
+    var syncDisplay = s.last_sync
+        ? '<span class="sync-time"><span class="time-part">' + s.last_sync.time + '</span><span class="date-part">' + s.last_sync.date + '</span></span>'
+        : '<span style="color:#c8c6c4;font-size:12px;">Never</span>';
+    var timeAgoClass = s.status === 'stale' ? 'stale' : '';
+    var errClass = s.status === 'error' ? 'has-error' : '';
+    var rec = (s.records !== null && s.records !== undefined) ? Number(s.records).toLocaleString() : '--';
+    var trClass = flash ? ' class="row-updated"' : '';
+    return '<tr' + trClass + '>' +
+        '<td><a href="/' + s.code_lower + '/" class="station-link">' + s.code + '</a></td>' +
+        '<td><span class="status-badge ' + s.status + '"><span class="dot"></span>' + statusLabel + '</span></td>' +
+        '<td>' + syncDisplay + '</td>' +
+        '<td><span class="time-ago ' + timeAgoClass + '">' + (s.time_ago || '--') + '</span></td>' +
+        '<td><span class="records-count">' + rec + '</span></td>' +
+        '<td><span class="msg-text ' + errClass + '" title="' + (s.message || '') + '">' + (s.message || '--') + '</span></td>' +
+        '</tr>';
+}
+
+/* ── Process API response ── */
+function processData(data, isSyncPoll) {
+    document.getElementById('healthy-count').textContent = data.healthy_count;
+    document.getElementById('stale-count').textContent = data.stale_count;
+    document.getElementById('error-count').textContent = data.error_count;
+
+    var newTimes = {};
+    var updatedCodes = {};
+    data.stations.forEach(function(s) {
+        var key = s.last_sync ? (s.last_sync.time + '|' + s.last_sync.date) : '';
+        newTimes[s.code] = key;
+        if (isSyncPoll && lastSyncTimes[s.code] !== undefined && lastSyncTimes[s.code] !== key && key !== '') {
+            updatedCodes[s.code] = true;
+        }
+    });
+
+    var html = '';
+    data.stations.forEach(function(s) {
+        html += buildRow(s, !!updatedCodes[s.code]);
+    });
+    var tbody = document.querySelector('#station-table tbody');
+    tbody.innerHTML = html;
+
+    // Remove flash class after animation
+    if (Object.keys(updatedCodes).length) {
+        setTimeout(function() {
+            tbody.querySelectorAll('.row-updated').forEach(function(r) { r.classList.remove('row-updated'); });
+        }, 2000);
+    }
+
+    // If syncing, update chips and progress
+    if (isSyncPoll) {
+        Object.keys(updatedCodes).forEach(function(code) {
+            if (!syncedSet[code]) {
+                syncedSet[code] = true;
+                var chip = document.getElementById('chip-' + code);
+                if (chip) chip.className = 'sync-chip done';
+            }
+        });
+        var done = Object.keys(syncedSet).length;
+        var pct = Math.round(done / TOTAL * 100);
+        var bar = document.getElementById('sync-bar');
+        var cnt = document.getElementById('sync-panel-count');
+        var btn = document.getElementById('syncAllBtn');
+        if (bar) bar.style.width = pct + '%';
+        if (cnt) cnt.textContent = done + ' / ' + TOTAL;
+        if (btn) btn.innerHTML = SYNC_SVG + ' Syncing... (' + done + '/' + TOTAL + ')';
+        if (done >= TOTAL) finishSync(true);
+    }
+
+    lastSyncTimes = newTimes;
+}
+
+/* ── Finish sync ── */
+function finishSync(success) {
+    syncInProgress = false;
+    if (fastPollTimer) { clearInterval(fastPollTimer); fastPollTimer = null; }
+    var btn = document.getElementById('syncAllBtn');
+    var panel = document.getElementById('sync-panel');
+    var title = document.getElementById('sync-panel-title');
+    if (success) {
+        if (title) title.textContent = 'All stations synced!';
+        if (btn) btn.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Done';
+    } else {
+        if (title) title.textContent = 'Sync timed out.';
+        if (btn) btn.innerHTML = 'Timed out';
+    }
+    setTimeout(function() {
+        if (panel) panel.style.display = 'none';
+        if (btn) {
+            btn.disabled = false;
+            btn.classList.remove('syncing');
+            btn.innerHTML = SYNC_SVG + ' Sync All';
+        }
+        startCountdown();
+        scheduleAutoRefresh();
+    }, 3000);
+}
+
+/* ── Trigger Sync All ── */
+function syncAll() {
+    if (syncInProgress) return;
+    syncInProgress = true;
+    syncedSet = {};
+
+    var btn = document.getElementById('syncAllBtn');
+    btn.disabled = true;
+    btn.classList.add('syncing');
+    btn.innerHTML = SYNC_SVG + ' Syncing... (0/' + TOTAL + ')';
+
+    // Stop auto-refresh during sync
+    if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+    var refreshBar = document.getElementById('refresh-bar');
+    if (refreshBar) { refreshBar.style.transition = 'none'; refreshBar.style.width = '0%'; }
+
+    // Build station chips
+    var chips = document.getElementById('sync-chips');
+    if (chips) {
+        var codes = [];
+        document.querySelectorAll('#station-table .station-link').forEach(function(a) { codes.push(a.textContent.trim()); });
+        chips.innerHTML = codes.map(function(c) { return '<span id="chip-' + c + '" class="sync-chip">' + c + '</span>'; }).join('');
+    }
+    var bar = document.getElementById('sync-bar');
+    var cnt = document.getElementById('sync-panel-count');
+    var title = document.getElementById('sync-panel-title');
+    if (bar) bar.style.width = '0%';
+    if (cnt) cnt.textContent = '0 / ' + TOTAL;
+    if (title) title.textContent = 'Syncing all stations...';
+    document.getElementById('sync-panel').style.display = 'block';
+
+    fetch('/monitor/sync-all/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCookie('csrftoken'), 'Content-Type': 'application/json' }
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.status !== 'started') {
+            if (btn) { btn.innerHTML = data.message || 'Error'; btn.disabled = false; btn.classList.remove('syncing'); }
+            document.getElementById('sync-panel').style.display = 'none';
+            syncInProgress = false;
+            scheduleAutoRefresh();
+            return;
+        }
+        // Poll every 4s for progress, timeout after 2min
+        var elapsed = 0;
+        fastPollTimer = setInterval(function() {
+            elapsed += 4;
+            fetch('/monitor/api/')
+                .then(function(r) { return r.json(); })
+                .then(function(d) { processData(d, true); })
+                .catch(function() {});
+            if (elapsed >= 120) finishSync(false);
+        }, 4000);
+    })
+    .catch(function() {
+        if (btn) { btn.innerHTML = 'Error'; btn.disabled = false; btn.classList.remove('syncing'); }
+        document.getElementById('sync-panel').style.display = 'none';
+        syncInProgress = false;
+        scheduleAutoRefresh();
+    });
+}
+
+/* ── Auto-refresh every 30s ── */
+function scheduleAutoRefresh() {
+    if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+    autoRefreshTimer = setInterval(function() {
+        if (!syncInProgress) {
+            fetch('/monitor/api/')
+                .then(function(r) { return r.json(); })
+                .then(function(d) {
+                    processData(d, false);
+                    startCountdown();
+                })
+                .catch(function(err) { console.error('Monitor refresh error:', err); });
+        }
+    }, 30000);
+}
+
+// Init: seed lastSyncTimes and start countdown
+fetch('/monitor/api/')
+    .then(function(r) { return r.json(); })
+    .then(function(d) { processData(d, false); })
+    .catch(function() {});
+startCountdown();
+scheduleAutoRefresh();
+</script>
+{% endblock %}

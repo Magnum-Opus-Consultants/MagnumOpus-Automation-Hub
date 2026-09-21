@@ -1,0 +1,757 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Data Analysis - MOC Automations{% endblock %}
+
+{% block extra_styles %}
+/* Fluent-style dashboard */
+.dashboard-header { margin-bottom: 24px; }
+
+/* Dash hero — rich, layered */
+.dash-hero {
+    display: flex; justify-content: space-between; align-items: flex-end; gap: 20px;
+    padding: 30px 32px; margin-bottom: 22px;
+    border-radius: 14px;
+    background:
+        linear-gradient(135deg, rgba(26,40,56,0.92) 0%, rgba(45,107,134,0.82) 100%),
+        url('/static/HOME-The-process.png') center/cover;
+    color: #fff;
+    box-shadow: 0 14px 36px rgba(26,40,56,0.25);
+    position: relative; overflow: hidden;
+    flex-wrap: wrap;
+}
+.dash-hero::before {
+    content: ''; position: absolute; top: -60px; right: -30px;
+    width: 220px; height: 220px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(200,150,86,0.35) 0%, transparent 70%);
+}
+.dash-hero-left { flex: 1; min-width: 260px; position: relative; z-index: 1; }
+.dash-hero-eyebrow {
+    font-size: 11px; font-weight: 700; letter-spacing: 1.6px; text-transform: uppercase;
+    color: #f3d8a6; margin-bottom: 10px;
+    display: inline-flex; align-items: center; gap: 8px;
+}
+.dash-hero-eyebrow::before {
+    content: ''; width: 22px; height: 2px; background: #c89656; border-radius: 2px;
+}
+.dash-hero-title {
+    font-size: 34px; font-weight: 700; letter-spacing: -0.5px;
+    color: #fff; margin: 0 0 8px;
+    text-shadow: 0 2px 14px rgba(0,0,0,0.25);
+}
+.dash-hero-title .accent-word {
+    background: linear-gradient(90deg, #f3d8a6 0%, #e2ad69 100%);
+    -webkit-background-clip: text; background-clip: text;
+    color: transparent;
+}
+.dash-hero-sub {
+    font-size: 14px; color: rgba(255,255,255,0.85);
+    margin: 0 0 18px; max-width: 560px; line-height: 1.55;
+}
+.dash-hero-meta {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    font-size: 12px; color: rgba(255,255,255,0.78);
+}
+.dash-hero-meta > span:not(.sep) {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(255,255,255,0.10);
+    border: 1px solid rgba(255,255,255,0.18);
+    padding: 5px 12px; border-radius: 999px;
+    backdrop-filter: blur(4px);
+}
+.dash-hero-meta strong { color: #fff; font-weight: 700; }
+.dash-hero-meta .sep { display: none; }
+.dash-hero .sync-all-btn { position: relative; z-index: 1; }
+
+.section-title {
+    font-size: 12px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase;
+    color: var(--text-secondary); margin: 28px 0 14px 4px;
+    display: flex; align-items: center; gap: 10px;
+}
+.section-title::after { content: ''; flex: 1; height: 1px; background: var(--border, #edebe9); }
+
+.stations-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 14px;
+}
+
+.station-card {
+    display: flex; flex-direction: column;
+    background: var(--surface, #fff); border: 1px solid var(--border, #edebe9);
+    border-radius: 10px; padding: 16px 18px 14px;
+    transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+    text-decoration: none; color: inherit; cursor: pointer;
+    position: relative; overflow: hidden; min-height: 180px;
+}
+.station-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, #054B70, #0a82c4);
+}
+.station-card:hover {
+    border-color: transparent; transform: translateY(-2px);
+    box-shadow: 0 10px 24px rgba(5,75,112,0.12);
+    text-decoration: none; color: inherit;
+}
+
+.station-header {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border, #edebe9);
+}
+.station-title-wrap { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+.station-icon {
+    width: 34px; height: 34px; border-radius: 8px; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: #deecf9; color: #0078d4; font-weight: 700; font-size: 13px;
+}
+
+.card-sync-btn {
+    background: none;
+    border: 1px solid #c8c6c4;
+    border-radius: 4px;
+    padding: 3px 8px;
+    font-size: 11px;
+    font-family: inherit;
+    color: #605e5c;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.15s;
+    white-space: nowrap;
+    position: relative;
+    z-index: 2;
+}
+
+.card-sync-btn:hover { background: #054B70; color: #fff; border-color: #054B70; }
+.card-sync-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.card-sync-btn svg { width: 12px; height: 12px; fill: currentColor; }
+
+.card-sync-btn.syncing { color: #054B70; border-color: #054B70; }
+.card-sync-btn.done { color: #107c10; border-color: #107c10; }
+.card-sync-btn.error { color: #a4262c; border-color: #a4262c; }
+
+.card-sync-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid #c8c6c4;
+    border-top-color: #054B70;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.station-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #1b1a19;
+    margin: 0;
+}
+
+.station-status {
+    font-size: 11px;
+    color: #107c10;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.station-status::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #107c10;
+    display: inline-block;
+}
+
+.station-description {
+    font-size: 12px;
+    color: #797775;
+    line-height: 1.5;
+    margin-bottom: 12px;
+}
+
+.station-stats {
+    display: flex;
+    gap: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #f3f2f1;
+}
+
+.station-stat {
+    display: flex;
+    flex-direction: column;
+}
+
+.station-stat-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: #054B70;
+    line-height: 1.2;
+}
+
+.station-stat-label {
+    font-size: 10px;
+    color: #a19f9d;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-top: 2px;
+}
+
+@media (max-width: 768px) {
+    .stations-grid {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    }
+
+    .dashboard-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 480px) {
+    .stations-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .dashboard-stats {
+        grid-template-columns: 1fr;
+    }
+}
+
+.sync-all-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-family: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.15s, transform 0.12s, box-shadow 0.15s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    white-space: nowrap;
+}
+
+.sync-all-btn:hover { background: var(--accent-hover); transform: translateY(-1px); box-shadow: 0 4px 10px rgba(45,107,134,0.28); }
+.sync-all-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.sync-all-btn svg { width: 15px; height: 15px; fill: currentColor; }
+
+.sync-status-bar {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: #f8f9fa;
+    border: 1px solid #edebe9;
+    border-radius: 6px;
+    margin-bottom: 20px;
+    font-size: 13px;
+    color: #323130;
+}
+
+[data-theme="dark"] .sync-status-bar { background: var(--surface); border-color: var(--border); color: var(--text-primary); }
+
+.sync-status-bar.visible { display: flex; }
+.sync-status-bar.success { background: #e8f5e9; border-color: #a5d6a7; color: #107c10; }
+.sync-status-bar.error { background: #fde8e9; border-color: #f5c6cb; color: #a4262c; }
+
+.sync-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #edebe9;
+    border-top-color: #054B70;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.station-last-sync {
+    font-size: 10px;
+    color: #a19f9d;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #f3f2f1;
+}
+
+[data-theme="dark"] .station-last-sync { border-color: var(--border); }
+
+/* ── Dark mode overrides ─────────────────────── */
+[data-theme="dark"] .station-card { background: var(--surface); border-color: var(--border); color: var(--text-primary); }
+[data-theme="dark"] .station-card:hover { box-shadow: 0 10px 24px rgba(0,0,0,0.45); }
+[data-theme="dark"] .station-title { color: var(--text-primary); }
+[data-theme="dark"] .station-description { color: var(--text-secondary); }
+[data-theme="dark"] .station-stats { border-color: var(--border); }
+[data-theme="dark"] .station-stat-value { color: #6cb4d8; }
+[data-theme="dark"] .station-stat-label { color: var(--text-secondary); }
+[data-theme="dark"] .station-header { border-color: var(--border); }
+[data-theme="dark"] .station-icon { background: rgba(108,180,216,0.18); color: #6cb4d8; }
+
+[data-theme="dark"] .stat-card { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .stat-card-value { color: var(--text-primary); }
+[data-theme="dark"] .stat-card-label { color: var(--text-secondary); }
+
+[data-theme="dark"] .section-title { color: var(--text-secondary); }
+[data-theme="dark"] .section-title::after { background: var(--border); }
+
+[data-theme="dark"] .card-sync-btn {
+    background: var(--surface2); border-color: var(--border); color: var(--text-primary);
+}
+[data-theme="dark"] .card-sync-btn:hover { background: #6cb4d8; color: #1b1a19; border-color: #6cb4d8; }
+
+[data-theme="dark"] .sync-all-btn { background: var(--surface); color: #6cb4d8; }
+[data-theme="dark"] .sync-all-btn:hover { background: var(--surface2); }
+{% endblock %}
+
+{% block content %}
+<div class="dash-hero">
+    <div class="dash-hero-left">
+        <div class="dash-hero-eyebrow">MOC Automations · Dashboard</div>
+        <h1 class="dash-hero-title">Welcome back, <span class="accent-word">{{ request.user.first_name|default:request.user.username }}</span> 👋</h1>
+        <p class="dash-hero-sub">Select a station below for connection details, sync status and live metrics.</p>
+        <div class="dash-hero-meta">
+            <span><strong>20</strong> stations</span>
+            <span class="sep">·</span>
+            <span>syncs every <strong>1 hr</strong></span>
+            <span class="sep">·</span>
+            <span>token refreshes every <strong>5 min</strong></span>
+            <span class="sep">·</span>
+            <span><strong>24/7</strong> uptime</span>
+        </div>
+    </div>
+    <button class="sync-all-btn" id="sync-all-btn" onclick="syncAll()">
+        <svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+        Sync All Stations
+    </button>
+</div>
+
+<div class="sync-status-bar" id="sync-status">
+    <div class="sync-spinner" id="sync-spinner"></div>
+    <span id="sync-msg">Starting sync...</span>
+</div>
+
+</div>
+
+<div class="section-title">All Stations</div>
+<div class="stations-grid">
+    {% with sync_icon='<svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>' %}{% endwith %}
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'turnover' %}'">
+        <div class="station-header">
+            <h3 class="station-title">Turnover</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_data' %}" data-progress="{% url 'sync_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">Turnover data synced from OneDrive to PostgreSQL for Power BI.</p>
+        <div class="station-stats">
+            <div class="station-stat"><div class="station-stat-value">{{ turnover_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div>
+            <div class="station-stat"><div class="station-stat-value">{{ branch_count|default:"--" }}</div><div class="station-stat-label">Branches</div></div>
+        </div>
+        {% if turnover_last_sync %}<div class="station-last-sync">Last synced: {{ turnover_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'atl' %}'">
+        <div class="station-header">
+            <h3 class="station-title">ATL Financial Analysis</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_atl' %}" data-progress="{% url 'sync_atl_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">ATL Budget vs Actual P&L for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ atl_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if atl_last_sync %}<div class="station-last-sync">Last synced: {{ atl_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'ccc' %}'">
+        <div class="station-header">
+            <h3 class="station-title">CCC Financial Analysis</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_ccc' %}" data-progress="{% url 'sync_ccc_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">CCC Budget vs Actual P&L for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ ccc_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if ccc_last_sync %}<div class="station-last-sync">Last synced: {{ ccc_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'ccd' %}'">
+        <div class="station-header">
+            <h3 class="station-title">CCD Financial Analysis</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_ccd' %}" data-progress="{% url 'sync_ccd_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">CCD Budget vs Actual P&L for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ ccd_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if ccd_last_sync %}<div class="station-last-sync">Last synced: {{ ccd_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'con' %}'">
+        <div class="station-header">
+            <h3 class="station-title">CON Financial Analysis</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_con' %}" data-progress="{% url 'sync_con_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">CON Budget vs Actual P&L for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ con_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if con_last_sync %}<div class="station-last-sync">Last synced: {{ con_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'dor' %}'">
+        <div class="station-header">
+            <h3 class="station-title">DOR Financial Analysis</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_dor' %}" data-progress="{% url 'sync_dor_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">DOR Budget vs Actual P&L for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ dor_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if dor_last_sync %}<div class="station-last-sync">Last synced: {{ dor_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'fax' %}'">
+        <div class="station-header">
+            <h3 class="station-title">FAX Financial Analysis</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_fax' %}" data-progress="{% url 'sync_fax_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">FAX Budget vs Actual P&L for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ fax_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if fax_last_sync %}<div class="station-last-sync">Last synced: {{ fax_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'hnl' %}'">
+        <div class="station-header">
+            <h3 class="station-title">HNL Financial Analysis</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_hnl' %}" data-progress="{% url 'sync_hnl_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">HNL Budget vs Actual P&L for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ hnl_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if hnl_last_sync %}<div class="station-last-sync">Last synced: {{ hnl_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'hou' %}'">
+        <div class="station-header">
+            <h3 class="station-title">HOU Financial Analysis</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_hou' %}" data-progress="{% url 'sync_hou_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">HOU Budget vs Actual P&L for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ hou_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if hou_last_sync %}<div class="station-last-sync">Last synced: {{ hou_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'ics' %}'">
+        <div class="station-header">
+            <h3 class="station-title">ICS Financial Analysis</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_ics' %}" data-progress="{% url 'sync_ics_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">ICS Budget vs Actual P&L for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ ics_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if ics_last_sync %}<div class="station-last-sync">Last synced: {{ ics_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'imp' %}'">
+        <div class="station-header">
+            <h3 class="station-title">IMP Financial Analysis</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_imp' %}" data-progress="{% url 'sync_imp_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">IMP Budget vs Actual P&L for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ imp_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if imp_last_sync %}<div class="station-last-sync">Last synced: {{ imp_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'jfk' %}'">
+        <div class="station-header">
+            <h3 class="station-title">JFK Financial Analysis</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_jfk' %}" data-progress="{% url 'sync_jfk_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">JFK Budget vs Actual P&L for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ jfk_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if jfk_last_sync %}<div class="station-last-sync">Last synced: {{ jfk_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'lax' %}'">
+        <div class="station-header">
+            <h3 class="station-title">LAX Financial Analysis</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_lax' %}" data-progress="{% url 'sync_lax_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">LAX Budget vs Actual P&L for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ lax_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if lax_last_sync %}<div class="station-last-sync">Last synced: {{ lax_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'lcl' %}'">
+        <div class="station-header">
+            <h3 class="station-title">LCL Financial Analysis</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_lcl' %}" data-progress="{% url 'sync_lcl_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">LCL Budget vs Actual P&L for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ lcl_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if lcl_last_sync %}<div class="station-last-sync">Last synced: {{ lcl_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'ord' %}'">
+        <div class="station-header">
+            <h3 class="station-title">ORD Financial Analysis</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_ord' %}" data-progress="{% url 'sync_ord_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">ORD Budget vs Actual P&L for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ ord_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if ord_last_sync %}<div class="station-last-sync">Last synced: {{ ord_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'dfw' %}'">
+        <div class="station-header">
+            <h3 class="station-title">DFW Financial Analysis</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_dfw' %}" data-progress="{% url 'sync_dfw_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">DFW Budget vs Actual P&L for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ dfw_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if dfw_last_sync %}<div class="station-last-sync">Last synced: {{ dfw_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="location.href='{% url 'bravo_tran' %}'">
+        <div class="station-header">
+            <h3 class="station-title">Bravo Trans Financial Analysis</h3>
+        </div>
+        <p class="station-description">Bravo Trans Budget vs Actual P&L for Power BI. Sync not yet configured.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ bravo_tran_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'ppg' %}'">
+        <div class="station-header">
+            <h3 class="station-title">PPG Financial Analysis</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_ppg' %}" data-progress="{% url 'sync_ppg_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">PPG Budget vs Actual P&L for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ ppg_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if ppg_last_sync %}<div class="station-last-sync">Last synced: {{ ppg_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'condor_dor' %}'">
+        <div class="station-header">
+            <h3 class="station-title">Condor+DOR PNL</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_condor_dor' %}" data-progress="{% url 'sync_condor_dor_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">Condor & DOR P&L across CON, FEA, TRX, BRK departments.</p>
+        <div class="station-stats">
+            <div class="station-stat"><div class="station-stat-value">{{ condor_dor_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div>
+            <div class="station-stat"><div class="station-stat-value">{{ condor_depts|default:"--" }}</div><div class="station-stat-label">Departments</div></div>
+        </div>
+        {% if condor_dor_last_sync %}<div class="station-last-sync">Last synced: {{ condor_dor_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'tfs' %}'">
+        <div class="station-header">
+            <h3 class="station-title">TFS Weekly Data</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_tfs' %}" data-progress="{% url 'sync_tfs_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">Weekly revenue, fleet utilization & YoY performance for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ tfs_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if tfs_last_sync %}<div class="station-last-sync">Last synced: {{ tfs_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'import_ops' %}'">
+        <div class="station-header">
+            <h3 class="station-title">Import Operations</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_import_ops' %}" data-progress="{% url 'sync_import_ops_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">Import Operational Report data synced from OneDrive for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ import_ops_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if import_ops_last_sync %}<div class="station-last-sync">Last synced: {{ import_ops_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'wip_accrual' %}'">
+        <div class="station-header">
+            <h3 class="station-title">WIP & Accrual Report</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_wip_accrual' %}" data-progress="{% url 'sync_wip_accrual_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">WIP and Accrual data synced from OneDrive for Power BI.</p>
+        <div class="station-stats"><div class="station-stat"><div class="station-stat-value">{{ wip_accrual_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div></div>
+        {% if wip_accrual_last_sync %}<div class="station-last-sync">Last synced: {{ wip_accrual_last_sync }}</div>{% endif %}
+    </div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'creditor' %}'">
+        <div class="station-header">
+            <h3 class="station-title">Creditor Report</h3>
+            <div class="station-status">Active</div>
+        </div>
+        <p class="station-description">Creditor payables by group and branch for Power BI.</p>
+        <div class="station-stats">
+            <div class="station-stat">
+                <div class="station-stat-value">{{ creditor_rows|default:"--"|intcomma }}</div>
+                <div class="station-stat-label">Records</div>
+            </div>
+            <div class="station-stat">
+                <div class="station-stat-value">{{ creditor_groups|default:"--" }}</div>
+                <div class="station-stat-label">Groups</div>
+            </div>
+        </div>
+    </a>
+</div>
+
+    <div class="station-card" onclick="if(!event.target.closest('.card-sync-btn'))location.href='{% url 'updown_trader' %}'">
+        <div class="station-header">
+            <h3 class="station-title">Up-Down Trader Report</h3>
+            <button class="card-sync-btn" data-sync="{% url 'sync_updown_trader' %}" data-progress="{% url 'sync_updown_trader_progress' %}" onclick="cardSync(this,event)"><svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg> Sync</button>
+        </div>
+        <p class="station-description">Customer Spend summary data for Up-Down Trader reporting.</p>
+        <div class="station-stats">
+            <div class="station-stat"><div class="station-stat-value">{{ updown_trader_cs_rows|default:"--"|intcomma }}</div><div class="station-stat-label">Records</div></div>
+            <div class="station-stat"><div class="station-stat-value">{{ updown_debtors|default:"--" }}</div><div class="station-stat-label">Debtors</div></div>
+        </div>
+        {% if updown_trader_last_sync %}<div class="station-last-sync">Last synced: {{ updown_trader_last_sync }}</div>{% endif %}
+    </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function syncAll() {
+    var btn = document.getElementById('sync-all-btn');
+    var status = document.getElementById('sync-status');
+    var spinner = document.getElementById('sync-spinner');
+    var msg = document.getElementById('sync-msg');
+
+    btn.disabled = true;
+    status.className = 'sync-status-bar visible';
+    spinner.style.display = 'block';
+    msg.textContent = 'Starting sync for all stations...';
+
+    fetch('{% url "sync_all" %}', {
+        method: 'POST',
+        headers: {'X-CSRFToken': getCookie('csrftoken')}
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.status === 'error') {
+            status.className = 'sync-status-bar visible error';
+            spinner.style.display = 'none';
+            msg.textContent = data.message || 'Sync failed';
+            btn.disabled = false;
+        } else {
+            msg.textContent = 'Syncing all stations...';
+            pollSyncAll();
+        }
+    })
+    .catch(function() {
+        status.className = 'sync-status-bar visible error';
+        spinner.style.display = 'none';
+        msg.textContent = 'Network error';
+        btn.disabled = false;
+    });
+}
+
+function pollSyncAll() {
+    var status = document.getElementById('sync-status');
+    var spinner = document.getElementById('sync-spinner');
+    var msg = document.getElementById('sync-msg');
+    var btn = document.getElementById('sync-all-btn');
+
+    fetch('{% url "sync_all_status" %}')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.running) {
+            status.className = 'sync-status-bar visible';
+            spinner.style.display = 'block';
+            btn.disabled = true;
+            msg.textContent = 'Syncing ' + data.current + '... (' + data.done + '/' + data.total + ' complete)';
+            setTimeout(pollSyncAll, 2000);
+        } else if (data.total) {
+            spinner.style.display = 'none';
+            btn.disabled = false;
+            if (data.errors > 0) {
+                status.className = 'sync-status-bar visible error';
+                msg.textContent = 'Sync complete — ' + data.errors + ' station(s) had errors';
+            } else {
+                status.className = 'sync-status-bar visible success';
+                msg.textContent = 'All ' + data.total + ' stations synced successfully';
+            }
+            setTimeout(function() { location.reload(); }, 3000);
+        }
+    })
+    .catch(function() {
+        setTimeout(pollSyncAll, 3000);
+    });
+}
+
+// Resume sync-all status on page load
+(function() {
+    fetch('{% url "sync_all_status" %}')
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.running) {
+            var status = document.getElementById('sync-status');
+            var spinner = document.getElementById('sync-spinner');
+            var msg = document.getElementById('sync-msg');
+            var btn = document.getElementById('sync-all-btn');
+            status.className = 'sync-status-bar visible';
+            spinner.style.display = 'block';
+            btn.disabled = true;
+            msg.textContent = 'Syncing ' + data.current + '... (' + data.done + '/' + data.total + ' complete)';
+            pollSyncAll();
+        }
+    })
+    .catch(function() {});
+})();
+
+function cardSync(btn, event) {
+    event.preventDefault();
+    event.stopPropagation();
+    var syncUrl = btn.getAttribute('data-sync');
+    var progressUrl = btn.getAttribute('data-progress');
+    var origHtml = btn.innerHTML;
+
+    btn.disabled = true;
+    btn.className = 'card-sync-btn syncing';
+    btn.innerHTML = '<div class="card-sync-spinner"></div> Syncing';
+
+    fetch(syncUrl, {
+        method: 'POST',
+        headers: {'X-CSRFToken': getCookie('csrftoken')}
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.status === 'error') {
+            btn.className = 'card-sync-btn error';
+            btn.innerHTML = 'Error';
+            btn.disabled = false;
+            setTimeout(function() { btn.className = 'card-sync-btn'; btn.innerHTML = origHtml; }, 3000);
+        } else {
+            pollCardSync(btn, progressUrl, origHtml);
+        }
+    })
+    .catch(function() {
+        btn.className = 'card-sync-btn error';
+        btn.innerHTML = 'Failed';
+        btn.disabled = false;
+        setTimeout(function() { btn.className = 'card-sync-btn'; btn.innerHTML = origHtml; }, 3000);
+    });
+}
+
+function pollCardSync(btn, progressUrl, origHtml) {
+    fetch(progressUrl)
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.status === 'complete') {
+            btn.className = 'card-sync-btn done';
+            btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Done';
+            btn.disabled = false;
+            setTimeout(function() { location.reload(); }, 1500);
+        } else if (data.status === 'error') {
+            btn.className = 'card-sync-btn error';
+            btn.innerHTML = 'Error';
+            btn.disabled = false;
+            setTimeout(function() { btn.className = 'card-sync-btn'; btn.innerHTML = origHtml; }, 4000);
+        } else {
+            setTimeout(function() { pollCardSync(btn, progressUrl, origHtml); }, 1000);
+        }
+    })
+    .catch(function() {
+        setTimeout(function() { pollCardSync(btn, progressUrl, origHtml); }, 2000);
+    });
+}
+
+function getCookie(name) {
+    var v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+    return v ? v[2] : null;
+}
+</script>
+{% endblock %}

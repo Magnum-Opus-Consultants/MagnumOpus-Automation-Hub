@@ -1,0 +1,655 @@
+{% extends "base.html" %}
+
+{% block title %}Reporting — Automations{% endblock %}
+
+{% block extra_styles %}
+.page-banner {
+    background: linear-gradient(135deg, #054B70 0%, #0a7ab5 100%);
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin-bottom: 24px;
+    color: #fff;
+}
+.banner-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.55); margin-bottom: 4px; }
+.banner-title { font-size: 22px; font-weight: 700; }
+.banner-subtitle { font-size: 13px; color: rgba(255,255,255,0.65); margin-top: 2px; }
+
+.page-nav-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 20px;
+    border-bottom: 2px solid var(--border);
+}
+.page-nav-tab {
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.15s;
+}
+.page-nav-tab:hover { color: var(--text-primary); }
+.page-nav-tab.active { color: #054B70; border-bottom-color: #054B70; }
+[data-theme="dark"] .page-nav-tab.active { color: #6cb4d8; border-bottom-color: #6cb4d8; }
+
+.summary-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.summary-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+}
+.summary-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 4px;
+    background: var(--accent, #054B70);
+}
+.summary-card.pill-total { --accent: #054B70; }
+.summary-card.pill-active { --accent: #1c6a3a; }
+.summary-card.pill-undelivered { --accent: #a42a2a; }
+.summary-card.pill-hubspot { --accent: #2c6ab0; }
+.summary-card.pill-inactive { --accent: #7a5a00; }
+
+.summary-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 6px;
+}
+.summary-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1;
+}
+.summary-pct {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+.charts-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+    margin-bottom: 20px;
+}
+.chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 22px;
+}
+.chart-card.wide {
+    grid-column: 1 / -1;
+}
+.chart-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+.chart-sub {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-bottom: 16px;
+}
+.chart-wrap {
+    position: relative;
+    height: 280px;
+}
+.chart-wrap.tall {
+    height: 320px;
+}
+.empty-note {
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-style: italic;
+}
+
+.filter-bar {
+    display: flex;
+    gap: 14px;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 20px;
+}
+.filter-group { display: flex; flex-direction: column; gap: 4px; }
+.filter-group label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+}
+.filter-group select,
+.filter-group input[type="date"] {
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text-primary);
+    font-size: 13px;
+    min-width: 150px;
+}
+.filter-actions { display: flex; gap: 8px; margin-left: auto; }
+.filter-apply {
+    padding: 8px 18px;
+    background: #054B70;
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.filter-apply:hover { background: #0a7ab5; }
+.filter-clear {
+    padding: 8px 14px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+}
+.filter-clear:hover { color: var(--text-primary); }
+
+.growth-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+.growth-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px 18px;
+}
+.growth-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+}
+.growth-value {
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.1;
+}
+.growth-sub {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin-top: 6px;
+}
+.growth-delta.up { color: #1c6a3a; }
+.growth-delta.down { color: #a42a2a; }
+[data-theme="dark"] .growth-delta.up { color: #6fcf6f; }
+[data-theme="dark"] .growth-delta.down { color: #f06f6f; }
+
+.hs-range-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--surface);
+}
+.range-btn {
+    padding: 6px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.range-btn + .range-btn { border-left: 1px solid var(--border); }
+.range-btn:hover { color: var(--text-primary); }
+.range-btn.active {
+    background: #054B70;
+    color: #fff;
+}
+[data-theme="dark"] .range-btn.active { background: #0a7ab5; }
+{% endblock %}
+
+{% block content %}
+<div class="page-nav-tabs">
+    <a href="{% url 'useu_list' %}" class="page-nav-tab">US-EU List</a>
+    <a href="{% url 'email_templates' %}" class="page-nav-tab">Email Templates</a>
+    <a href="{% url 'reporting' %}" class="page-nav-tab active">Reporting</a>
+</div>
+
+<div class="page-banner">
+    <div class="banner-eyebrow">Overview</div>
+    <div class="banner-title">How the contact list is doing</div>
+    <div class="banner-subtitle">A quick look at where your contacts are, how many are moving to HubSpot, and how the emails are performing.</div>
+</div>
+
+<form method="get" class="filter-bar">
+    <div class="filter-group">
+        <label>Status</label>
+        <select name="status">
+            <option value="">All statuses</option>
+            {% for s in status_choices %}
+                <option value="{{ s }}" {% if filter_status == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div class="filter-group">
+        <label>Start date</label>
+        <input type="date" name="date_from" value="{{ filter_date_from }}">
+    </div>
+    <div class="filter-group">
+        <label>End date</label>
+        <input type="date" name="date_to" value="{{ filter_date_to }}">
+    </div>
+    <div class="filter-actions">
+        <button type="submit" class="filter-apply">Apply</button>
+        <a href="{% url 'reporting' %}" class="filter-clear">Clear</a>
+    </div>
+</form>
+
+<div class="growth-grid">
+    <div class="growth-card">
+        <div class="growth-label">This month so far ({{ mtd_label }})</div>
+        <div class="growth-value">{{ mtd_this }}</div>
+        <div class="growth-sub">contacts moved to HubSpot</div>
+    </div>
+    <div class="growth-card">
+        <div class="growth-label">Month on month growth</div>
+        <div class="growth-value">
+            {% if mom_growth is None %}—{% else %}<span class="growth-delta {% if mom_growth >= 0 %}up{% else %}down{% endif %}">{% if mom_growth >= 0 %}▲{% else %}▼{% endif %} {{ mom_growth }}%</span>{% endif %}
+        </div>
+        <div class="growth-sub">{{ mom_label_current }}: {{ mom_current }} vs {{ mom_label_previous }}: {{ mom_previous }}</div>
+    </div>
+    <div class="growth-card">
+        <div class="growth-label">Year on year growth</div>
+        <div class="growth-value">
+            {% if yoy_growth is None %}—{% else %}<span class="growth-delta {% if yoy_growth >= 0 %}up{% else %}down{% endif %}">{% if yoy_growth >= 0 %}▲{% else %}▼{% endif %} {{ yoy_growth }}%</span>{% endif %}
+        </div>
+        <div class="growth-sub">Last 12 months: {{ yoy_current }} vs the 12 before: {{ yoy_previous }}</div>
+    </div>
+</div>
+
+<div class="summary-grid">
+    {% for s in summary %}
+    <div class="summary-card pill-{{ s.pill }}">
+        <div class="summary-label">{{ s.label }}</div>
+        <div class="summary-value">{{ s.value }}</div>
+        <div class="summary-pct">{{ s.pct }}% of total</div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="charts-grid">
+    <div class="chart-card">
+        <div class="chart-title">All contacts by status</div>
+        <div class="chart-sub">Every contact, split by where they stand right now.</div>
+        <div class="chart-wrap"><canvas id="pieFull"></canvas></div>
+    </div>
+    <div class="chart-card">
+        <div class="chart-title">Reachable vs not reachable vs converted</div>
+        <div class="chart-sub">Contacts you can still reach, bad email addresses, and ones moved to HubSpot.</div>
+        <div class="chart-wrap"><canvas id="pieCompare"></canvas></div>
+    </div>
+</div>
+
+<div class="charts-grid">
+    <div class="chart-card wide">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:4px;">
+            <div>
+                <div class="chart-title">Contacts moved to HubSpot</div>
+                <div class="chart-sub" id="hsChartSub">Bars show how many moved in each month. The line shows the running total over time.</div>
+            </div>
+            <div class="hs-range-toggle" role="tablist" aria-label="Time range">
+                <button type="button" class="range-btn" data-range="week">Week</button>
+                <button type="button" class="range-btn active" data-range="month">Month</button>
+                <button type="button" class="range-btn" data-range="year">Year</button>
+            </div>
+        </div>
+        <div class="chart-wrap tall" id="hsWrap"><canvas id="hsChart"></canvas></div>
+    </div>
+</div>
+
+<div class="charts-grid">
+    <div class="chart-card wide">
+        <div class="chart-title">How far contacts got in the email sequence</div>
+        <div class="chart-sub">How many contacts received each email (TP1 = first email, TP10 = last).</div>
+        <div class="chart-wrap tall"><canvas id="tpChart"></canvas></div>
+    </div>
+</div>
+
+<div class="charts-grid">
+    <div class="chart-card">
+        <div class="chart-title">Why contacts were lost</div>
+        <div class="chart-sub">{{ lost_with_reason }} contacts have a reason filled in.</div>
+        <div class="chart-wrap tall" id="reasonWrap"><canvas id="reasonChart"></canvas></div>
+    </div>
+    <div class="chart-card">
+        <div class="chart-title">Email bounces — hard vs soft</div>
+        <div class="chart-sub">{{ total_bounces }} emails bounced. Hard = the address is bad and will never work. Soft = something temporary (mailbox full, server down).</div>
+        <div class="chart-wrap tall" id="bounceWrap"><canvas id="bounceChart"></canvas></div>
+    </div>
+</div>
+
+{% if reason_rows %}
+<div class="chart-card" style="margin-top:20px;">
+    <div class="chart-title">All lost reasons</div>
+    <div class="chart-sub">Full list of the reasons and how often each came up.</div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:10px;">
+        <thead>
+            <tr style="border-bottom:1px solid var(--border);">
+                <th style="text-align:left;padding:8px 12px;color:var(--text-secondary);text-transform:uppercase;font-size:11px;letter-spacing:0.4px;">Reason</th>
+                <th style="text-align:right;padding:8px 12px;color:var(--text-secondary);text-transform:uppercase;font-size:11px;letter-spacing:0.4px;width:100px;">Count</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for r in reason_rows %}
+            <tr style="border-bottom:1px solid var(--border);">
+                <td style="padding:8px 12px;color:var(--text-primary);">{{ r.reason }}</td>
+                <td style="padding:8px 12px;text-align:right;color:var(--text-primary);font-weight:600;">{{ r.count }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    const pieFull = {{ pie_full|safe }};
+    const pieCompare = {{ pie_compare|safe }};
+    const hsSeries = {{ hs_series|safe }};
+    const tpCoverage = {{ tp_coverage|safe }};
+    const lostReason = {{ lost_reason_chart|safe }};
+    const bounceData = {{ bounce_chart|safe }};
+
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const textColor = isDark ? '#d6d6d6' : '#333';
+    const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+    Chart.defaults.color = textColor;
+    Chart.defaults.borderColor = gridColor;
+
+    // Brand-first palette — brand blue is the spine, status colours reserved
+    // for the pie/status cards only. Keeps every other chart in the same family.
+    const THEME = {
+        brandDark:   '#054B70',
+        brandMid:    '#0a7ab5',
+        brandLight:  '#6cb4d8',
+        brandSoft:   'rgba(10, 122, 181, 0.18)',
+        statusActive:      '#1c6a3a',
+        statusUndelivered: '#a42a2a',
+        statusHubspot:     '#0a7ab5',
+        statusInactive:    '#b8860b',
+        bounceHard:   '#a42a2a',
+        bounceSoft:   '#d88c2d',
+        bounceUnknown:'#9aa0a6',
+    };
+    const COLORS = {
+        active: THEME.statusActive,
+        undelivered: THEME.statusUndelivered,
+        hubspot: THEME.statusHubspot,
+        inactive: THEME.statusInactive,
+    };
+
+    function emptyIfZero(sum, wrapId, msg) {
+        if (sum === 0) {
+            const wrap = document.getElementById(wrapId);
+            if (wrap) wrap.innerHTML = '<div class="empty-note">' + msg + '</div>';
+            return true;
+        }
+        return false;
+    }
+
+    // Pie 1 — all four buckets
+    new Chart(document.getElementById('pieFull'), {
+        type: 'doughnut',
+        data: {
+            labels: pieFull.labels,
+            datasets: [{
+                data: pieFull.data,
+                backgroundColor: [COLORS.active, COLORS.undelivered, COLORS.hubspot, COLORS.inactive],
+                borderWidth: 2,
+                borderColor: isDark ? '#1e1e1e' : '#fff',
+            }],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => {
+                            const total = ctx.dataset.data.reduce((a, b) => a + b, 0) || 1;
+                            const pct = ((ctx.parsed / total) * 100).toFixed(1);
+                            return `${ctx.label}: ${ctx.parsed} (${pct}%)`;
+                        },
+                    },
+                },
+            },
+        },
+    });
+
+    // Pie 2 — three-way compare
+    new Chart(document.getElementById('pieCompare'), {
+        type: 'pie',
+        data: {
+            labels: pieCompare.labels,
+            datasets: [{
+                data: pieCompare.data,
+                backgroundColor: [COLORS.active, COLORS.undelivered, COLORS.hubspot],
+                borderWidth: 2,
+                borderColor: isDark ? '#1e1e1e' : '#fff',
+            }],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom' },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => {
+                            const total = ctx.dataset.data.reduce((a, b) => a + b, 0) || 1;
+                            const pct = ((ctx.parsed / total) * 100).toFixed(1);
+                            return `${ctx.label}: ${ctx.parsed} (${pct}%)`;
+                        },
+                    },
+                },
+            },
+        },
+    });
+
+    // HubSpot moves — filterable by Week / Month / Year
+    const RANGE_LABELS = {
+        week: { bar: 'Moved this week', sub: 'Bars show how many moved each week. The line shows the running total.' },
+        month: { bar: 'Moved this month', sub: 'Bars show how many moved in each month. The line shows the running total.' },
+        year: { bar: 'Moved this year', sub: 'Bars show the total moved each year. The line shows the running total.' },
+    };
+    let hsChart = null;
+    let currentRange = 'month';
+
+    function renderHsChart(range) {
+        currentRange = range;
+        const data = hsSeries[range];
+        const sub = document.getElementById('hsChartSub');
+        if (sub) sub.textContent = RANGE_LABELS[range].sub;
+
+        const wrap = document.getElementById('hsWrap');
+        const total = (data.counts || []).reduce((a, b) => a + b, 0);
+        if (total === 0) {
+            if (hsChart) { hsChart.destroy(); hsChart = null; }
+            wrap.innerHTML = '<div class="empty-note">No HubSpot moves tracked yet. Any moves you make from now on will show up here.</div>';
+            return;
+        }
+        if (!wrap.querySelector('canvas')) {
+            wrap.innerHTML = '<canvas id="hsChart"></canvas>';
+        }
+        const canvas = document.getElementById('hsChart');
+
+        if (hsChart) hsChart.destroy();
+        hsChart = new Chart(canvas, {
+            type: 'bar',
+            data: {
+                labels: data.labels,
+                datasets: [
+                    {
+                        type: 'bar',
+                        label: RANGE_LABELS[range].bar,
+                        data: data.counts,
+                        backgroundColor: THEME.brandMid,
+                        hoverBackgroundColor: THEME.brandDark,
+                        borderRadius: 4,
+                        order: 2,
+                    },
+                    {
+                        type: 'line',
+                        label: 'Running total',
+                        data: data.cumulative,
+                        borderColor: THEME.brandDark,
+                        backgroundColor: THEME.brandSoft,
+                        pointBackgroundColor: THEME.brandDark,
+                        pointBorderColor: isDark ? '#1e1e1e' : '#fff',
+                        pointBorderWidth: 1.5,
+                        borderWidth: 2.5,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        cubicInterpolationMode: 'monotone',
+                        tension: 0.4,
+                        fill: true,
+                        order: 1,
+                    },
+                ],
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: { legend: { position: 'bottom' } },
+                scales: {
+                    x: { grid: { color: gridColor } },
+                    y: { beginAtZero: true, grid: { color: gridColor }, ticks: { precision: 0 } },
+                },
+            },
+        });
+    }
+
+    document.querySelectorAll('.range-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            document.querySelectorAll('.range-btn').forEach(b => b.classList.remove('active'));
+            this.classList.add('active');
+            renderHsChart(this.dataset.range);
+        });
+    });
+    renderHsChart('month');
+
+    // Touchpoint coverage — horizontal-style bar chart
+    new Chart(document.getElementById('tpChart'), {
+        type: 'bar',
+        data: {
+            labels: tpCoverage.labels,
+            datasets: [{
+                label: 'Contacts with this TP sent',
+                data: tpCoverage.counts,
+                backgroundColor: THEME.brandMid,
+                hoverBackgroundColor: THEME.brandDark,
+                borderRadius: 4,
+            }],
+        },
+        options: {
+            responsive: true, maintainAspectRatio: false,
+            plugins: { legend: { display: false } },
+            scales: {
+                x: { grid: { color: gridColor } },
+                y: { beginAtZero: true, grid: { color: gridColor }, ticks: { precision: 0 } },
+            },
+        },
+    });
+
+    // Deal lost reasons — horizontal bar chart (best for long labels)
+    const reasonSum = lostReason.counts.reduce((a, b) => a + b, 0);
+    if (!emptyIfZero(reasonSum, 'reasonWrap', 'No reasons filled in yet.')) {
+        new Chart(document.getElementById('reasonChart'), {
+            type: 'bar',
+            data: {
+                labels: lostReason.labels,
+                datasets: [{
+                    label: 'Contacts',
+                    data: lostReason.counts,
+                    backgroundColor: THEME.statusInactive,
+                    hoverBackgroundColor: '#8d6807',
+                    borderRadius: 4,
+                }],
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true, maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { beginAtZero: true, grid: { color: gridColor }, ticks: { precision: 0 } },
+                    y: { grid: { color: gridColor } },
+                },
+            },
+        });
+    }
+
+    // Bounces — doughnut
+    const bounceSum = bounceData.counts.reduce((a, b) => a + b, 0);
+    if (!emptyIfZero(bounceSum, 'bounceWrap', 'No bounced emails yet.')) {
+        new Chart(document.getElementById('bounceChart'), {
+            type: 'doughnut',
+            data: {
+                labels: bounceData.labels,
+                datasets: [{
+                    data: bounceData.counts,
+                    backgroundColor: [THEME.bounceHard, THEME.bounceSoft, THEME.bounceUnknown],
+                    borderWidth: 2,
+                    borderColor: isDark ? '#1e1e1e' : '#fff',
+                }],
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label: (ctx) => {
+                                const total = ctx.dataset.data.reduce((a, b) => a + b, 0) || 1;
+                                const pct = ((ctx.parsed / total) * 100).toFixed(1);
+                                return `${ctx.label}: ${ctx.parsed} (${pct}%)`;
+                            },
+                        },
+                    },
+                },
+            },
+        });
+    }
+
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,495 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Home - MOC Automations{% endblock %}
+
+{% block extra_styles %}
+/* ── Hero ── */
+.hero {
+    background: linear-gradient(135deg, #054B70 0%, #0a6d9e 100%);
+    border-radius: 10px;
+    padding: 32px 36px;
+    margin-bottom: 24px;
+    position: relative;
+    overflow: hidden;
+    color: #fff;
+}
+
+.hero::before {
+    content: '';
+    position: absolute;
+    top: -60px;
+    right: -40px;
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.06);
+}
+
+.hero::after {
+    content: '';
+    position: absolute;
+    bottom: -40px;
+    left: 30%;
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.04);
+}
+
+.hero-content { position: relative; z-index: 1; }
+
+.hero-greeting {
+    font-size: 14px;
+    color: rgba(255,255,255,0.6);
+    margin-bottom: 6px;
+}
+
+.hero-title {
+    font-size: 26px;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.hero-sub {
+    font-size: 13px;
+    color: rgba(255,255,255,0.55);
+}
+
+/* ── Stats row ── */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 24px;
+}
+
+.stat-card {
+    background: #fff;
+    border: 1px solid #edebe9;
+    border-radius: 8px;
+    padding: 18px 20px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+}
+
+[data-theme="dark"] .stat-card { background: var(--surface); border-color: var(--border); }
+
+.stat-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.stat-icon svg { width: 20px; height: 20px; fill: #fff; }
+
+.stat-info { flex: 1; min-width: 0; }
+
+.stat-number {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1a1a2e;
+    line-height: 1;
+    margin-bottom: 3px;
+}
+
+[data-theme="dark"] .stat-number { color: var(--text-primary); }
+
+.stat-desc {
+    font-size: 12px;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-weight: 500;
+}
+
+/* ── Sections grid ── */
+.dash-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-bottom: 24px;
+}
+
+.dash-card {
+    background: #fff;
+    border: 1px solid #edebe9;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+[data-theme="dark"] .dash-card { background: var(--surface); border-color: var(--border); }
+
+.dash-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid #f3f2f1;
+}
+
+[data-theme="dark"] .dash-card-head { border-color: var(--border); }
+
+.dash-card-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #323130;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+[data-theme="dark"] .dash-card-title { color: var(--text-primary); }
+
+.dash-card-title svg { width: 16px; height: 16px; fill: #054B70; }
+[data-theme="dark"] .dash-card-title svg { fill: #6cb4d8; }
+
+.dash-card-link {
+    font-size: 12px;
+    color: #054B70;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.dash-card-link:hover { text-decoration: underline; }
+
+.dash-card-body { padding: 16px 18px; }
+
+/* ── Station list ── */
+.station-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #f7f7f7;
+}
+
+[data-theme="dark"] .station-row { border-color: var(--border); }
+.station-row:last-child { border-bottom: none; }
+
+.station-name {
+    font-size: 13px;
+    color: #323130;
+    font-weight: 500;
+}
+
+[data-theme="dark"] .station-name { color: var(--text-primary); }
+
+.station-count {
+    font-size: 13px;
+    color: #054B70;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+[data-theme="dark"] .station-count { color: #6cb4d8; }
+
+/* ── Planner summary ── */
+.plan-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.plan-stat {
+    text-align: center;
+    padding: 10px 0;
+    background: #f8f9fa;
+    border-radius: 6px;
+}
+
+[data-theme="dark"] .plan-stat { background: var(--bg); }
+
+.plan-stat-val {
+    font-size: 20px;
+    font-weight: 700;
+    color: #323130;
+    line-height: 1;
+    margin-bottom: 3px;
+}
+
+[data-theme="dark"] .plan-stat-val { color: var(--text-primary); }
+
+.plan-stat-lbl {
+    font-size: 10px;
+    color: #9ca3af;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-weight: 500;
+}
+
+/* Progress bar */
+.progress-wrap {
+    background: #f3f2f1;
+    border-radius: 4px;
+    height: 8px;
+    overflow: hidden;
+}
+
+[data-theme="dark"] .progress-wrap { background: var(--bg); }
+
+.progress-fill {
+    height: 100%;
+    border-radius: 4px;
+    background: #107c10;
+    transition: width 0.4s ease;
+}
+
+.progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #9ca3af;
+    margin-top: 6px;
+}
+
+/* ── Quick nav ── */
+.quick-nav {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 24px;
+}
+
+.qnav-card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 18px;
+    background: #fff;
+    border: 1px solid #edebe9;
+    border-radius: 8px;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.qnav-card:hover {
+    border-color: #c7e0f4;
+    box-shadow: 0 2px 8px rgba(5,75,112,0.08);
+}
+
+[data-theme="dark"] .qnav-card { background: var(--surface); border-color: var(--border); }
+[data-theme="dark"] .qnav-card:hover { border-color: #6cb4d8; }
+
+.qnav-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.qnav-icon svg { width: 18px; height: 18px; fill: #fff; }
+
+.qnav-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #323130;
+}
+
+[data-theme="dark"] .qnav-label { color: var(--text-primary); }
+
+.qnav-sub {
+    font-size: 11px;
+    color: #9ca3af;
+    margin-top: 1px;
+}
+
+/* ── Sync health mini ── */
+.sync-mini {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.sync-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.sync-dot.ok { background: #107c10; }
+.sync-dot.warn { background: #f0a500; }
+
+.sync-text { font-size: 13px; color: #605e5c; }
+[data-theme="dark"] .sync-text { color: var(--text-secondary); }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+    .stats-grid { grid-template-columns: repeat(2, 1fr); }
+    .quick-nav { grid-template-columns: repeat(2, 1fr); }
+    .dash-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 560px) {
+    .stats-grid { grid-template-columns: 1fr; }
+    .quick-nav { grid-template-columns: 1fr; }
+    .hero { padding: 24px 20px; }
+    .hero-title { font-size: 22px; }
+}
+{% endblock %}
+
+{% block content %}
+<!-- Hero -->
+<div class="hero">
+    <div class="hero-content">
+        <div class="hero-greeting">Good {% now "H" as hour %}{% if hour|add:"0" < 12 %}morning{% elif hour|add:"0" < 17 %}afternoon{% else %}evening{% endif %}, {{ request.user.first_name|default:request.user.username }}</div>
+        <div class="hero-title">MOC Automations</div>
+        <div class="hero-sub">Your centralized dashboard for data syncs, reports, and project tracking.</div>
+    </div>
+</div>
+
+<!-- Overview Stats -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <div class="stat-icon" style="background: #054B70;">
+            <svg viewBox="0 0 24 24"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg>
+        </div>
+        <div class="stat-info">
+            <div class="stat-number">{{ total_records|intcomma }}</div>
+            <div class="stat-desc">Total Records</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon" style="background: #107c10;">
+            <svg viewBox="0 0 24 24"><path d="M19.5 3.5L18 2l-1.5 1.5L15 2l-1.5 1.5L12 2l-1.5 1.5L9 2 7.5 3.5 6 2v14H3v3c0 1.66 1.34 3 3 3h12c1.66 0 3-1.34 3-3V2l-1.5 1.5zM15 20H6c-.55 0-1-.45-1-1v-1h10v2zm4-1c0 .55-.45 1-1 1s-1-.45-1-1v-3H8V5h11v14z"/></svg>
+        </div>
+        <div class="stat-info">
+            <div class="stat-number">{{ station_count }}</div>
+            <div class="stat-desc">Active Stations</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon" style="background: #7160e8;">
+            <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
+        </div>
+        <div class="stat-info">
+            <div class="stat-number">{{ task_total }}</div>
+            <div class="stat-desc">Planner Tasks</div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon" style="background: #f0a500;">
+            <svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+        </div>
+        <div class="stat-info">
+            <div class="stat-number">{{ synced_count }}/{{ health_total }}</div>
+            <div class="stat-desc">Synced Stations</div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Nav -->
+<div class="quick-nav">
+    <a href="{% url 'data_analysis' %}" class="qnav-card">
+        <div class="qnav-icon" style="background:#054B70;">
+            <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
+        </div>
+        <div>
+            <div class="qnav-label">Data Analysis</div>
+            <div class="qnav-sub">{{ station_count }} stations</div>
+        </div>
+    </a>
+    <a href="{% url 'sync_monitor' %}" class="qnav-card">
+        <div class="qnav-icon" style="background:#107c10;">
+            <svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+        </div>
+        <div>
+            <div class="qnav-label">Sync Monitor</div>
+            <div class="qnav-sub">Live status</div>
+        </div>
+    </a>
+    <a href="{% url 'planner' %}" class="qnav-card">
+        <div class="qnav-icon" style="background:#7160e8;">
+            <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
+        </div>
+        <div>
+            <div class="qnav-label">Planner</div>
+            <div class="qnav-sub">{{ task_total }} task{{ task_total|pluralize }}</div>
+        </div>
+    </a>
+    <a href="{% url 'gantt' %}" class="qnav-card">
+        <div class="qnav-icon" style="background:#f0a500;">
+            <svg viewBox="0 0 24 24"><path d="M3 3h18v2H3zm0 4h12v2H3zm0 4h15v2H3zm0 4h9v2H3zm0 4h13v2H3z"/></svg>
+        </div>
+        <div>
+            <div class="qnav-label">Gantt Chart</div>
+            <div class="qnav-sub">Timeline view</div>
+        </div>
+    </a>
+</div>
+
+<!-- Two-column dashboard -->
+<div class="dash-grid">
+    <!-- Top Stations -->
+    <div class="dash-card">
+        <div class="dash-card-head">
+            <div class="dash-card-title">
+                <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
+                Top Stations by Records
+            </div>
+            <a href="{% url 'data_analysis' %}" class="dash-card-link">View all →</a>
+        </div>
+        <div class="dash-card-body">
+            {% for name, count in top_stations %}
+            <div class="station-row">
+                <span class="station-name">{{ name }}</span>
+                <span class="station-count">{{ count|intcomma }}</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Planner Summary -->
+    <div class="dash-card">
+        <div class="dash-card-head">
+            <div class="dash-card-title">
+                <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></svg>
+                Project Planner
+            </div>
+            <a href="{% url 'planner' %}" class="dash-card-link">Open →</a>
+        </div>
+        <div class="dash-card-body">
+            <div class="plan-stats">
+                <div class="plan-stat">
+                    <div class="plan-stat-val" style="color:#107c10;">{{ task_done }}</div>
+                    <div class="plan-stat-lbl">Done</div>
+                </div>
+                <div class="plan-stat">
+                    <div class="plan-stat-val" style="color:#054B70;">{{ task_in_progress }}</div>
+                    <div class="plan-stat-lbl">In Progress</div>
+                </div>
+                <div class="plan-stat">
+                    <div class="plan-stat-val" style="color:#f0a500;">{{ task_todo }}</div>
+                    <div class="plan-stat-lbl">To Do</div>
+                </div>
+            </div>
+
+            {% if task_total > 0 %}
+            {% widthratio task_done task_total 100 as pct %}
+            <div class="progress-wrap">
+                <div class="progress-fill" style="width: {{ pct }}%;"></div>
+            </div>
+            <div class="progress-label">
+                <span>{{ pct }}% complete</span>
+                <span>{{ task_done }}/{{ task_total }} tasks</span>
+            </div>
+            {% else %}
+            <div style="text-align:center; color:#9ca3af; font-size:13px; padding:8px 0;">
+                No tasks yet — <a href="{% url 'planner' %}" style="color:#054B70; text-decoration:none; font-weight:500;">create one</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

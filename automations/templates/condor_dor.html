@@ -1,0 +1,443 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Condor+DOR PNL - MOC Automations{% endblock %}
+
+{% block extra_styles %}
+.stats-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+.stat-card {
+    background: #fff;
+    border: 1px solid #edebe9;
+    border-radius: 4px;
+    padding: 16px 20px;
+    min-width: 120px;
+}
+
+.stat-label {
+    color: #605e5c;
+    font-size: 12px;
+    margin-bottom: 4px;
+}
+
+.stat-value {
+    color: #323130;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.stat-value.budget { color: #054B70; }
+.stat-value.actual { color: #107c10; }
+
+.card {
+    background: #fff;
+    border: 1px solid #edebe9;
+    border-radius: 4px;
+    margin-bottom: 16px;
+}
+
+.card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #edebe9;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.card-header svg {
+    width: 18px;
+    height: 18px;
+    fill: #054B70;
+}
+
+.card-title {
+    color: #323130;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.card-body {
+    padding: 16px 20px;
+}
+
+.grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+@media (max-width: 800px) {
+    .grid-2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #f3f2f1;
+    font-size: 13px;
+}
+
+.info-row:last-child {
+    border-bottom: none;
+}
+
+.info-label {
+    color: #605e5c;
+}
+
+.info-value {
+    color: #323130;
+    font-weight: 500;
+}
+
+.query-box {
+    background: #1b1a19;
+    border-radius: 4px;
+    padding: 16px;
+    overflow-x: auto;
+}
+
+.query-code {
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    color: #d4d4d4;
+    line-height: 1.6;
+    white-space: pre;
+}
+
+.query-code .kw { color: #569cd6; }
+
+.btn {
+    background: #054B70;
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 2px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.btn:hover {
+    background: #043a58;
+}
+
+.btn svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.sync-status {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: #605e5c;
+    margin-top: 8px;
+}
+
+.sync-status.visible { display: flex; }
+.sync-status.success { color: #107c10; }
+.sync-status.error { color: #a4262c; }
+
+.sync-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid #edebe9;
+    border-top-color: #054B70;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.last-sync {
+    font-size: 12px;
+    color: #a19f9d;
+    margin-top: 4px;
+}
+
+.conn-string {
+    background: #f3f2f1;
+    padding: 12px;
+    border-radius: 4px;
+    font-family: 'Consolas', monospace;
+    font-size: 12px;
+    color: #323130;
+    margin-top: 16px;
+    word-break: break-all;
+}
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h1 class="page-title">Condor+DOR PNL</h1>
+        <p class="page-subtitle">Budget vs Actual P&L for Condor & DOR departments (CON, FEA, TRX, BRK)</p>
+        {% if last_sync %}<div class="last-sync">Last synced: {{ last_sync }}</div>{% endif %}
+    </div>
+    <div>
+        <button class="btn" id="sync-btn" onclick="startSync()" style="margin-top:0;">
+            <svg viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+            Sync Now
+        </button>
+        <div class="sync-status" id="sync-status">
+            <div class="sync-spinner" id="sync-spinner"></div>
+            <span id="sync-msg">Starting...</span>
+        </div>
+    </div>
+</div>
+
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-label">Total Records</div>
+        <div class="stat-value">{{ total_records|default:0|intcomma }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Budget</div>
+        <div class="stat-value budget">{{ budget_rows|default:0|intcomma }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Actual</div>
+        <div class="stat-value actual">{{ actual_rows|default:0|intcomma }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Departments</div>
+        <div class="stat-value">{{ dept_count|default:0 }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Branches</div>
+        <div class="stat-value">{{ branch_count|default:0 }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Accounts</div>
+        <div class="stat-value">{{ account_count|default:0 }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Periods</div>
+        <div class="stat-value">{{ period_count|default:0 }}</div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-header">
+            <svg viewBox="0 0 24 24"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
+            <span class="card-title">Table Structure</span>
+        </div>
+        <div class="card-body">
+            <div class="info-row">
+                <span class="info-label">Column</span>
+                <span class="info-value">Type</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">department</span>
+                <span class="info-value">VARCHAR(50)</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">account_name</span>
+                <span class="info-value">VARCHAR(255)</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">value</span>
+                <span class="info-value">DECIMAL(15,2)</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">date</span>
+                <span class="info-value">VARCHAR(10)</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">date_fixed</span>
+                <span class="info-value">DATE</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">branch</span>
+                <span class="info-value">VARCHAR(50)</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">budget_actual</span>
+                <span class="info-value">VARCHAR(20)</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+            <span class="card-title">Database</span>
+        </div>
+        <div class="card-body">
+            <div class="info-row">
+                <span class="info-label">Host</span>
+                <span class="info-value">workspace.moc-pty.com</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Port</span>
+                <span class="info-value">5432</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Database</span>
+                <span class="info-value">automation_platform</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Table</span>
+                <span class="info-value">condor_dor_pnl</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">User</span>
+                <span class="info-value">powerbi</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <svg viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+        <span class="card-title">Power BI Query</span>
+    </div>
+    <div class="card-body">
+        <div class="query-box">
+            <code class="query-code"><span class="kw">SELECT</span> *
+<span class="kw">FROM</span> condor_dor_pnl
+<span class="kw">ORDER BY</span> branch, department, budget_actual, date, account_name;</code>
+        </div>
+        <button class="btn" id="copyQueryBtn" onclick="copyQuery()">
+            <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+            Copy
+        </button>
+
+        <div class="conn-string">
+            Host=workspace.moc-pty.com;Port=5432;Database=automation_platform;Username=powerbi;Password=your_secure_password;SSLMode=require
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+        <span class="card-title">M Code (Advanced Editor)</span>
+    </div>
+    <div class="card-body">
+        <div class="query-box">
+            {% verbatim %}<code class="query-code" id="mcode">let
+    Source = PostgreSQL.Database("workspace.moc-pty.com", "automation_platform"),
+    condor_dor_pnl = Source{[Schema="public",Item="condor_dor_pnl"]}[Data],
+    #"Renamed Columns" = Table.RenameColumns(condor_dor_pnl,{{"department", "Department"}, {"account_name", "Account name"}, {"value", "Value"}, {"date", "Date"}, {"date_fixed", "Date Fixed"}, {"branch", "Branch"}, {"budget_actual", "Budget/Actual"}}),
+    #"Changed Type" = Table.TransformColumnTypes(#"Renamed Columns",{{"Department", type text}, {"Account name", type text}, {"Value", type number}, {"Date", Int64.Type}, {"Date Fixed", type date}, {"Branch", type text}, {"Budget/Actual", type text}}),
+    #"Added Custom" = Table.AddColumn(#"Changed Type", "Null", each 0),
+    #"Added Custom1" = Table.AddColumn(#"Added Custom", "Budget seperated", each if Text.Contains([#"Budget/Actual"], "Budget") then [Value] else null),
+    #"Added Custom2" = Table.AddColumn(#"Added Custom1", "Actual Seperated", each if Text.Contains([#"Budget/Actual"], "Actual") then [Value] else null)
+in
+    #"Added Custom2"</code>{% endverbatim %}
+        </div>
+        <button class="btn" id="copyMCodeBtn" onclick="copyMCode()">
+            <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+            Copy
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function startSync() {
+    const btn = document.getElementById('sync-btn');
+    const status = document.getElementById('sync-status');
+    const spinner = document.getElementById('sync-spinner');
+    const msg = document.getElementById('sync-msg');
+
+    btn.disabled = true;
+    status.className = 'sync-status visible';
+    spinner.style.display = 'block';
+    msg.textContent = 'Starting sync...';
+
+    fetch('{% url "sync_condor_dor" %}', {
+        method: 'POST',
+        headers: {'X-CSRFToken': getCookie('csrftoken')}
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'error') {
+            status.className = 'sync-status visible error';
+            spinner.style.display = 'none';
+            msg.textContent = data.message;
+            btn.disabled = false;
+        } else {
+            pollProgress();
+        }
+    });
+}
+
+function pollProgress() {
+    const status = document.getElementById('sync-status');
+    const spinner = document.getElementById('sync-spinner');
+    const msg = document.getElementById('sync-msg');
+    const btn = document.getElementById('sync-btn');
+
+    fetch('{% url "sync_condor_dor_progress" %}')
+    .then(r => r.json())
+    .then(data => {
+        msg.textContent = data.message || 'Working...';
+        if (data.status === 'complete') {
+            status.className = 'sync-status visible success';
+            spinner.style.display = 'none';
+            btn.disabled = false;
+            setTimeout(() => location.reload(), 1500);
+        } else if (data.status === 'error') {
+            status.className = 'sync-status visible error';
+            spinner.style.display = 'none';
+            btn.disabled = false;
+        } else {
+            setTimeout(pollProgress, 1000);
+        }
+    });
+}
+
+function getCookie(name) {
+    let v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+    return v ? v[2] : null;
+}
+
+function copyQuery() {
+    var query = 'SELECT *\nFROM condor_dor_pnl\nORDER BY branch, department, budget_actual, date, account_name;';
+    navigator.clipboard.writeText(query).then(function() {
+        var btn = document.getElementById('copyQueryBtn');
+        btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Copied';
+        setTimeout(function() {
+            btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg> Copy';
+        }, 2000);
+    });
+}
+
+function copyMCode() {
+    var mcode = document.getElementById('mcode').innerText;
+    navigator.clipboard.writeText(mcode).then(function() {
+        var btn = document.getElementById('copyMCodeBtn');
+        btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Copied';
+        setTimeout(function() {
+            btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg> Copy';
+        }, 2000);
+    });
+}
+</script>
+{% endblock %}

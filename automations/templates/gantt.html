@@ -1,0 +1,700 @@
+{% extends 'base.html' %}
+
+{% block title %}Gantt Chart - MOC Automations{% endblock %}
+
+{% block extra_styles %}
+* { box-sizing: border-box; }
+
+.gantt-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.gantt-toolbar select {
+    border: 1px solid #c8c6c4;
+    border-radius: 2px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-family: inherit;
+    color: #323130;
+    background: #fff;
+    height: 30px;
+}
+
+[data-theme="dark"] .gantt-toolbar select {
+    background: #2d2d2d;
+    border-color: #444;
+    color: #e0e0e0;
+}
+
+.gantt-btn {
+    height: 30px;
+    padding: 0 12px;
+    border: 1px solid #c8c6c4;
+    border-radius: 2px;
+    background: #fff;
+    font-size: 12px;
+    font-family: inherit;
+    color: #323130;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.gantt-btn:hover { background: #f3f2f1; }
+.gantt-btn.active { background: #054B70; color: #fff; border-color: #054B70; }
+
+[data-theme="dark"] .gantt-btn {
+    background: #2d2d2d;
+    border-color: #444;
+    color: #e0e0e0;
+}
+
+/* Main gantt shell */
+.ms-gantt {
+    border: 1px solid #c8c6c4;
+    border-radius: 2px;
+    overflow: hidden;
+    background: #fff;
+    display: flex;
+    flex-direction: column;
+    font-size: 12px;
+    font-family: 'Segoe UI', sans-serif;
+}
+
+[data-theme="dark"] .ms-gantt {
+    background: #1e1e1e;
+    border-color: #444;
+}
+
+.ms-gantt-inner {
+    display: flex;
+    overflow: hidden;
+    flex: 1;
+}
+
+/* Left panel */
+.ms-left {
+    flex-shrink: 0;
+    width: 340px;
+    border-right: 2px solid #c8c6c4;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+[data-theme="dark"] .ms-left { border-color: #555; }
+
+.ms-left-header {
+    display: flex;
+    background: #f3f2f1;
+    border-bottom: 1px solid #c8c6c4;
+    flex-shrink: 0;
+}
+
+[data-theme="dark"] .ms-left-header {
+    background: #2a2a2a;
+    border-color: #444;
+}
+
+.ms-left-header-top {
+    height: 26px;
+    border-bottom: 1px solid #c8c6c4;
+    background: #f3f2f1;
+    display: flex;
+    flex-shrink: 0;
+}
+
+[data-theme="dark"] .ms-left-header-top {
+    background: #2a2a2a;
+    border-color: #444;
+}
+
+.ms-col-head {
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #605e5c;
+    border-right: 1px solid #e0e0e0;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+[data-theme="dark"] .ms-col-head {
+    color: #aaa;
+    border-color: #444;
+}
+
+.ms-col-head:last-child { border-right: none; }
+.col-id    { width: 36px; flex-shrink: 0; justify-content: center; }
+.col-name  { flex: 1; min-width: 0; }
+.col-start { width: 80px; flex-shrink: 0; }
+.col-end   { width: 80px; flex-shrink: 0; }
+
+.ms-left-body {
+    overflow-y: auto;
+    overflow-x: hidden;
+    flex: 1;
+}
+
+.ms-left-body::-webkit-scrollbar { width: 0; }
+
+.ms-row {
+    display: flex;
+    align-items: center;
+    height: 28px;
+    border-bottom: 1px solid #edebe9;
+    cursor: pointer;
+}
+
+[data-theme="dark"] .ms-row { border-color: #333; }
+
+.ms-row:nth-child(even) { background: #faf9f8; }
+[data-theme="dark"] .ms-row:nth-child(even) { background: #252525; }
+.ms-row:hover { background: #e8f0fe !important; }
+[data-theme="dark"] .ms-row:hover { background: #1a3a5c !important; }
+
+.ms-cell {
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    height: 100%;
+    border-right: 1px solid #edebe9;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    color: #323130;
+    font-size: 12px;
+}
+
+[data-theme="dark"] .ms-cell {
+    color: #d0d0d0;
+    border-color: #333;
+}
+
+.ms-cell:last-child { border-right: none; }
+
+.task-name-cell {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow: hidden;
+}
+
+.task-color-bar {
+    width: 3px;
+    height: 16px;
+    border-radius: 1px;
+    flex-shrink: 0;
+}
+
+.task-name-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Right timeline panel */
+.ms-right {
+    flex: 1;
+    overflow: auto;
+    min-width: 0;
+    position: relative;
+}
+
+.ms-right::-webkit-scrollbar { height: 8px; width: 8px; }
+.ms-right::-webkit-scrollbar-track { background: #f3f2f1; }
+.ms-right::-webkit-scrollbar-thumb { background: #c8c6c4; border-radius: 4px; }
+
+.ms-timeline-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: #f3f2f1;
+    border-bottom: 1px solid #c8c6c4;
+}
+
+[data-theme="dark"] .ms-timeline-header {
+    background: #2a2a2a;
+    border-color: #444;
+}
+
+.ms-month-row {
+    display: flex;
+    border-bottom: 1px solid #c8c6c4;
+    height: 26px;
+}
+
+[data-theme="dark"] .ms-month-row { border-color: #444; }
+
+.ms-month-cell {
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #054B70;
+    border-right: 1px solid #c8c6c4;
+    white-space: nowrap;
+    overflow: hidden;
+    background: #eaf2f8;
+    flex-shrink: 0;
+}
+
+[data-theme="dark"] .ms-month-cell {
+    color: #6cb4d8;
+    background: #1a2d3a;
+    border-color: #444;
+}
+
+.ms-day-row {
+    display: flex;
+    height: 26px;
+}
+
+.ms-day-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    color: #605e5c;
+    border-right: 1px solid #edebe9;
+    flex-shrink: 0;
+    font-weight: 500;
+}
+
+[data-theme="dark"] .ms-day-cell {
+    color: #888;
+    border-color: #333;
+}
+
+.ms-day-cell.weekend { color: #a19f9d; background: rgba(0,0,0,0.02); }
+[data-theme="dark"] .ms-day-cell.weekend { background: rgba(255,255,255,0.01); }
+.ms-day-cell.today-head { background: rgba(209,52,56,0.08); color: #d13438; font-weight: 700; }
+
+/* Timeline body */
+.ms-timeline-body { position: relative; }
+
+.ms-trow {
+    display: flex;
+    height: 28px;
+    border-bottom: 1px solid #edebe9;
+    position: relative;
+}
+
+[data-theme="dark"] .ms-trow { border-color: #333; }
+
+.ms-trow:nth-child(even) { background: #faf9f8; }
+[data-theme="dark"] .ms-trow:nth-child(even) { background: #252525; }
+
+.ms-tcell {
+    height: 100%;
+    border-right: 1px solid #edebe9;
+    flex-shrink: 0;
+}
+
+[data-theme="dark"] .ms-tcell { border-color: #2a2a2a; }
+.ms-tcell.weekend { background: rgba(0,0,0,0.015); }
+[data-theme="dark"] .ms-tcell.weekend { background: rgba(255,255,255,0.01); }
+.ms-tcell.today-col { background: rgba(209,52,56,0.04); }
+
+/* Gantt bar */
+.ms-bar {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 16px;
+    border-radius: 2px;
+    display: flex;
+    align-items: center;
+    padding: 0 5px;
+    font-size: 10px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.95);
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+    z-index: 2;
+    cursor: pointer;
+    transition: filter 0.1s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.ms-bar:hover { filter: brightness(0.88); }
+
+/* Done bar — striped pattern overlay */
+.ms-bar.status-done::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(
+        -45deg,
+        transparent,
+        transparent 4px,
+        rgba(255,255,255,0.15) 4px,
+        rgba(255,255,255,0.15) 6px
+    );
+    border-radius: 2px;
+}
+
+/* Today vertical line */
+.today-line {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: #d13438;
+    z-index: 5;
+    pointer-events: none;
+}
+
+.today-line::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -3px;
+    width: 7px;
+    height: 7px;
+    background: #d13438;
+    border-radius: 50%;
+}
+
+/* Status colors */
+.bar-done        { background: #107c10; }
+.bar-in_progress { background: #054B70; }
+.bar-review      { background: #7160e8; }
+.bar-todo        { background: #2b88d8; }
+.bar-backlog     { background: #a19f9d; }
+
+.dot-done        { background: #107c10; }
+.dot-in_progress { background: #054B70; }
+.dot-review      { background: #7160e8; }
+.dot-todo        { background: #2b88d8; }
+.dot-backlog     { background: #a19f9d; }
+
+/* Legend */
+.ms-legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    align-items: center;
+    font-size: 11px;
+    color: #605e5c;
+    margin-bottom: 10px;
+}
+
+[data-theme="dark"] .ms-legend { color: #aaa; }
+
+.ms-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.ms-legend-bar {
+    width: 18px;
+    height: 10px;
+    border-radius: 2px;
+}
+
+.empty-state {
+    padding: 60px 20px;
+    text-align: center;
+    color: #a19f9d;
+    font-size: 14px;
+    background: #fff;
+    border: 1px solid #c8c6c4;
+    border-radius: 2px;
+}
+
+[data-theme="dark"] .empty-state { background: #1e1e1e; border-color: #444; }
+
+.empty-state a { color: #054B70; text-decoration: none; font-weight: 500; }
+
+/* Summary row */
+.ms-summary-row { background: #f0f0f0 !important; }
+[data-theme="dark"] .ms-summary-row { background: #2a2a2a !important; }
+.ms-summary-row .ms-cell { font-weight: 600; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:12px;">
+    <div>
+        <h1 class="page-title">Gantt Chart</h1>
+        <p class="page-subtitle">Timeline view of all project tasks</p>
+    </div>
+    <a href="{% url 'planner' %}" style="font-size:12px; color:#054B70; text-decoration:none; font-weight:500; display:flex; align-items:center; gap:4px;">
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20v-2z"/></svg>
+        Planner
+    </a>
+</div>
+
+{% if has_tasks %}
+<div class="ms-legend">
+    <span style="font-weight:600;">Status:</span>
+    <div class="ms-legend-item"><div class="ms-legend-bar bar-done" style="background:#107c10;"></div> Done</div>
+    <div class="ms-legend-item"><div class="ms-legend-bar" style="background:#054B70;"></div> In Progress</div>
+    <div class="ms-legend-item"><div class="ms-legend-bar" style="background:#7160e8;"></div> Review</div>
+    <div class="ms-legend-item"><div class="ms-legend-bar" style="background:#2b88d8;"></div> To Do</div>
+    <div class="ms-legend-item"><div class="ms-legend-bar" style="background:#a19f9d;"></div> Backlog</div>
+    <div class="ms-legend-item" style="margin-left:8px;">
+        <div style="width:18px; height:2px; background:#d13438; border-radius:1px;"></div>
+        Today
+    </div>
+</div>
+
+<div class="gantt-toolbar">
+    <select id="filter-project" onchange="renderGantt()">
+        <option value="">All Projects</option>
+    </select>
+    <select id="zoom-level" onchange="renderGantt()">
+        <option value="week" selected>Week</option>
+        <option value="day">Day</option>
+    </select>
+</div>
+
+<div class="ms-gantt" id="ms-gantt">
+    <div class="ms-gantt-inner">
+        <!-- Left panel -->
+        <div class="ms-left" id="ms-left">
+            <div style="flex-shrink:0;">
+                <div class="ms-left-header-top" style="height:26px; background:#f3f2f1; border-bottom:1px solid #c8c6c4;">
+                    <div class="ms-col-head col-id" style="font-size:10px;">#</div>
+                    <div class="ms-col-head col-name">Task Name</div>
+                    <div class="ms-col-head col-start">Start</div>
+                    <div class="ms-col-head col-end">Finish</div>
+                </div>
+                <div class="ms-left-header-top" style="background:#f3f2f1; border-bottom:1px solid #c8c6c4;">
+                    <div class="ms-col-head col-id"></div>
+                    <div class="ms-col-head col-name"></div>
+                    <div class="ms-col-head col-start"></div>
+                    <div class="ms-col-head col-end"></div>
+                </div>
+            </div>
+            <div class="ms-left-body" id="ms-left-body"></div>
+        </div>
+        <!-- Right panel -->
+        <div class="ms-right" id="ms-right">
+            <div class="ms-timeline-header" id="ms-timeline-header"></div>
+            <div class="ms-timeline-body" id="ms-timeline-body"></div>
+        </div>
+    </div>
+</div>
+
+{% else %}
+<div class="empty-state">
+    No tasks with start and end dates found.<br>
+    <a href="{% url 'planner' %}">Go to Planner</a> to add tasks with dates.
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const TASKS = {{ tasks_json|safe }};
+
+const BAR_COLORS = {
+    done: '#107c10', in_progress: '#054B70', review: '#7160e8',
+    todo: '#2b88d8', backlog: '#a19f9d'
+};
+
+const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const DAYS_SHORT = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+// Populate project filter
+(function() {
+    const sel = document.getElementById('filter-project');
+    if (!sel) return;
+    const projects = [...new Set(TASKS.map(t => t.project).filter(Boolean))].sort();
+    projects.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p; opt.textContent = p;
+        sel.appendChild(opt);
+    });
+})();
+
+// Sync scroll between left body and right body
+function syncScroll() {
+    const lb = document.getElementById('ms-left-body');
+    const rb = document.getElementById('ms-right');
+    const tb = document.getElementById('ms-timeline-body');
+    if (!lb || !rb) return;
+    rb.addEventListener('scroll', () => { lb.scrollTop = rb.scrollTop; });
+    lb.addEventListener('scroll', () => { rb.scrollTop = lb.scrollTop; });
+}
+
+function dateStr(d) {
+    return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
+}
+
+function isoToDate(s) {
+    const [y,m,d] = s.split('-').map(Number);
+    return new Date(y, m-1, d);
+}
+
+function renderGantt() {
+    const filterProject = document.getElementById('filter-project').value;
+    const zoom = document.getElementById('zoom-level').value;
+    const DAY_W = zoom === 'day' ? 26 : 14;
+
+    let tasks = TASKS;
+    if (filterProject) tasks = tasks.filter(t => t.project === filterProject);
+    if (!tasks.length) {
+        document.getElementById('ms-left-body').innerHTML = '<div style="padding:20px;color:#a19f9d;">No tasks match filter.</div>';
+        document.getElementById('ms-timeline-body').innerHTML = '';
+        return;
+    }
+
+    // Date range
+    const allD = tasks.flatMap(t => [isoToDate(t.start), isoToDate(t.end)]);
+    let minD = new Date(Math.min(...allD)); minD.setDate(minD.getDate() - 5);
+    let maxD = new Date(Math.max(...allD)); maxD.setDate(maxD.getDate() + 5);
+    // Snap to Monday/Sunday
+    while (minD.getDay() !== 1) minD.setDate(minD.getDate() - 1);
+    while (maxD.getDay() !== 0) maxD.setDate(maxD.getDate() + 1);
+
+    const days = [];
+    const cur = new Date(minD);
+    while (cur <= maxD) { days.push(new Date(cur)); cur.setDate(cur.getDate()+1); }
+
+    const today = new Date(); today.setHours(0,0,0,0);
+    const dateIdx = {};
+    days.forEach((d,i) => dateIdx[d.toISOString().slice(0,10)] = i);
+
+    const totalW = days.length * DAY_W;
+
+    // --- Build month header row ---
+    let monthHtml = '';
+    let i = 0;
+    while (i < days.length) {
+        const d = days[i];
+        const month = d.getMonth();
+        let count = 0;
+        let j = i;
+        while (j < days.length && days[j].getMonth() === month) { count++; j++; }
+        monthHtml += `<div class="ms-month-cell" style="width:${count*DAY_W}px; min-width:${count*DAY_W}px;">${MONTHS[month]} ${d.getFullYear()}</div>`;
+        i = j;
+    }
+
+    // --- Build day header row ---
+    let dayHtml = '';
+    days.forEach((d,i) => {
+        const isWeekend = d.getDay()===0||d.getDay()===6;
+        const isToday = d.getTime()===today.getTime();
+        let label = '';
+        if (zoom === 'day') {
+            label = d.getDate();
+        } else {
+            // week: show day number on Mondays only
+            label = d.getDay()===1 ? d.getDate() : '';
+        }
+        dayHtml += `<div class="ms-day-cell${isWeekend?' weekend':''}${isToday?' today-head':''}" style="width:${DAY_W}px; min-width:${DAY_W}px;">${label}</div>`;
+    });
+
+    document.getElementById('ms-timeline-header').innerHTML = `
+        <div class="ms-month-row" style="width:${totalW}px;">${monthHtml}</div>
+        <div class="ms-day-row" style="width:${totalW}px;">${dayHtml}</div>`;
+
+    // --- Left rows ---
+    // Group by project for summary rows
+    const projectOrder = [...new Set(tasks.map(t => t.project))];
+    let leftHtml = '';
+    let rightHtml = '';
+    let rowNum = 1;
+
+    // today line position
+    const todayIdx = dateIdx[today.toISOString().slice(0,10)];
+    const todayX = todayIdx !== undefined ? todayIdx * DAY_W + DAY_W/2 : null;
+
+    projectOrder.forEach(proj => {
+        const projTasks = tasks.filter(t => t.project === proj);
+
+        // Summary row for project
+        const projStart = projTasks.map(t=>isoToDate(t.start)).reduce((a,b)=>a<b?a:b);
+        const projEnd   = projTasks.map(t=>isoToDate(t.end)).reduce((a,b)=>a>b?a:b);
+
+        leftHtml += `
+            <div class="ms-row ms-summary-row">
+                <div class="ms-cell col-id" style="justify-content:center; font-weight:700; color:#054B70;">${rowNum++}</div>
+                <div class="ms-cell col-name" style="font-weight:700; color:#054B70; overflow:hidden; text-overflow:ellipsis;">${proj || 'General'}</div>
+                <div class="ms-cell col-start" style="font-size:11px; color:#605e5c;">${dateStr(projStart)}</div>
+                <div class="ms-cell col-end" style="font-size:11px; color:#605e5c;">${dateStr(projEnd)}</div>
+            </div>`;
+
+        // Project summary bar (rollup)
+        const psi = dateIdx[projStart.toISOString().slice(0,10)];
+        const pei = dateIdx[projEnd.toISOString().slice(0,10)];
+        const pLeft = (psi||0)*DAY_W;
+        const pWidth = Math.max(((pei||0)-(psi||0)+1)*DAY_W, DAY_W);
+        let rCells = days.map((d,i)=>{
+            const iw=d.getDay()===0||d.getDay()===6;
+            const it=d.getTime()===today.getTime();
+            return `<div class="ms-tcell${iw?' weekend':''}${it?' today-col':''}" style="width:${DAY_W}px;"></div>`;
+        }).join('');
+        const todayLineHtml = todayX!==null ? `<div class="today-line" style="left:${todayX}px;"></div>` : '';
+        rightHtml += `
+            <div class="ms-trow ms-summary-row" style="width:${totalW}px;">
+                ${rCells}
+                ${todayLineHtml}
+                <div class="ms-bar" style="left:${pLeft}px; width:${pWidth}px; background:rgba(5,75,112,0.25); border:1px solid #054B70; color:#054B70; font-weight:700;">${proj||'General'}</div>
+            </div>`;
+
+        projTasks.forEach(task => {
+            const si = dateIdx[task.start];
+            const ei = dateIdx[task.end];
+            const barLeft = (si||0)*DAY_W;
+            const barWidth = Math.max(((ei||0)-(si||0)+1)*DAY_W, DAY_W);
+            const color = BAR_COLORS[task.status] || '#2b88d8';
+            const sd = isoToDate(task.start);
+            const ed = isoToDate(task.end);
+
+            leftHtml += `
+                <div class="ms-row" title="${task.title}">
+                    <div class="ms-cell col-id" style="justify-content:center; color:#a19f9d;">${rowNum++}</div>
+                    <div class="ms-cell col-name">
+                        <div class="task-name-cell">
+                            <div class="task-color-bar" style="background:${color};"></div>
+                            <span class="task-name-text">${task.title}</span>
+                        </div>
+                    </div>
+                    <div class="ms-cell col-start" style="font-size:11px; color:#605e5c;">${dateStr(sd)}</div>
+                    <div class="ms-cell col-end" style="font-size:11px; color:#605e5c;">${dateStr(ed)}</div>
+                </div>`;
+
+            let cells = days.map(d=>{
+                const iw=d.getDay()===0||d.getDay()===6;
+                const it=d.getTime()===today.getTime();
+                return `<div class="ms-tcell${iw?' weekend':''}${it?' today-col':''}" style="width:${DAY_W}px;"></div>`;
+            }).join('');
+
+            const barLabel = zoom==='day' ? task.title : '';
+            rightHtml += `
+                <div class="ms-trow" style="width:${totalW}px;">
+                    ${cells}
+                    ${todayLineHtml}
+                    <div class="ms-bar status-${task.status}" style="left:${barLeft}px; width:${barWidth}px; background:${color};" title="${task.title} (${task.start} → ${task.end})">${barLabel}</div>
+                </div>`;
+        });
+    });
+
+    document.getElementById('ms-left-body').innerHTML = leftHtml;
+    document.getElementById('ms-timeline-body').innerHTML = rightHtml;
+
+    // Set gantt height
+    const rowCount = document.querySelectorAll('.ms-row').length;
+    const h = Math.min(Math.max(rowCount * 28 + 54, 200), window.innerHeight - 220);
+    document.getElementById('ms-gantt').style.height = h + 'px';
+}
+
+if (typeof TASKS !== 'undefined' && TASKS.length) {
+    renderGantt();
+    syncScroll();
+}
+</script>
+{% endblock %}

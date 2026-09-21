@@ -1,0 +1,311 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}Atlantics Financial Report - MOC Automations{% endblock %}
+
+{% block extra_styles %}
+.stats-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+.stat-card {
+    background: #fff;
+    border: 1px solid #edebe9;
+    border-radius: 4px;
+    padding: 16px 20px;
+    min-width: 140px;
+}
+
+.stat-label {
+    color: #605e5c;
+    font-size: 12px;
+    margin-bottom: 4px;
+}
+
+.stat-value {
+    color: #323130;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.card {
+    background: #fff;
+    border: 1px solid #edebe9;
+    border-radius: 4px;
+    margin-bottom: 16px;
+}
+
+.card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #edebe9;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.card-header svg {
+    width: 18px;
+    height: 18px;
+    fill: #054B70;
+}
+
+.card-title {
+    color: #323130;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.card-body {
+    padding: 16px 20px;
+}
+
+.grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+@media (max-width: 800px) {
+    .grid-2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #f3f2f1;
+    font-size: 13px;
+}
+
+.info-row:last-child {
+    border-bottom: none;
+}
+
+.info-label {
+    color: #605e5c;
+}
+
+.info-value {
+    color: #323130;
+    font-weight: 500;
+}
+
+.query-box {
+    background: #1b1a19;
+    border-radius: 4px;
+    padding: 16px;
+    overflow-x: auto;
+}
+
+.query-code {
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 13px;
+    color: #d4d4d4;
+    line-height: 1.6;
+    white-space: pre;
+}
+
+.query-code .kw { color: #569cd6; }
+
+.btn {
+    background: #054B70;
+    color: #fff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 2px;
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+}
+
+.btn:hover {
+    background: #043a58;
+}
+
+.btn svg {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+
+.conn-string {
+    background: #f3f2f1;
+    padding: 12px;
+    border-radius: 4px;
+    font-family: 'Consolas', monospace;
+    font-size: 12px;
+    color: #323130;
+    margin-top: 16px;
+    word-break: break-all;
+}
+
+.data-note {
+    background: #fff4ce;
+    border: 1px solid #ffb900;
+    border-radius: 4px;
+    padding: 12px 16px;
+    font-size: 13px;
+    color: #323130;
+    margin-bottom: 16px;
+}
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Atlantics Financial Report</h1>
+    <p class="page-subtitle">Profit & Loss budget vs actual data for Power BI</p>
+</div>
+
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-label">Records</div>
+        <div class="stat-value">{{ total_records|default:0|intcomma }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Divisions</div>
+        <div class="stat-value">{{ division_count|default:0 }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Periods</div>
+        <div class="stat-value">{{ period_count|default:0 }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Value Columns</div>
+        <div class="stat-value">3</div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-header">
+            <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14z"/><path d="M7 12h2v5H7zm4-3h2v8h-2zm4-3h2v11h-2z"/></svg>
+            <span class="card-title">Data Summary</span>
+        </div>
+        <div class="card-body">
+            <div class="info-row">
+                <span class="info-label">Table</span>
+                <span class="info-value">pnl_data</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Total Records</span>
+                <span class="info-value">{{ total_records|default:0|intcomma }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Divisions</span>
+                <span class="info-value">{{ divisions|join:", " }}</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Columns</span>
+                <span class="info-value">Actual & Budget (separate)</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+            <span class="card-title">Database</span>
+        </div>
+        <div class="card-body">
+            <div class="info-row">
+                <span class="info-label">Host</span>
+                <span class="info-value">workspace.moc-pty.com</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Port</span>
+                <span class="info-value">5432</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Database</span>
+                <span class="info-value">automation_platform</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Table</span>
+                <span class="info-value">pnl_data</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">User</span>
+                <span class="info-value">powerbi</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <svg viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+        <span class="card-title">Power BI Query</span>
+    </div>
+    <div class="card-body">
+        <div class="query-box">
+            <code class="query-code"><span class="kw">SELECT</span> division, account_name, value, date, date_fixed, budget_actual, week, "Null", actual_only, budget_only
+<span class="kw">FROM</span> pnl_data
+<span class="kw">ORDER BY</span> date <span class="kw">DESC</span>, division, account_name;</code>
+        </div>
+        <button class="btn" id="copyQueryBtn" onclick="copyQuery()">
+            <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+            Copy
+        </button>
+
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+        <span class="card-title">M Code (Advanced Editor)</span>
+    </div>
+    <div class="card-body">
+        <div class="query-box">
+            {% verbatim %}<code class="query-code" id="mcode">let
+    Source = PostgreSQL.Database("workspace.moc-pty.com", "automation_platform"),
+    pnl_data = Source{[Schema="public",Item="pnl_data"]}[Data],
+    #"Renamed Columns" = Table.RenameColumns(pnl_data,{{"division", "Division"}, {"account_name", "Account name"}, {"value", "Value"}, {"date", "Date"}, {"date_fixed", "Date Fixed"}, {"budget_actual", "Budget/Actual"}, {"week", "Week"}, {"actual_only", "Actual Only"}, {"budget_only", "Budget Only"}}),
+    #"Changed Type" = Table.TransformColumnTypes(#"Renamed Columns",{{"Division", type text}, {"Account name", type text}, {"Value", type number}, {"Date", type date}, {"Date Fixed", type text}, {"Budget/Actual", type text}, {"Week", type text}, {"Null", Int64.Type}, {"Actual Only", type number}, {"Budget Only", type number}}),
+    #"Changed Type1" = Table.TransformColumnTypes(#"Changed Type",{{"Budget Only", Currency.Type}, {"Value", Currency.Type}, {"Actual Only", Currency.Type}}),
+    #"Rounded Off" = Table.TransformColumns(#"Changed Type1",{{"Value", each Number.Round(_, 2), Currency.Type}})
+in
+    #"Rounded Off"</code>{% endverbatim %}
+        </div>
+        <button class="btn" id="copyMCodeBtn" onclick="copyMCode()">
+            <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+            Copy
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyQuery() {
+    const query = `SELECT division, account_name, value, date, date_fixed, budget_actual, week, "Null", actual_only, budget_only\nFROM pnl_data\nORDER BY date DESC, division, account_name;`;
+    navigator.clipboard.writeText(query).then(() => {
+        const btn = document.getElementById('copyQueryBtn');
+        btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Copied';
+        setTimeout(() => {
+            btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg> Copy';
+        }, 2000);
+    });
+}
+
+function copyMCode() {
+    const mcode = document.getElementById('mcode').textContent;
+    navigator.clipboard.writeText(mcode).then(() => {
+        const btn = document.getElementById('copyMCodeBtn');
+        btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Copied';
+        setTimeout(() => {
+            btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg> Copy';
+        }, 2000);
+    });
+}
+</script>
+{% endblock %}

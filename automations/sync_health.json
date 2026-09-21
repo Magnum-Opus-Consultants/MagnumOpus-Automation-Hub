@@ -1,0 +1,158 @@
+{
+  "onedrive_token": {
+    "last_check": "2026-05-21T15:13:06.507715+02:00",
+    "status": "error",
+    "message": "Token refresh failed - re-authentication may be required",
+    "records": 0
+  },
+  "bravo_tran": {
+    "last_check": "2026-08-10T15:26:47.439653+02:00",
+    "status": "success",
+    "message": "Loaded latest AWA Payables email",
+    "records": 0
+  },
+  "turnover": {
+    "last_check": "2026-08-10T15:50:32.386660+02:00",
+    "status": "success",
+    "message": "No file",
+    "records": 0
+  },
+  "import_ops": {
+    "last_check": "2026-08-10T15:26:12.574921+02:00",
+    "status": "success",
+    "message": "Already up to date (17707 total)",
+    "records": 17707
+  },
+  "wip_accrual": {
+    "last_check": "2026-08-10T15:26:02.045243+02:00",
+    "status": "success",
+    "message": "Already processed",
+    "records": 14601
+  },
+  "condor_dor": {
+    "last_check": "2026-08-10T15:26:45.269989+02:00",
+    "status": "success",
+    "message": "1382 rows across 4 files",
+    "records": 1382
+  },
+  "creditor": {
+    "last_check": "2026-08-10T15:26:32.984270+02:00",
+    "status": "success",
+    "message": "14 groups, 5253 rows",
+    "records": 5253
+  },
+  "hou": {
+    "last_check": "2026-08-10T15:25:17.626235+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-09",
+    "records": 572
+  },
+  "ics": {
+    "last_check": "2026-08-10T15:25:19.459239+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-09",
+    "records": 601
+  },
+  "hnl": {
+    "last_check": "2026-08-10T15:25:13.119147+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-09",
+    "records": 717
+  },
+  "ord": {
+    "last_check": "2026-08-10T15:25:21.125932+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-09",
+    "records": 575
+  },
+  "ccc": {
+    "last_check": "2026-08-10T15:25:09.486863+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-09",
+    "records": 405
+  },
+  "ccd": {
+    "last_check": "2026-08-10T15:25:11.284287+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-09",
+    "records": 289
+  },
+  "jfk": {
+    "last_check": "2026-08-10T15:25:14.461769+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-09",
+    "records": 651
+  },
+  "bounce_check": {
+    "last_check": "2026-06-23T22:30:26.157371+02:00",
+    "status": "success",
+    "message": "Checked 1 bounces, no new contacts affected",
+    "records": 0
+  },
+  "ppg": {
+    "last_check": "2026-08-10T15:25:07.782631+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-09",
+    "records": 619
+  },
+  "lcl": {
+    "last_check": "2026-08-10T15:25:15.869185+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-09",
+    "records": 518
+  },
+  "imp": {
+    "last_check": "2026-08-10T15:25:29.898166+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-09",
+    "records": 655
+  },
+  "lax": {
+    "last_check": "2026-08-10T15:25:31.714407+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-09",
+    "records": 559
+  },
+  "fax": {
+    "last_check": "2026-08-10T15:25:33.001865+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-09",
+    "records": 491
+  },
+  "atl": {
+    "last_check": "2026-08-10T15:25:34.866169+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-09",
+    "records": 529
+  },
+  "dfw": {
+    "last_check": "2026-08-10T15:25:36.320354+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-09",
+    "records": 542
+  },
+  "con": {
+    "last_check": "2026-08-10T15:25:37.965016+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-09",
+    "records": 580
+  },
+  "dor": {
+    "last_check": "2026-08-10T15:25:39.244352+02:00",
+    "status": "success",
+    "message": "Already processed: 2026-08-09",
+    "records": 443
+  },
+  "updown_trader": {
+    "last_check": "2026-07-19T04:06:34.527120+02:00",
+    "status": "success",
+    "message": "Synced 3 files: 0 spend + 102183 operational records",
+    "records": 102183
+  },
+  "updown_reconcile": {
+    "last_check": "2026-06-24T07:44:57.363749+02:00",
+    "status": "success",
+    "message": "Up-Down Trader reconciliation: ALL MATCH",
+    "records": 2
+  }
+}

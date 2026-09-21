@@ -1,0 +1,341 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}TFS Weekly Data - MOC Automations{% endblock %}
+
+{% block extra_styles %}
+.stats-row {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+
+.stat-card {
+    background: #fff;
+    border: 1px solid #edebe9;
+    border-radius: 4px;
+    padding: 16px 20px;
+    min-width: 140px;
+}
+
+.stat-label {
+    color: #605e5c;
+    font-size: 12px;
+    margin-bottom: 4px;
+}
+
+.stat-value {
+    color: #323130;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.card {
+    background: #fff;
+    border: 1px solid #edebe9;
+    border-radius: 4px;
+    margin-bottom: 16px;
+}
+
+.card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #edebe9;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.card-header svg {
+    width: 18px;
+    height: 18px;
+    fill: #054B70;
+}
+
+.card-title {
+    color: #323130;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.card-body {
+    padding: 16px 20px;
+}
+
+.grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+@media (max-width: 800px) {
+    .grid-2 {
+        grid-template-columns: 1fr;
+    }
+}
+
+.info-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 0;
+    border-bottom: 1px solid #f3f2f1;
+    font-size: 13px;
+}
+
+.info-row:last-child {
+    border-bottom: none;
+}
+
+.info-label {
+    color: #605e5c;
+}
+
+.info-value {
+    color: #323130;
+    font-weight: 500;
+}
+.query-box { background: #1b1a19; border-radius: 4px; padding: 16px; overflow-x: auto; }
+.query-code { font-family: "Consolas", "Monaco", monospace; font-size: 13px; color: #d4d4d4; line-height: 1.6; white-space: pre; }
+.query-code .kw { color: #569cd6; }
+.btn { background: #054B70; color: #fff; border: none; padding: 8px 16px; border-radius: 2px; font-size: 13px; font-family: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; }
+.btn:hover { background: #043a58; }
+.btn svg { width: 14px; height: 14px; fill: currentColor; }
+.conn-string { background: #f3f2f1; padding: 12px; border-radius: 4px; font-family: "Consolas", monospace; font-size: 12px; color: #323130; margin-top: 16px; word-break: break-all; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">TFS Weekly Data</h1>
+    <p class="page-subtitle">Weekly revenue, fleet utilization & year-over-year performance for Power BI</p>
+</div>
+
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-label">Total Records</div>
+        <div class="stat-value">{{ total_records|default:0|intcomma }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Years</div>
+        <div class="stat-value">{{ year_count|default:0 }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Weeks</div>
+        <div class="stat-value">{{ week_count|default:0 }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Fleet Size</div>
+        <div class="stat-value">{{ num_trucks }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">Avg Utilization</div>
+        <div class="stat-value">{{ avg_util }}%</div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-label">YTD Revenue</div>
+        <div class="stat-value">${{ ytd_revenue }}</div>
+    </div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-header">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+            <span class="card-title">Database</span>
+        </div>
+        <div class="card-body">
+            <div class="info-row">
+                <span class="info-label">Host</span>
+                <span class="info-value">workspace.moc-pty.com</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Port</span>
+                <span class="info-value">5432</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Database</span>
+                <span class="info-value">automation_platform</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Table</span>
+                <span class="info-value">tfs_weekly</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <svg viewBox="0 0 24 24"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/></svg>
+            <span class="card-title">Data Source & Sync</span>
+        </div>
+        <div class="card-body">
+            <div class="info-row">
+                <span class="info-label">OneDrive Folder</span>
+                <span class="info-value">/Automation Platform/TFS Weekly Data/</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">File Format</span>
+                <span class="info-value">TFS Weekly Data - Sample.xlsx</span>
+            </div>
+            <div class="info-row">
+                <span class="info-label">Last Sync</span>
+                <span class="info-value">{% if last_sync %}{{ last_sync.date }} at {{ last_sync.time }}{% else %}Never{% endif %}</span>
+            </div>
+            <button class="btn" id="syncBtn" onclick="startSync()">
+                <svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+                Sync Now
+            </button>
+            <div id="syncStatus" style="margin-top: 8px; font-size: 12px; color: #605e5c;"></div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <svg viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zM9 17H7v-7h2v7zm4 0h-2V7h2v10zm4 0h-2v-4h2v4z"/></svg>
+        <span class="card-title">Table Schema (Power BI-Ready)</span>
+    </div>
+    <div class="card-body">
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+            <thead>
+                <tr style="border-bottom:2px solid #edebe9; text-align:left;">
+                    <th style="padding:8px;">Column</th>
+                    <th style="padding:8px;">Type</th>
+                    <th style="padding:8px;">Description</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr style="border-bottom:1px solid #f3f2f1;"><td style="padding:8px;font-family:Consolas,monospace;">week_number</td><td style="padding:8px;">VARCHAR</td><td style="padding:8px;">W01 - W52</td></tr>
+                <tr style="border-bottom:1px solid #f3f2f1;"><td style="padding:8px;font-family:Consolas,monospace;">year</td><td style="padding:8px;">INTEGER</td><td style="padding:8px;">2023, 2024, 2025, 2026</td></tr>
+                <tr style="border-bottom:1px solid #f3f2f1;"><td style="padding:8px;font-family:Consolas,monospace;">revenue</td><td style="padding:8px;">NUMERIC</td><td style="padding:8px;">Weekly revenue ($)</td></tr>
+                <tr style="border-bottom:1px solid #f3f2f1;"><td style="padding:8px;font-family:Consolas,monospace;">miles</td><td style="padding:8px;">NUMERIC</td><td style="padding:8px;">Miles driven (current year only)</td></tr>
+                <tr style="border-bottom:1px solid #f3f2f1;"><td style="padding:8px;font-family:Consolas,monospace;">revenue_per_mile</td><td style="padding:8px;">NUMERIC</td><td style="padding:8px;">Revenue / mile (current year)</td></tr>
+                <tr style="border-bottom:1px solid #f3f2f1;"><td style="padding:8px;font-family:Consolas,monospace;">revenue_per_truck</td><td style="padding:8px;">NUMERIC</td><td style="padding:8px;">Revenue / truck (current year)</td></tr>
+                <tr style="border-bottom:1px solid #f3f2f1;"><td style="padding:8px;font-family:Consolas,monospace;">utilization_pct</td><td style="padding:8px;">NUMERIC</td><td style="padding:8px;">Fleet utilization 0.00 - 1.00 (current year)</td></tr>
+                <tr style="border-bottom:1px solid #f3f2f1;"><td style="padding:8px;font-family:Consolas,monospace;">yoy_change</td><td style="padding:8px;">NUMERIC</td><td style="padding:8px;">Year-over-year % change (current year)</td></tr>
+                <tr><td style="padding:8px;font-family:Consolas,monospace;">num_trucks</td><td style="padding:8px;">INTEGER</td><td style="padding:8px;">Fleet size</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <svg viewBox="0 0 24 24"><path d="M9.4 16.6L4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0l4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z"/></svg>
+        <span class="card-title">Power BI Query</span>
+    </div>
+    <div class="card-body">
+        <div class="query-box">
+            <code class="query-code"><span class="kw">SELECT</span> *
+<span class="kw">FROM</span> tfs_weekly
+<span class="kw">ORDER BY</span> year, week_number;</code>
+        </div>
+        <button class="btn" id="copyQueryBtn" onclick="copyQuery()">
+            <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+            Copy
+        </button>
+
+        <div class="conn-string">
+            Host=workspace.moc-pty.com;Port=5432;Database=automation_platform;Username=powerbi;Password=your_secure_password;SSLMode=require
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <svg viewBox="0 0 24 24"><path d="M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+        <span class="card-title">M Code (Advanced Editor)</span>
+    </div>
+    <div class="card-body">
+        <div class="query-box">
+            {% verbatim %}<code class="query-code" id="mcode">let
+    Source = PostgreSQL.Database("workspace.moc-pty.com", "automation_platform"),
+    tfs_weekly = Source{[Schema="public",Item="tfs_weekly"]}[Data],
+    #"Renamed Columns" = Table.RenameColumns(tfs_weekly,{
+        {"week_number", "Week"}, {"year", "Year"}, {"revenue", "Revenue"},
+        {"miles", "Miles"}, {"revenue_per_mile", "Rev/Mile"},
+        {"revenue_per_truck", "Rev/Truck"}, {"utilization_pct", "Utilization"},
+        {"yoy_change", "YoY Change"}, {"num_trucks", "Fleet Size"}
+    }),
+    #"Changed Type" = Table.TransformColumnTypes(#"Renamed Columns",{
+        {"Week", type text}, {"Year", Int64.Type}, {"Revenue", Currency.Type},
+        {"Miles", type number}, {"Rev/Mile", type number},
+        {"Rev/Truck", Currency.Type}, {"Utilization", Percentage.Type},
+        {"YoY Change", Percentage.Type}, {"Fleet Size", Int64.Type}
+    })
+in
+    #"Changed Type"</code>{% endverbatim %}
+        </div>
+        <button class="btn" id="copyMCodeBtn" onclick="copyMCode()">
+            <svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>
+            Copy
+        </button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copyQuery() {
+    const query = `SELECT *\nFROM tfs_weekly\nORDER BY year, week_number;`;
+    navigator.clipboard.writeText(query).then(() => {
+        const btn = document.getElementById('copyMCodeBtn');
+        btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Copied';
+        setTimeout(() => {
+            btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg> Copy';
+        }, 2000);
+    });
+}
+
+function copyMCode() {
+    const mcode = document.getElementById('mcode').textContent;
+    navigator.clipboard.writeText(mcode).then(() => {
+        const btn = document.getElementById('copyMCodeBtn');
+        btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg> Copied';
+        setTimeout(() => {
+            btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg> Copy';
+        }, 2000);
+    });
+}
+
+function startSync() {
+    const btn = document.getElementById('syncBtn');
+    const status = document.getElementById('syncStatus');
+    btn.disabled = true;
+    btn.innerHTML = '<svg viewBox="0 0 24 24" class="spin"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg> Syncing...';
+    status.textContent = 'Starting sync...';
+
+    fetch('{% url "sync_tfs" %}', {method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'}})
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === 'started') {
+            pollProgress();
+        } else {
+            status.textContent = data.message || 'Error starting sync';
+            btn.disabled = false;
+            btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg> Sync Now';
+        }
+    });
+}
+
+function pollProgress() {
+    const status = document.getElementById('syncStatus');
+    const btn = document.getElementById('syncBtn');
+    fetch('{% url "sync_tfs_progress" %}')
+    .then(r => r.json())
+    .then(data => {
+        status.textContent = data.message;
+        if (data.status === 'complete') {
+            btn.disabled = false;
+            btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg> Sync Now';
+            setTimeout(() => location.reload(), 1500);
+        } else if (data.status === 'error') {
+            btn.disabled = false;
+            btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg> Sync Now';
+        } else {
+            setTimeout(pollProgress, 1000);
+        }
+    });
+}
+</script>
+<style>.spin { animation: spin 1s linear infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }</style>
+{% endblock %}

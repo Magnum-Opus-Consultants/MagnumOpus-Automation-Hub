@@ -1,0 +1,155 @@
+{% extends 'base.html' %}
+
+{% block title %}Settings - MOC Automations{% endblock %}
+
+{% block extra_styles %}
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 16px; }
+.card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+.card-header svg { width: 18px; height: 18px; fill: #054B70; }
+.card-title { color: var(--text-primary); font-size: 14px; font-weight: 600; }
+.card-body { padding: 20px; }
+
+.setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+}
+.setting-row:last-child { border-bottom: none; }
+.setting-info { flex: 1; }
+.setting-label { font-size: 14px; font-weight: 500; color: var(--text-primary); margin-bottom: 2px; }
+.setting-desc { font-size: 12px; color: var(--text-secondary); }
+
+/* Toggle switch */
+.toggle { position: relative; width: 48px; height: 26px; flex-shrink: 0; }
+.toggle input { opacity: 0; width: 0; height: 0; position: absolute; }
+.toggle-slider {
+    position: absolute; inset: 0;
+    background: var(--border);
+    border-radius: 26px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 20px; height: 20px;
+    left: 3px; top: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform 0.2s;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+.toggle input:checked + .toggle-slider { background: #054B70; }
+.toggle input:checked + .toggle-slider::before { transform: translateX(22px); }
+
+.save-msg { font-size: 12px; color: #107c10; margin-top: 8px; display: none; }
+
+/* Theme segmented control */
+.theme-segment {
+    display: inline-flex;
+    background: var(--surface2, #f3f2f1);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px;
+    gap: 2px;
+}
+.theme-opt {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 16px; border: none; background: transparent;
+    border-radius: 999px; font: inherit; font-size: 13px; font-weight: 600;
+    color: var(--text-secondary); cursor: pointer;
+    transition: all 0.15s;
+}
+.theme-opt:hover { color: var(--text-primary); }
+.theme-opt.active {
+    background: #054B70; color: #fff;
+    box-shadow: 0 2px 6px rgba(5,75,112,0.25);
+}
+[data-theme="dark"] .theme-opt.active { background: #6cb4d8; color: #1b1a19; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">Settings</h1>
+    <p class="page-subtitle">Manage your account preferences</p>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <svg viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>
+        <span class="card-title">Appearance</span>
+    </div>
+    <div class="card-body">
+        <div class="setting-row">
+            <div class="setting-info">
+                <div class="setting-label">Theme</div>
+                <div class="setting-desc">Choose your preferred interface theme — saved to your account.</div>
+            </div>
+            <div class="theme-segment" role="radiogroup" aria-label="Theme">
+                <button type="button" class="theme-opt {% if not dark_mode %}active{% endif %}" data-theme="light" onclick="saveDarkMode(false)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 7c-2.76 0-5 2.24-5 5s2.24 5 5 5 5-2.24 5-5-2.24-5-5-5zM2 13h2c.55 0 1-.45 1-1s-.45-1-1-1H2c-.55 0-1 .45-1 1s.45 1 1 1zm18 0h2c.55 0 1-.45 1-1s-.45-1-1-1h-2c-.55 0-1 .45-1 1s.45 1 1 1zM11 2v2c0 .55.45 1 1 1s1-.45 1-1V2c0-.55-.45-1-1-1s-1 .45-1 1zm0 18v2c0 .55.45 1 1 1s1-.45 1-1v-2c0-.55-.45-1-1-1s-1 .45-1 1zM5.99 4.58a.996.996 0 0 0-1.41 0 .996.996 0 0 0 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0s.39-1.03 0-1.41L5.99 4.58zm12.37 12.37a.996.996 0 0 0-1.41 0 .996.996 0 0 0 0 1.41l1.06 1.06c.39.39 1.03.39 1.41 0a.996.996 0 0 0 0-1.41l-1.06-1.06zm1.06-10.96a.996.996 0 0 0 0-1.41.996.996 0 0 0-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06zM7.05 18.36a.996.996 0 0 0 0-1.41.996.996 0 0 0-1.41 0l-1.06 1.06c-.39.39-.39 1.03 0 1.41s1.03.39 1.41 0l1.06-1.06z"/></svg>
+                    Light
+                </button>
+                <button type="button" class="theme-opt {% if dark_mode %}active{% endif %}" data-theme="dark" onclick="saveDarkMode(true)">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M9.37 5.51A7.35 7.35 0 0 0 9.1 7.5c0 4.08 3.32 7.4 7.4 7.4.68 0 1.35-.09 1.99-.27A7.014 7.014 0 0 1 12 19c-3.86 0-7-3.14-7-7 0-2.93 1.81-5.45 4.37-6.49zM12 3a9 9 0 1 0 9 9c0-.46-.04-.92-.1-1.36a5.389 5.389 0 0 1-4.4 2.26 5.403 5.403 0 0 1-3.14-9.8c-.44-.06-.9-.1-1.36-.1z"/></svg>
+                    Dark
+                </button>
+            </div>
+        </div>
+        <div class="save-msg" id="save-msg">Preference saved.</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+        <span class="card-title">Account</span>
+    </div>
+    <div class="card-body">
+        <div class="setting-row">
+            <div class="setting-info">
+                <div class="setting-label">Logged in as</div>
+                <div class="setting-desc">{{ request.user.username }}</div>
+            </div>
+        </div>
+        <div class="setting-row">
+            <div class="setting-info">
+                <div class="setting-label">Manage Users</div>
+                <div class="setting-desc">Add or remove user accounts</div>
+            </div>
+            <a href="{% url 'user_list' %}" style="background:#054B70; color:#fff; border:none; padding:7px 14px; border-radius:4px; font-size:13px; text-decoration:none; white-space:nowrap;">Open Users</a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function saveDarkMode(enabled) {
+    fetch('{% url "save_settings" %}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken')},
+        body: JSON.stringify({dark_mode: enabled})
+    }).then(r => r.json()).then(data => {
+        if (data.status === 'ok') {
+            const msg = document.getElementById('save-msg');
+            msg.style.display = 'block';
+            setTimeout(() => { msg.style.display = 'none'; }, 2000);
+            // Apply theme immediately without full reload
+            document.documentElement.setAttribute('data-theme', enabled ? 'dark' : '');
+            // Swap active class on segmented control
+            document.querySelectorAll('.theme-opt').forEach(el => {
+                el.classList.toggle('active', el.dataset.theme === (enabled ? 'dark' : 'light'));
+            });
+        }
+    });
+}
+
+function getCookie(name) {
+    let v = document.cookie.match('(^|;) ?' + name + '=([^;]*)(;|$)');
+    return v ? v[2] : null;
+}
+</script>
+{% endblock %}

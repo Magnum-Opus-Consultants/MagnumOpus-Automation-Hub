@@ -1,0 +1,63 @@
+{% extends 'base.html' %}
+{% load humanize %}
+
+{% block title %}HEC Financial Analysis - MOC Automations{% endblock %}
+
+{% block extra_styles %}
+.stats-row { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+.stat-card { background: #fff; border: 1px solid #edebe9; border-radius: 4px; padding: 16px 20px; min-width: 140px; }
+.stat-label { color: #605e5c; font-size: 12px; margin-bottom: 4px; }
+.stat-value { color: #323130; font-size: 24px; font-weight: 600; }
+.card { background: #fff; border: 1px solid #edebe9; border-radius: 4px; margin-bottom: 16px; }
+.card-header { padding: 16px 20px; border-bottom: 1px solid #edebe9; display: flex; align-items: center; gap: 8px; }
+.card-header svg { width: 18px; height: 18px; fill: #054B70; }
+.card-title { color: #323130; font-size: 14px; font-weight: 600; }
+.card-body { padding: 16px 20px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 800px) { .grid-2 { grid-template-columns: 1fr; } }
+.info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f3f2f1; font-size: 13px; }
+.info-row:last-child { border-bottom: none; }
+.info-label { color: #605e5c; }
+.info-value { color: #323130; font-weight: 500; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">HEC Financial Analysis</h1>
+    <p class="page-subtitle">Budget vs Actual P&L data for Power BI</p>
+</div>
+
+<div class="stats-row">
+    <div class="stat-card"><div class="stat-label">Total Records</div><div class="stat-value">{{ total_records|default:0|intcomma }}</div></div>
+    <div class="stat-card"><div class="stat-label">Budget Records</div><div class="stat-value">{{ budget_count|default:0|intcomma }}</div></div>
+    <div class="stat-card"><div class="stat-label">Actual Records</div><div class="stat-value">{{ actual_count|default:0|intcomma }}</div></div>
+    <div class="stat-card"><div class="stat-label">Accounts</div><div class="stat-value">{{ account_count|default:0|intcomma }}</div></div>
+</div>
+
+<div class="grid-2">
+    <div class="card">
+        <div class="card-header">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+            <span class="card-title">Database</span>
+        </div>
+        <div class="card-body">
+            <div class="info-row"><span class="info-label">Host</span><span class="info-value">workspace.moc-pty.com</span></div>
+            <div class="info-row"><span class="info-label">Port</span><span class="info-value">5432</span></div>
+            <div class="info-row"><span class="info-label">Database</span><span class="info-value">automation_platform</span></div>
+            <div class="info-row"><span class="info-label">Table</span><span class="info-value">pnl_data</span></div>
+            <div class="info-row"><span class="info-label">Division</span><span class="info-value">HEC</span></div>
+        </div>
+    </div>
+    <div class="card">
+        <div class="card-header">
+            <svg viewBox="0 0 24 24"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm0 12H4V8h16v10z"/></svg>
+            <span class="card-title">Data Source</span>
+        </div>
+        <div class="card-body">
+            <div class="info-row"><span class="info-label">Folder</span><span class="info-value">/PNLS/HEC/</span></div>
+            <div class="info-row"><span class="info-label">File</span><span class="info-value">HEC Budget PnL With Actual.xlsx</span></div>
+            <div class="info-row"><span class="info-label">Status</span><span class="info-value" style="color: #107c10;">Available</span></div>
+        </div>
+    </div>
+</div>
+{% endblock %}

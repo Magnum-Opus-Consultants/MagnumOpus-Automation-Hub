@@ -1,0 +1,813 @@
+{% extends 'base.html' %}
+
+{% block title %}Planner - MOC Automations{% endblock %}
+
+{% block extra_styles %}
+.view-toggle {
+    display: inline-flex;
+    border: 1px solid var(--border, #edebe9);
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--surface, #fff);
+}
+.view-btn {
+    padding: 7px 14px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary, #605e5c);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.view-btn + .view-btn { border-left: 1px solid var(--border, #edebe9); }
+.view-btn:hover { color: var(--text-primary, #323130); }
+.view-btn.active { background: #054B70; color: #fff; }
+[data-theme="dark"] .view-btn.active { background: #0a7ab5; }
+
+/* Calendar */
+.cal-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+.cal-nav {
+    width: 32px; height: 32px;
+    border: 1px solid var(--border, #edebe9);
+    background: var(--surface, #fff);
+    color: var(--text-primary, #323130);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+}
+.cal-nav:hover { background: var(--hover, #f3f2f1); }
+.cal-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary, #323130);
+    min-width: 160px;
+}
+.cal-today {
+    padding: 6px 14px;
+    border: 1px solid var(--border, #edebe9);
+    background: var(--surface, #fff);
+    color: var(--text-primary, #323130);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+}
+.cal-weekdays {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+    margin-bottom: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary, #605e5c);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.cal-weekdays > div { padding: 6px 8px; }
+.cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 4px;
+}
+.cal-day {
+    min-height: 110px;
+    background: var(--surface, #fff);
+    border: 1px solid var(--border, #edebe9);
+    border-radius: 6px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+.cal-day:hover { background: var(--hover, #f9f9f8); }
+.cal-day.other-month { opacity: 0.45; }
+.cal-day.today {
+    border-color: #054B70;
+    border-width: 2px;
+    padding: 5px;
+}
+[data-theme="dark"] .cal-day.today { border-color: #6cb4d8; }
+.cal-day-num {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary, #323130);
+    margin-bottom: 2px;
+}
+.cal-day.today .cal-day-num {
+    background: #054B70;
+    color: #fff;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+}
+[data-theme="dark"] .cal-day.today .cal-day-num { background: #0a7ab5; }
+.cal-task {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: #fff;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+    line-height: 1.35;
+}
+.cal-task:hover { opacity: 0.9; }
+.cal-task.prio-critical { background: #c4314b; }
+.cal-task.prio-high     { background: #a4262c; }
+.cal-task.prio-medium   { background: #0a7ab5; }
+.cal-task.prio-low      { background: #498205; }
+/* Company colours override priority colours when a company is set. */
+.cal-task.co-eclick      { background: #c4314b; }
+.cal-task.co-magnum_opus { background: #0a7ab5; }
+.cal-task.co-food_safety { background: #498205; }
+.cal-task.co-other       { background: #c66700; }
+.cal-task.status-done   { opacity: 0.55; text-decoration: line-through; }
+.cal-more {
+    font-size: 10px;
+    color: var(--text-secondary, #605e5c);
+    margin-top: 2px;
+    cursor: pointer;
+    text-decoration: underline;
+}
+.cal-more:hover { color: #054B70; }
+
+.board-wrap {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 16px;
+    align-items: flex-start;
+}
+
+.board-col {
+    min-width: 240px;
+    width: 240px;
+    flex-shrink: 0;
+    background: var(--surface, #f3f2f1);
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.col-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    border-bottom: 1px solid rgba(0,0,0,0.06);
+}
+
+.col-count {
+    background: rgba(0,0,0,0.08);
+    border-radius: 10px;
+    padding: 1px 7px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.col-body {
+    padding: 8px;
+    min-height: 80px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.task-card {
+    background: #fff;
+    border: 1px solid #edebe9;
+    border-radius: 6px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: box-shadow 0.15s;
+}
+
+.task-card:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+[data-theme="dark"] .task-card {
+    background: var(--bg);
+    border-color: var(--border);
+}
+
+.task-title {
+    font-size: 13px;
+    font-weight: 500;
+    color: #323130;
+    margin-bottom: 6px;
+    line-height: 1.4;
+}
+
+[data-theme="dark"] .task-title { color: var(--text-primary); }
+
+.task-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.badge-critical { background: #fde8e9; color: #a4262c; }
+.badge-high     { background: #fff4ce; color: #7a4f00; }
+.badge-medium   { background: #e8f0fe; color: #1a56db; }
+.badge-low      { background: #e8f5e9; color: #107c10; }
+
+.task-project {
+    font-size: 10px;
+    color: #a19f9d;
+}
+
+.task-dates {
+    font-size: 10px;
+    color: #a19f9d;
+    margin-top: 4px;
+}
+
+.col-add-btn {
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 8px 12px;
+    color: #a19f9d;
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    border-top: 1px solid rgba(0,0,0,0.04);
+}
+
+.col-add-btn:hover { color: #054B70; background: rgba(0,0,0,0.03); }
+
+/* Modal */
+.modal-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-backdrop.open { display: flex; }
+
+.modal {
+    background: #fff;
+    border-radius: 10px;
+    width: 480px;
+    max-width: 95vw;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.18);
+    overflow: hidden;
+}
+
+[data-theme="dark"] .modal { background: var(--surface); }
+
+.modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid #edebe9;
+}
+
+[data-theme="dark"] .modal-header { border-color: var(--border); }
+
+.modal-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #323130;
+}
+
+[data-theme="dark"] .modal-title { color: var(--text-primary); }
+
+.modal-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #605e5c;
+    font-size: 20px;
+    line-height: 1;
+    padding: 0;
+}
+
+.modal-body { padding: 20px; display: flex; flex-direction: column; gap: 14px; }
+
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+
+.form-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: #605e5c;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.form-control {
+    border: 1px solid #c8c6c4;
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    color: #323130;
+    background: #fff;
+}
+
+[data-theme="dark"] .form-control {
+    background: var(--bg);
+    border-color: var(--border);
+    color: var(--text-primary);
+}
+
+.form-control:focus { outline: none; border-color: #054B70; }
+
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.modal-footer {
+    padding: 12px 20px;
+    border-top: 1px solid #edebe9;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+[data-theme="dark"] .modal-footer { border-color: var(--border); }
+
+.btn { padding: 8px 16px; border-radius: 4px; font-size: 13px; font-family: inherit; cursor: pointer; border: none; }
+.btn-primary { background: #054B70; color: #fff; }
+.btn-primary:hover { background: #043a58; }
+.btn-secondary { background: #f3f2f1; color: #323130; }
+.btn-secondary:hover { background: #edebe9; }
+.btn-danger { background: #d13438; color: #fff; }
+.btn-danger:hover { background: #a4262c; }
+
+.page-actions { display: flex; gap: 8px; }
+
+/* Column colors */
+.col-backlog .col-header { color: #605e5c; }
+.col-todo    .col-header { color: #054B70; }
+.col-in_progress .col-header { color: #7a4f00; }
+.col-review  .col-header { color: #7160e8; }
+.col-done    .col-header { color: #107c10; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+    <div>
+        <h1 class="page-title">Planner</h1>
+        <p class="page-subtitle">Track all system tasks and projects</p>
+    </div>
+    <div class="page-actions" style="display:flex; gap:8px; align-items:center;">
+        <div class="view-toggle" role="tablist">
+            <button type="button" id="view-cal-btn" class="view-btn active" onclick="setView('calendar')">Calendar</button>
+            <button type="button" id="view-board-btn" class="view-btn" onclick="setView('board')">Board</button>
+            <a href="{% url 'gantt' %}" class="view-btn" style="text-decoration:none;">Gantt</a>
+        </div>
+        <button class="btn btn-primary" onclick="openCreate()">+ New Task</button>
+    </div>
+</div>
+
+<!-- CALENDAR VIEW (default) -->
+<div id="calendar-view">
+    <div class="cal-toolbar">
+        <button type="button" class="cal-nav" onclick="calMove(-1)">‹</button>
+        <div class="cal-title" id="cal-title"></div>
+        <button type="button" class="cal-nav" onclick="calMove(1)">›</button>
+        <button type="button" class="cal-today" onclick="calToday()">Today</button>
+    </div>
+    <div class="cal-weekdays">
+        <div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div><div>Sun</div>
+    </div>
+    <div class="cal-grid" id="cal-grid"></div>
+</div>
+
+<!-- BOARD VIEW -->
+<div id="board-view" style="display:none;">
+    <div class="board-filters" style="display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
+        <label style="font-size:12px; color:#605e5c;">Status:</label>
+        <select id="board-status-filter" class="form-control" style="width:auto; height:30px;" onchange="filterBoard()">
+            <option value="">All</option>
+            <option value="backlog">Backlog</option>
+            <option value="todo">To Do</option>
+            <option value="in_progress">In Progress</option>
+            <option value="review">Review</option>
+            <option value="done">Done</option>
+        </select>
+        <label style="font-size:12px; color:#605e5c; margin-left:10px;">When:</label>
+        <select id="board-date-filter" class="form-control" style="width:auto; height:30px;" onchange="filterBoard()">
+            <option value="">All</option>
+            <option value="today">Today</option>
+            <option value="week">This Week</option>
+            <option value="month">This Month</option>
+        </select>
+        <button type="button" class="view-btn" onclick="document.getElementById('board-status-filter').value=''; document.getElementById('board-date-filter').value=''; filterBoard();">Clear</button>
+    </div>
+    <div class="board-wrap">
+        {% for status, col in board.items %}
+        <div class="board-col col-{{ status }}">
+            <div class="col-header">
+                <span>{{ col.label }}</span>
+                <span class="col-count">{{ col.tasks|length }}</span>
+            </div>
+            <div class="col-body" id="col-{{ status }}">
+                {% for task in col.tasks %}
+                <div class="task-card" data-status="{{ task.status }}" data-start-date="{{ task.start_date|date:'Y-m-d' }}" data-end-date="{{ task.end_date|date:'Y-m-d' }}" onclick="openEdit({{ task.id }}, '{{ task.title|escapejs }}', '{{ task.description|escapejs }}', '{{ task.status }}', '{{ task.priority }}', '{{ task.project_name|escapejs }}', '{{ task.start_date|default:'' }}', '{{ task.end_date|default:'' }}', '{{ task.company }}', '{% if task.start_time %}{{ task.start_time|time:'H:i' }}{% endif %}', '{% if task.end_time %}{{ task.end_time|time:'H:i' }}{% endif %}')">
+                    <div class="task-title">{{ task.title }}</div>
+                    <div class="task-meta">
+                        <span class="badge badge-{{ task.priority }}">{{ task.get_priority_display }}</span>
+                        {% if task.project_name %}<span class="task-project">{{ task.project_name }}</span>{% endif %}
+                    </div>
+                    {% if task.start_date or task.end_date %}
+                    <div class="task-dates">
+                        {% if task.start_date %}{{ task.start_date }}{% endif %}{% if task.start_date and task.end_date %} → {% endif %}{% if task.end_date %}{{ task.end_date }}{% endif %}
+                    </div>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            <button class="col-add-btn" onclick="openCreate('{{ status }}')">
+                <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                Add task
+            </button>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- Tasks JSON for calendar rendering -->
+{{ tasks_json|json_script:"planner-tasks" }}
+
+<!-- Day tasks popup -->
+<div class="modal-backdrop" id="day-list-modal">
+    <div class="modal" style="max-width:480px;">
+        <div class="modal-header">
+            <h3 id="day-list-title" style="margin:0;">Tasks</h3>
+            <button type="button" class="modal-close" onclick="closeDayList()">&times;</button>
+        </div>
+        <div class="modal-body" id="day-list-body" style="max-height:60vh; overflow-y:auto;"></div>
+    </div>
+</div>
+
+<!-- Create / Edit Modal -->
+<div class="modal-backdrop" id="task-modal">
+    <div class="modal">
+        <div class="modal-header">
+            <span class="modal-title" id="modal-title">New Task</span>
+            <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" id="modal-action" value="create">
+            <input type="hidden" name="task_id" id="modal-task-id">
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Title</label>
+                    <input type="text" name="title" id="modal-title-input" class="form-control" required placeholder="Task title...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Description</label>
+                    <textarea name="description" id="modal-desc" class="form-control" rows="3" placeholder="Optional description..."></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Company</label>
+                        <select name="company" id="modal-company" class="form-control">
+                            <option value="">— Unassigned —</option>
+                            <option value="magnum_opus">Magnum Opus</option>
+                            <option value="food_safety">Food Safety Agency</option>
+                            <option value="eclick">Eclick</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Project</label>
+                        <input type="text" name="project_name" id="modal-project" class="form-control" placeholder="Project name..." list="project-list">
+                        <datalist id="project-list">
+                            {% for p in projects %}<option value="{{ p }}">{% endfor %}
+                        </datalist>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Status</label>
+                        <select name="status" id="modal-status" class="form-control">
+                            <option value="backlog">Backlog</option>
+                            <option value="todo">To Do</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="review">Review</option>
+                            <option value="done">Done</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Priority</label>
+                        <select name="priority" id="modal-priority" class="form-control">
+                            <option value="low">Low</option>
+                            <option value="medium" selected>Medium</option>
+                            <option value="high">High</option>
+                            <option value="critical">Critical</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Start Date</label>
+                        <input type="date" name="start_date" id="modal-start" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">End Date</label>
+                        <input type="date" name="end_date" id="modal-end" class="form-control">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label class="form-label">Start Time</label>
+                        <input type="time" name="start_time" id="modal-start-time" class="form-control">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">End Time</label>
+                        <input type="time" name="end_time" id="modal-end-time" class="form-control">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" id="modal-delete-btn" style="display:none; margin-right:auto;" onclick="deleteTask()">Delete</button>
+                <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openCreate(status) {
+    document.getElementById('modal-title').textContent = 'New Task';
+    document.getElementById('modal-action').value = 'create';
+    document.getElementById('modal-task-id').value = '';
+    document.getElementById('modal-title-input').value = '';
+    document.getElementById('modal-desc').value = '';
+    document.getElementById('modal-company').value = '';
+    document.getElementById('modal-project').value = '';
+    document.getElementById('modal-status').value = status || 'todo';
+    document.getElementById('modal-priority').value = 'medium';
+    document.getElementById('modal-start').value = '';
+    document.getElementById('modal-end').value = '';
+    document.getElementById('modal-start-time').value = '';
+    document.getElementById('modal-end-time').value = '';
+    document.getElementById('modal-delete-btn').style.display = 'none';
+    document.getElementById('task-modal').classList.add('open');
+    document.getElementById('modal-title-input').focus();
+}
+
+function openEdit(id, title, desc, status, priority, project, start, end, company, startTime, endTime) {
+    document.getElementById('modal-title').textContent = 'Edit Task';
+    document.getElementById('modal-action').value = 'update';
+    document.getElementById('modal-task-id').value = id;
+    document.getElementById('modal-title-input').value = title;
+    document.getElementById('modal-desc').value = desc;
+    document.getElementById('modal-company').value = company || '';
+    document.getElementById('modal-project').value = project;
+    document.getElementById('modal-status').value = status;
+    document.getElementById('modal-priority').value = priority;
+    document.getElementById('modal-start').value = start;
+    document.getElementById('modal-end').value = end;
+    document.getElementById('modal-start-time').value = startTime || '';
+    document.getElementById('modal-end-time').value = endTime || '';
+    document.getElementById('modal-delete-btn').style.display = 'inline-block';
+    document.getElementById('task-modal').classList.add('open');
+}
+
+function closeModal() {
+    document.getElementById('task-modal').classList.remove('open');
+}
+
+function deleteTask() {
+    if (!confirm('Delete this task?')) return;
+    document.getElementById('modal-action').value = 'delete';
+    document.querySelector('#task-modal form').submit();
+}
+
+document.getElementById('task-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+
+// ── View toggle ───────────────────────────────────────────────
+function setView(mode) {
+    const calEl = document.getElementById('calendar-view');
+    const brdEl = document.getElementById('board-view');
+    const calBtn = document.getElementById('view-cal-btn');
+    const brdBtn = document.getElementById('view-board-btn');
+    if (mode === 'board') {
+        calEl.style.display = 'none'; brdEl.style.display = '';
+        calBtn.classList.remove('active'); brdBtn.classList.add('active');
+        filterBoard();
+    } else {
+        calEl.style.display = ''; brdEl.style.display = 'none';
+        brdBtn.classList.remove('active'); calBtn.classList.add('active');
+    }
+    try { localStorage.setItem('planner-view', mode); } catch(e) {}
+}
+
+// ── Board filters ─────────────────────────────────────────────
+function filterBoard() {
+    const statusFilter = document.getElementById('board-status-filter').value;
+    const dateFilter = document.getElementById('board-date-filter').value;
+    const today = new Date(); today.setHours(0,0,0,0);
+    let startRange = null, endRange = null;
+    if (dateFilter === 'today') {
+        startRange = new Date(today);
+        endRange = new Date(today);
+    } else if (dateFilter === 'week') {
+        const dow = today.getDay(); // 0=Sun, 1=Mon
+        const monday = new Date(today);
+        monday.setDate(today.getDate() - ((dow + 6) % 7));
+        startRange = monday;
+        endRange = new Date(monday); endRange.setDate(monday.getDate() + 6);
+    } else if (dateFilter === 'month') {
+        startRange = new Date(today.getFullYear(), today.getMonth(), 1);
+        endRange = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    }
+    document.querySelectorAll('.board-col').forEach(col => {
+        let visible = 0;
+        col.querySelectorAll('.task-card').forEach(card => {
+            let show = true;
+            if (statusFilter && card.dataset.status !== statusFilter) show = false;
+            if (show && startRange) {
+                const ds = card.dataset.startDate;
+                if (!ds) { show = false; }
+                else {
+                    const d = new Date(ds + 'T00:00:00');
+                    if (d < startRange || d > endRange) show = false;
+                }
+            }
+            card.style.display = show ? '' : 'none';
+            if (show) visible++;
+        });
+        const countEl = col.querySelector('.col-count');
+        if (countEl) countEl.textContent = visible;
+    });
+}
+// Restore last view preference (default = calendar)
+try {
+    const saved = localStorage.getItem('planner-view');
+    if (saved === 'board') setView('board');
+} catch(e) {}
+
+// ── Calendar rendering ─────────────────────────────────────────
+const _tasks = JSON.parse(document.getElementById('planner-tasks').textContent || '[]');
+let _calView = new Date(); _calView.setDate(1);
+
+function _ymd(d) {
+    const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+    return `${y}-${m}-${day}`;
+}
+function _parseDate(s) {
+    if (!s) return null;
+    const [y,m,d] = s.split('-').map(Number);
+    return new Date(y, m-1, d);
+}
+
+function calMove(delta) {
+    _calView.setMonth(_calView.getMonth() + delta);
+    renderCalendar();
+}
+function calToday() { _calView = new Date(); _calView.setDate(1); renderCalendar(); }
+
+function renderCalendar() {
+    const monthNames = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+    document.getElementById('cal-title').textContent = `${monthNames[_calView.getMonth()]} ${_calView.getFullYear()}`;
+
+    const first = new Date(_calView.getFullYear(), _calView.getMonth(), 1);
+    // Monday-first week: offset so Mon=0..Sun=6
+    const offset = (first.getDay() + 6) % 7;
+    const start = new Date(first);
+    start.setDate(first.getDate() - offset);
+
+    const todayStr = _ymd(new Date());
+    const thisMonth = _calView.getMonth();
+
+    // Bucket tasks by each day they span
+    const byDay = {};
+    for (const t of _tasks) {
+        const s = _parseDate(t.start_date) || _parseDate(t.end_date);
+        const e = _parseDate(t.end_date)   || _parseDate(t.start_date);
+        if (!s) continue;
+        const cur = new Date(s);
+        while (cur <= e) {
+            const k = _ymd(cur);
+            (byDay[k] = byDay[k] || []).push(t);
+            cur.setDate(cur.getDate() + 1);
+        }
+    }
+
+    const grid = document.getElementById('cal-grid');
+    grid.innerHTML = '';
+    for (let i = 0; i < 42; i++) {
+        const d = new Date(start); d.setDate(start.getDate() + i);
+        const k = _ymd(d);
+        const day = document.createElement('div');
+        day.className = 'cal-day' + (d.getMonth() !== thisMonth ? ' other-month' : '') + (k === todayStr ? ' today' : '');
+        day.dataset.date = k;
+        day.onclick = (ev) => { if (ev.target === day || ev.target.classList.contains('cal-day-num')) openCreateOnDate(k); };
+
+        const num = document.createElement('div');
+        num.className = 'cal-day-num';
+        num.textContent = d.getDate();
+        day.appendChild(num);
+
+        const tasks = (byDay[k] || []).slice(0, 4);
+        for (const t of tasks) {
+            const el = document.createElement('div');
+            const coCls = t.company ? `co-${t.company}` : '';
+            el.className = `cal-task prio-${t.priority} ${coCls} status-${t.status}`.trim();
+            const timeLabel = t.start_time ? `${t.start_time}${t.end_time ? '–'+t.end_time : ''} ` : '';
+            el.textContent = timeLabel + t.title;
+            el.title = `${t.title}${t.company_display ? ' · ' + t.company_display : ''}${t.project_name ? ' · ' + t.project_name : ''}${t.start_time ? ' · ' + t.start_time + (t.end_time ? '–'+t.end_time : '') : ''} — ${t.priority}`;
+            el.onclick = (ev) => {
+                ev.stopPropagation();
+                openEdit(t.id, t.title, t.description || '', t.status, t.priority, t.project_name || '', t.start_date || '', t.end_date || '', t.company || '', t.start_time || '', t.end_time || '');
+            };
+            day.appendChild(el);
+        }
+        const extra = (byDay[k] || []).length - tasks.length;
+        if (extra > 0) {
+            const more = document.createElement('div');
+            more.className = 'cal-more';
+            more.textContent = `+${extra} more`;
+            more.onclick = (ev) => { ev.stopPropagation(); openDayList(k, byDay[k] || []); };
+            day.appendChild(more);
+        }
+        grid.appendChild(day);
+    }
+}
+
+// ── Day-list popup (when a calendar cell has +N more) ────────
+function openDayList(dateStr, tasks) {
+    const modal = document.getElementById('day-list-modal');
+    const body = document.getElementById('day-list-body');
+    const title = document.getElementById('day-list-title');
+    const d = new Date(dateStr + 'T00:00:00');
+    title.textContent = d.toLocaleDateString(undefined, {weekday:'long', month:'long', day:'numeric', year:'numeric'});
+    body.innerHTML = '';
+    for (const t of tasks) {
+        const row = document.createElement('div');
+        const coCls = t.company ? `co-${t.company}` : '';
+        row.className = `cal-task prio-${t.priority} ${coCls} status-${t.status}`.trim();
+        row.style.margin = '6px 0';
+        row.style.padding = '8px 10px';
+        row.style.fontSize = '13px';
+        const timeLabel = t.start_time ? `${t.start_time}${t.end_time ? '–'+t.end_time : ''} ` : '';
+        row.textContent = timeLabel + t.title;
+        row.onclick = () => {
+            closeDayList();
+            openEdit(t.id, t.title, t.description || '', t.status, t.priority, t.project_name || '', t.start_date || '', t.end_date || '', t.company || '', t.start_time || '', t.end_time || '');
+        };
+        body.appendChild(row);
+    }
+    modal.classList.add('open');
+}
+function closeDayList() {
+    document.getElementById('day-list-modal').classList.remove('open');
+}
+document.getElementById('day-list-modal').addEventListener('click', function(e) {
+    if (e.target === this) closeDayList();
+});
+
+function openCreateOnDate(k) {
+    openCreate();
+    document.getElementById('modal-start').value = k;
+    document.getElementById('modal-end').value = k;
+}
+
+renderCalendar();
+</script>
+{% endblock %}

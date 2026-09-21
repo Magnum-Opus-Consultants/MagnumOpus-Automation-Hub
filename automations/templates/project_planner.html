@@ -1,0 +1,1208 @@
+{% extends 'base.html' %}
+
+{% block title %}Project Planner - MOC Automations{% endblock %}
+
+{% block extra_styles %}
+/* Banner */
+.page-banner {
+    background: #054B70;
+    border-radius: 8px;
+    padding: 28px 36px 24px;
+    margin-bottom: 0;
+    position: relative;
+    overflow: hidden;
+}
+.page-banner::before {
+    content: ''; position: absolute; top: -80px; right: -60px;
+    width: 260px; height: 260px; border-radius: 50%;
+    background: rgba(148,188,204,0.12); pointer-events: none;
+}
+.page-banner::after {
+    content: ''; position: absolute; bottom: -60px; left: 240px;
+    width: 180px; height: 180px; border-radius: 50%;
+    background: rgba(148,188,204,0.08); pointer-events: none;
+}
+.banner-eyebrow { font-size:10px; font-weight:600; color:rgba(255,255,255,0.5); letter-spacing:1.8px; text-transform:uppercase; margin-bottom:6px; position:relative; z-index:1; }
+.banner-title { font-size:26px; font-weight:700; color:#fff; margin-bottom:4px; position:relative; z-index:1; }
+.banner-subtitle { font-size:13px; color:rgba(255,255,255,0.55); margin-bottom:22px; position:relative; z-index:1; }
+.banner-bottom { display:flex; align-items:flex-end; justify-content:space-between; flex-wrap:wrap; gap:16px; position:relative; z-index:1; }
+.banner-stats { display:flex; gap:36px; flex-wrap:wrap; }
+.banner-stat { border-top:2px solid rgba(148,188,204,0.35); padding-top:10px; min-width:60px; }
+.banner-stat-num { font-size:26px; font-weight:700; color:#fff; line-height:1; }
+.banner-stat-label { font-size:10px; font-weight:600; color:rgba(255,255,255,0.45); text-transform:uppercase; letter-spacing:0.8px; margin-top:3px; }
+.banner-actions { display:flex; gap:8px; align-items:center; }
+.btn-banner {
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s;
+    backdrop-filter: blur(4px);
+}
+.btn-banner:hover { background: rgba(255,255,255,0.25); }
+
+/* Tab nav */
+.tab-nav {
+    display: flex;
+    gap: 0;
+    background: #fff;
+    border-bottom: 1px solid #edebe9;
+    margin-bottom: 20px;
+    padding: 0 4px;
+}
+.tab-btn {
+    padding: 12px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #605e5c;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-family: inherit;
+    transition: color 0.15s, border-color 0.15s;
+    margin-bottom: -1px;
+}
+.tab-btn:hover { color: #054B70; }
+.tab-btn.active { color: #054B70; border-bottom-color: #054B70; }
+
+/* ──────── KANBAN ──────── */
+.kanban-board {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    overflow-x: auto;
+    padding-bottom: 8px;
+}
+.kanban-col {
+    flex: 0 0 220px;
+    background: #f3f2f1;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - 320px);
+}
+.col-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px 10px;
+    flex-shrink: 0;
+}
+.col-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:#605e5c; }
+.col-count { background:#edebe9; color:#605e5c; font-size:11px; font-weight:600; border-radius:10px; padding:1px 7px; min-width:20px; text-align:center; }
+.col-body { padding:0 8px; flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:8px; }
+.col-body::-webkit-scrollbar { width:4px; }
+.col-body::-webkit-scrollbar-track { background:transparent; }
+.col-body::-webkit-scrollbar-thumb { background:#c8c6c4; border-radius:2px; }
+.kanban-col.drag-over { background:#e8f0f5; }
+.kanban-col.drag-over .col-body { outline:2px dashed #94BCCC; border-radius:6px; outline-offset:-4px; }
+.task-card { background:#fff; border:1px solid #edebe9; border-radius:6px; padding:10px 12px; cursor:grab; position:relative; transition:box-shadow 0.15s, border-color 0.15s; user-select:none; }
+.task-card:hover { border-color:#c7e0f4; box-shadow:0 2px 8px rgba(5,75,112,0.08); }
+.task-card.dragging { opacity:0.4; cursor:grabbing; }
+.task-priority-bar { position:absolute; left:0; top:0; bottom:0; width:3px; border-radius:6px 0 0 6px; }
+.task-priority-bar.critical { background:#d13438; }
+.task-priority-bar.high     { background:#ca5010; }
+.task-priority-bar.medium   { background:#054B70; }
+.task-priority-bar.low      { background:#c8c6c4; }
+.task-title { font-size:13px; font-weight:500; color:#1b1a19; line-height:1.4; margin-left:8px; margin-right:18px; word-break:break-word; }
+.task-desc { font-size:11px; color:#a19f9d; margin:4px 0 0 8px; line-height:1.4; overflow:hidden; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; }
+.task-footer { display:flex; align-items:center; justify-content:space-between; margin-top:8px; margin-left:8px; }
+.task-date { font-size:10px; color:#c8c6c4; }
+.task-priority-badge { font-size:10px; font-weight:600; padding:1px 6px; border-radius:10px; text-transform:capitalize; }
+.task-priority-badge.critical { background:#fde7e9; color:#d13438; }
+.task-priority-badge.high     { background:#fdf1e6; color:#ca5010; }
+.task-priority-badge.medium   { background:#edf4f8; color:#054B70; }
+.task-priority-badge.low      { background:#f3f2f1; color:#a19f9d; }
+.task-delete { position:absolute; top:6px; right:6px; width:18px; height:18px; background:none; border:none; cursor:pointer; color:#c8c6c4; font-size:14px; line-height:1; border-radius:3px; display:flex; align-items:center; justify-content:center; opacity:0; transition:opacity 0.1s, color 0.1s; padding:0; }
+.task-card:hover .task-delete { opacity:1; }
+.task-delete:hover { color:#d13438; }
+.add-task-btn { margin:8px; padding:8px 12px; background:none; border:1px dashed #c8c6c4; border-radius:6px; color:#a19f9d; font-size:12px; font-family:inherit; cursor:pointer; text-align:left; width:calc(100% - 16px); flex-shrink:0; transition:border-color 0.15s, color 0.15s, background 0.15s; }
+.add-task-btn:hover { border-color:#054B70; color:#054B70; background:#edf4f8; }
+.task-card { cursor: default; }
+.task-title-clickable { cursor: pointer; }
+.task-title-clickable:hover { color: #054B70; }
+
+/* ──────── GANTT ──────── */
+.gantt-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 10px;
+}
+.btn-goto-today {
+    background: #3b82f6;
+    color: #fff;
+    border: none;
+    padding: 7px 16px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.btn-goto-today:hover { background: #2563eb; }
+
+/* Two-panel container */
+.gantt-container {
+    display: flex;
+    border: 1px solid #334155;
+    border-radius: 8px;
+    overflow: hidden;
+    background: #0f172a;
+    height: calc(100vh - 400px);
+    min-height: 420px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+}
+
+/* Left: task name panel */
+.gantt-task-panel {
+    width: 520px;
+    min-width: 520px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid #334155;
+    overflow: hidden;
+    background: #1e293b;
+}
+.gantt-task-header {
+    height: 44px;
+    background: #0f172a;
+    display: flex;
+    align-items: center;
+    padding: 0 14px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    flex-shrink: 0;
+    border-bottom: 1px solid #334155;
+    gap: 8px;
+}
+.gantt-task-body { flex:1; overflow-y:auto; overflow-x:hidden; background:#1e293b; }
+.gantt-task-body::-webkit-scrollbar { width:6px; }
+.gantt-task-body::-webkit-scrollbar-track { background:#0f172a; border-radius:4px; }
+.gantt-task-body::-webkit-scrollbar-thumb { background:#475569; border-radius:4px; border:1px solid #0f172a; }
+.gantt-task-body::-webkit-scrollbar-thumb:hover { background:#64748b; }
+
+/* Right: timeline panel */
+.gantt-timeline-panel { flex:1; min-width:0; display:flex; flex-direction:column; overflow:hidden; background:#0f172a; }
+.gantt-header-wrapper { flex-shrink:0; overflow:hidden; height:44px; border-bottom:1px solid #334155; background:#0f172a; }
+.gantt-header-inner { display:flex; height:100%; will-change:transform; }
+.gantt-month-cell {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-right: 1px solid #334155;
+    white-space: nowrap;
+    background: #0f172a;
+}
+.gantt-body {
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: auto;
+    position: relative;
+    background: #0f172a;
+}
+.gantt-body::-webkit-scrollbar { width:8px; height:8px; }
+.gantt-body::-webkit-scrollbar-track { background:#0f172a; border-radius:4px; }
+.gantt-body::-webkit-scrollbar-thumb { background:linear-gradient(135deg,#475569,#64748b); border-radius:4px; border:1px solid #0f172a; }
+.gantt-body::-webkit-scrollbar-thumb:hover { background:linear-gradient(135deg,#64748b,#94a3b8); }
+
+/* Task rows (left panel) — default height for levels 1/2 */
+.gantt-task-row {
+    height: 48px;
+    display: flex;
+    align-items: center;
+    padding: 0 8px 0 6px;
+    border-bottom: 1px solid #1e3358;
+    cursor: pointer;
+    user-select: none;
+    box-sizing: border-box;
+    transition: background 0.15s;
+}
+.gantt-task-row:hover { background: #263548; }
+
+/* Timeline rows (right panel) */
+.gantt-tl-row {
+    height: 48px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid #1e3358;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    transition: background 0.15s;
+}
+.gantt-tl-row:hover { background: #182438; }
+.gantt-grid-cell { flex-shrink:0; height:100%; border-right:1px solid #1e2d3d; box-sizing:border-box; }
+
+/* Expand/collapse button */
+.gantt-expand-btn {
+    width: 18px; height: 18px;
+    border: 1px solid #475569;
+    border-radius: 3px;
+    background: #334155;
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-right: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.1s, border-color 0.1s;
+    font-family: monospace;
+}
+.gantt-expand-btn:hover { background: #475569; border-color: #64748b; color: #e2e8f0; }
+
+/* Task name label */
+.gantt-task-label {
+    font-size: 12px;
+    color: #cbd5e1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* Priority dot */
+.gantt-priority-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.gantt-priority-dot.critical { background:#ef4444; box-shadow:0 0 5px rgba(239,68,68,0.5); }
+.gantt-priority-dot.high     { background:#f97316; }
+.gantt-priority-dot.medium   { background:#3b82f6; }
+.gantt-priority-dot.low      { background:#475569; }
+
+/* Status badge */
+.gantt-status-badge {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 10px;
+    flex-shrink: 0;
+    text-transform: capitalize;
+    letter-spacing: 0.2px;
+    white-space: nowrap;
+}
+.gantt-status-badge.not-started { background:#292524; color:#a8a29e; }
+.gantt-status-badge.in-progress { background:#78350f; color:#fde68a; }
+.gantt-status-badge.review      { background:#3b0764; color:#d8b4fe; }
+.gantt-status-badge.completed   { background:#14532d; color:#86efac; }
+.gantt-status-badge.backlog     { background:#1e293b; color:#64748b; border:1px solid #334155; }
+
+/* Progress bar */
+.gantt-progress-wrap { display:flex; align-items:center; gap:6px; }
+.gantt-progress-track { flex:1; height:5px; background:#334155; border-radius:3px; overflow:hidden; min-width:60px; }
+.gantt-progress-fill { height:100%; border-radius:3px; background:#3b82f6; transition:width 0.5s ease; }
+.gantt-progress-fill.high-pct { background:#22c55e; }
+.gantt-progress-fill.mid-pct  { background:#f59e0b; }
+.gantt-progress-pct { font-size:10px; color:#64748b; font-weight:600; min-width:28px; text-align:right; flex-shrink:0; }
+
+/* Bars */
+.gantt-bar {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    height: 26px;
+    border-radius: 5px;
+    cursor: pointer;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 11px;
+    font-weight: 600;
+    color: rgba(255,255,255,0.9);
+    transition: filter 0.15s, box-shadow 0.15s, border-color 0.15s;
+    min-width: 8px;
+    box-sizing: border-box;
+    border: 2px solid transparent;
+}
+.gantt-bar:hover { filter:brightness(1.12); box-shadow:0 4px 16px rgba(0,0,0,0.4); border-color:#38bdf8; }
+.gantt-bar.not-started { background:#374151; color:#9ca3af; }
+.gantt-bar.in-progress { background:linear-gradient(90deg,#b45309,#d97706); }
+.gantt-bar.in-progress:hover { box-shadow:0 4px 16px rgba(245,158,11,0.4); }
+.gantt-bar.completed   { background:linear-gradient(90deg,#15803d,#16a34a); }
+.gantt-bar.completed:hover { box-shadow:0 4px 16px rgba(34,197,94,0.4); }
+
+/* Outside-bar label (shown when bar is too narrow for inner text) */
+.gantt-bar-label-out {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 10px;
+    font-weight: 600;
+    color: #94a3b8;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 4;
+    padding-left: 4px;
+}
+
+/* Today line */
+.gantt-today-line {
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 2px;
+    background: linear-gradient(180deg,#38bdf8,rgba(59,130,246,0.3));
+    z-index: 10;
+    pointer-events: none;
+}
+
+/* Empty state */
+.gantt-empty { padding:48px 24px; text-align:center; color:#475569; font-size:14px; }
+.gantt-empty-icon { font-size:36px; margin-bottom:12px; }
+
+/* ── Level-0: Project row ── */
+.gantt-task-row.level-0 {
+    background: #0f172a;
+    height: 76px;
+    padding: 0 6px;
+    align-items: center;
+    border-bottom: 2px solid #334155;
+    cursor: default;
+}
+.gantt-task-row.level-0:hover { background: #14213d; }
+.gantt-tl-row.level-0-row { background:#0f172a; height:76px; border-bottom:2px solid #334155; }
+.gantt-tl-row.level-0-row:hover { background:#14213d; }
+
+/* Level-1: Task row */
+.gantt-task-row.level-1 { background:#1e293b; height:44px; }
+.gantt-task-row.level-1:hover { background:#243449; }
+.gantt-tl-row.level-1-row { background:#1e293b; height:44px; }
+.gantt-tl-row.level-1-row:hover { background:#243449; }
+
+/* Level-2: Subtask row */
+.gantt-task-row.level-2 { background:#162032; height:38px; }
+.gantt-task-row.level-2:hover { background:#1c2a3e; }
+.gantt-tl-row.level-2-row { background:#162032; height:38px; }
+.gantt-tl-row.level-2-row:hover { background:#1c2a3e; }
+
+/* Label variants */
+.gantt-task-label.level-0-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: #f1f5f9;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    white-space: normal;
+    overflow: visible;
+    padding: 6px 0;
+}
+.gantt-task-label.level-1-label { padding-left:4px; font-weight:500; color:#cbd5e1; font-size:12px; justify-content:space-between; white-space:nowrap; overflow:hidden; align-items:center; }
+.gantt-task-label.level-2-label { font-size:11px; color:#94a3b8; padding-left:18px; justify-content:space-between; white-space:nowrap; overflow:hidden; align-items:center; }
+
+/* Project name row inside level-0 label */
+.gantt-proj-name-row { display:flex; align-items:center; gap:6px; width:100%; }
+.gantt-proj-name { font-size:13px; font-weight:700; color:#f1f5f9; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; min-width:0; }
+.gantt-proj-meta { font-size:10px; color:#64748b; display:flex; gap:10px; width:100%; }
+
+/* Bar variants */
+.gantt-bar.summary-bar { height:26px; border-radius:5px; opacity:0.9; min-width:fit-content; }
+.gantt-bar.summary-bar:hover { filter:brightness(1.12); box-shadow:0 2px 8px rgba(0,0,0,0.3); }
+.gantt-bar.task-bar    { height:26px; min-width:fit-content; }
+.gantt-bar.subtask-bar { height:26px; min-width:fit-content; }
+
+/* ──────── MODAL ──────── */
+.modal-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.35); z-index:1000; align-items:center; justify-content:center; }
+.modal-overlay.open { display:flex; }
+.modal-box { background:#fff; border-radius:8px; padding:28px; width:460px; max-width:calc(100vw - 40px); box-shadow:0 8px 40px rgba(0,0,0,0.18); }
+.modal-title { font-size:16px; font-weight:700; color:#1b1a19; margin-bottom:20px; }
+.modal-field { margin-bottom:14px; }
+.modal-row { display:flex; gap:12px; }
+.modal-row .modal-field { flex:1; margin-bottom:14px; }
+.modal-label { display:block; font-size:11px; font-weight:600; color:#605e5c; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; }
+.modal-input, .modal-textarea, .modal-select { width:100%; padding:10px 12px; font-size:13px; font-family:inherit; border:1.5px solid #edebe9; border-radius:6px; outline:none; color:#1b1a19; background:#fff; transition:border-color 0.15s; box-sizing:border-box; }
+.modal-input:focus, .modal-textarea:focus, .modal-select:focus { border-color:#054B70; box-shadow:0 0 0 3px rgba(5,75,112,0.08); }
+.modal-textarea { resize:vertical; min-height:72px; }
+.modal-actions { display:flex; gap:8px; justify-content:flex-end; margin-top:20px; }
+.btn-primary { background:#054B70; color:#fff; border:none; padding:9px 20px; border-radius:6px; font-size:13px; font-weight:600; font-family:inherit; cursor:pointer; transition:background 0.15s; }
+.btn-primary:hover { background:#043a58; }
+.btn-cancel { background:#f3f2f1; color:#323130; border:none; padding:9px 16px; border-radius:6px; font-size:13px; font-family:inherit; cursor:pointer; transition:background 0.15s; }
+.btn-cancel:hover { background:#edebe9; }
+{% endblock %}
+
+{% block content %}
+<!-- Banner -->
+<div class="page-banner">
+    <div class="banner-eyebrow">MOC Automations</div>
+    <div class="banner-title">Project Planner</div>
+    <div class="banner-subtitle">Track tasks and milestones across your development workflow</div>
+    <div class="banner-bottom">
+        <div class="banner-stats">
+            <div class="banner-stat">
+                <div class="banner-stat-num" id="stat-total">{{ total }}</div>
+                <div class="banner-stat-label">Total tasks</div>
+            </div>
+            <div class="banner-stat">
+                <div class="banner-stat-num" id="stat-inprogress">{{ in_progress }}</div>
+                <div class="banner-stat-label">In progress</div>
+            </div>
+            <div class="banner-stat">
+                <div class="banner-stat-num" id="stat-done">{{ done }}</div>
+                <div class="banner-stat-label">Completed</div>
+            </div>
+        </div>
+        <div class="banner-actions">
+            <button class="btn-banner" onclick="openAdd('todo')">+ Add Task</button>
+        </div>
+    </div>
+</div>
+
+<!-- Tab nav -->
+<div class="tab-nav">
+    <button class="tab-btn active" id="tab-kanban" onclick="switchTab('kanban')">&#9776; Kanban</button>
+    <button class="tab-btn" id="tab-gantt" onclick="switchTab('gantt')">&#9776; Gantt</button>
+</div>
+
+<!-- ── Kanban view ── -->
+<div id="view-kanban">
+    <div class="kanban-board" id="kanban-board">
+        {% for col in columns %}
+        <div class="kanban-col" id="col-{{ col.key }}" data-status="{{ col.key }}"
+             ondragover="onDragOver(event)" ondragleave="onDragLeave(event)" ondrop="onDrop(event)">
+            <div class="col-header">
+                <span class="col-title">{{ col.label }}</span>
+                <span class="col-count" id="count-{{ col.key }}">{{ col.tasks|length }}</span>
+            </div>
+            <div class="col-body" id="tasks-{{ col.key }}">
+                {% for task in col.tasks %}
+                <div class="task-card" id="task-{{ task.id }}" draggable="true"
+                     data-id="{{ task.id }}" data-status="{{ col.key }}"
+                     ondragstart="onDragStart(event)">
+                    <div class="task-priority-bar {{ task.priority }}"></div>
+                    <button class="task-delete" title="Delete" onclick="deleteTask({{ task.id }}, event)">×</button>
+                    <div class="task-title task-title-clickable"
+                         onclick="openEdit({{ task.id }}, '{{ task.title|escapejs }}', '{{ task.description|escapejs }}', '{{ task.priority }}', '{{ col.key }}', '{{ task.start_date|default:'' }}', '{{ task.end_date|default:'' }}')">{{ task.title }}</div>
+                    {% if task.description %}
+                    <div class="task-desc">{{ task.description }}</div>
+                    {% endif %}
+                    <div class="task-footer">
+                        <span class="task-date">{{ task.created_at }}</span>
+                        <span class="task-priority-badge {{ task.priority }}">{{ task.priority }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <button class="add-task-btn" onclick="openAdd('{{ col.key }}')">+ Add task</button>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
+<!-- ── Gantt view ── -->
+<div id="view-gantt" style="display:none;">
+    <div class="gantt-container">
+        <!-- Left: task names -->
+        <div class="gantt-task-panel">
+            <div class="gantt-task-header">
+                <span>Task</span>
+                <button class="btn-goto-today" onclick="scrollToToday()" style="margin-left:auto;">&#8594; Today</button>
+            </div>
+            <div class="gantt-task-body" id="gantt-task-body"></div>
+        </div>
+        <!-- Right: timeline -->
+        <div class="gantt-timeline-panel">
+            <div class="gantt-header-wrapper">
+                <div class="gantt-header-inner" id="gantt-header-inner"></div>
+            </div>
+            <div class="gantt-body" id="gantt-body"></div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Add Task Modal ── -->
+<div class="modal-overlay" id="addModal">
+    <div class="modal-box">
+        <div class="modal-title">New Task</div>
+        <input type="hidden" id="addStatus" value="todo">
+        <div class="modal-field">
+            <label class="modal-label">Title *</label>
+            <input type="text" class="modal-input" id="addTitle" placeholder="What needs to be done?">
+        </div>
+        <div class="modal-field">
+            <label class="modal-label">Description</label>
+            <textarea class="modal-textarea" id="addDesc" placeholder="Optional details..."></textarea>
+        </div>
+        <div class="modal-row">
+            <div class="modal-field">
+                <label class="modal-label">Status</label>
+                <select class="modal-select" id="addStatusSel">
+                    <option value="backlog">Backlog</option>
+                    <option value="todo" selected>Not Started</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="review">Review</option>
+                    <option value="done">Completed</option>
+                </select>
+            </div>
+            <div class="modal-field">
+                <label class="modal-label">Priority</label>
+                <select class="modal-select" id="addPriority">
+                    <option value="low">Low</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                </select>
+            </div>
+        </div>
+        <div class="modal-row">
+            <div class="modal-field">
+                <label class="modal-label">Start Date</label>
+                <input type="date" class="modal-input" id="addStartDate">
+            </div>
+            <div class="modal-field">
+                <label class="modal-label">End Date</label>
+                <input type="date" class="modal-input" id="addEndDate">
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="closeModal('addModal')">Cancel</button>
+            <button class="btn-primary" onclick="submitAdd()">Add Task</button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Edit Task Modal ── -->
+<div class="modal-overlay" id="editModal">
+    <div class="modal-box">
+        <div class="modal-title">Edit Task</div>
+        <input type="hidden" id="editId">
+        <div class="modal-field">
+            <label class="modal-label">Title *</label>
+            <input type="text" class="modal-input" id="editTitle">
+        </div>
+        <div class="modal-field">
+            <label class="modal-label">Description</label>
+            <textarea class="modal-textarea" id="editDesc"></textarea>
+        </div>
+        <div class="modal-row">
+            <div class="modal-field">
+                <label class="modal-label">Status</label>
+                <select class="modal-select" id="editStatus">
+                    <option value="backlog">Backlog</option>
+                    <option value="todo">Not Started</option>
+                    <option value="in_progress">In Progress</option>
+                    <option value="review">Review</option>
+                    <option value="done">Completed</option>
+                </select>
+            </div>
+            <div class="modal-field">
+                <label class="modal-label">Priority</label>
+                <select class="modal-select" id="editPriority">
+                    <option value="low">Low</option>
+                    <option value="medium">Medium</option>
+                    <option value="high">High</option>
+                    <option value="critical">Critical</option>
+                </select>
+            </div>
+        </div>
+        <div class="modal-row">
+            <div class="modal-field">
+                <label class="modal-label">Start Date</label>
+                <input type="date" class="modal-input" id="editStartDate">
+            </div>
+            <div class="modal-field">
+                <label class="modal-label">End Date</label>
+                <input type="date" class="modal-input" id="editEndDate">
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="closeModal('editModal')">Cancel</button>
+            <button class="btn-primary" onclick="submitEdit()">Save</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var draggedId = null;
+var csrf = document.cookie.match('(^|;) ?csrftoken=([^;]*)')[2];
+
+/* ────────────────────────────────────────────
+   TAB SWITCHING
+──────────────────────────────────────────── */
+function switchTab(tab) {
+    document.getElementById('view-kanban').style.display = tab === 'kanban' ? '' : 'none';
+    document.getElementById('view-gantt').style.display  = tab === 'gantt'  ? '' : 'none';
+    document.getElementById('tab-kanban').classList.toggle('active', tab === 'kanban');
+    document.getElementById('tab-gantt').classList.toggle('active', tab === 'gantt');
+    if (tab === 'gantt') renderGantt();
+}
+
+/* ────────────────────────────────────────────
+   KANBAN — Drag & drop
+──────────────────────────────────────────── */
+function onDragStart(e) {
+    draggedId = e.currentTarget.dataset.id;
+    setTimeout(function() { e.currentTarget.classList.add('dragging'); }, 0);
+}
+function onDragOver(e) { e.preventDefault(); e.currentTarget.classList.add('drag-over'); }
+function onDragLeave(e) { e.currentTarget.classList.remove('drag-over'); }
+function onDrop(e) {
+    e.preventDefault();
+    var col = e.currentTarget;
+    col.classList.remove('drag-over');
+    var newStatus = col.dataset.status;
+    if (!draggedId) return;
+    var card = document.getElementById('task-' + draggedId);
+    if (card) {
+        card.classList.remove('dragging');
+        document.getElementById('tasks-' + newStatus).appendChild(card);
+        card.dataset.status = newStatus;
+        updateCounts();
+    }
+    fetch('/planner/task/' + draggedId + '/update/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+    });
+    draggedId = null;
+}
+document.addEventListener('dragend', function() {
+    document.querySelectorAll('.task-card').forEach(function(c) { c.classList.remove('dragging'); });
+});
+
+/* ────────────────────────────────────────────
+   KANBAN — Counts & stats
+──────────────────────────────────────────── */
+function updateCounts() {
+    var total = 0, inProgress = 0, done = 0;
+    ['backlog','todo','in_progress','review','done'].forEach(function(s) {
+        var body = document.getElementById('tasks-' + s);
+        if (!body) return;
+        var n = body.children.length;
+        var el = document.getElementById('count-' + s);
+        if (el) el.textContent = n;
+        total += n;
+        if (s === 'in_progress') inProgress = n;
+        if (s === 'done') done = n;
+    });
+    document.getElementById('stat-total').textContent = total;
+    document.getElementById('stat-inprogress').textContent = inProgress;
+    document.getElementById('stat-done').textContent = done;
+}
+
+/* ────────────────────────────────────────────
+   ADD TASK
+──────────────────────────────────────────── */
+function openAdd(status) {
+    document.getElementById('addStatus').value = status;
+    document.getElementById('addStatusSel').value = status;
+    document.getElementById('addTitle').value = '';
+    document.getElementById('addDesc').value = '';
+    document.getElementById('addPriority').value = 'medium';
+    document.getElementById('addStartDate').value = '';
+    document.getElementById('addEndDate').value = '';
+    document.getElementById('addModal').classList.add('open');
+    setTimeout(function() { document.getElementById('addTitle').focus(); }, 50);
+}
+
+function submitAdd() {
+    var title = document.getElementById('addTitle').value.trim();
+    if (!title) { document.getElementById('addTitle').focus(); return; }
+    var form = new FormData();
+    form.append('csrfmiddlewaretoken', csrf);
+    form.append('title', title);
+    form.append('description', document.getElementById('addDesc').value.trim());
+    form.append('status', document.getElementById('addStatusSel').value);
+    form.append('priority', document.getElementById('addPriority').value);
+    form.append('start_date', document.getElementById('addStartDate').value);
+    form.append('end_date', document.getElementById('addEndDate').value);
+    fetch('/planner/', { method: 'POST', body: form })
+        .then(function(r) { return r.json(); })
+        .then(function() { closeModal('addModal'); location.reload(); });
+}
+
+/* ────────────────────────────────────────────
+   EDIT TASK
+──────────────────────────────────────────── */
+function openEdit(id, title, desc, priority, status, startDate, endDate) {
+    document.getElementById('editId').value = id;
+    document.getElementById('editTitle').value = title;
+    document.getElementById('editDesc').value = desc;
+    document.getElementById('editPriority').value = priority;
+    document.getElementById('editStatus').value = status;
+    document.getElementById('editStartDate').value = startDate || '';
+    document.getElementById('editEndDate').value = endDate || '';
+    document.getElementById('editModal').classList.add('open');
+    setTimeout(function() { document.getElementById('editTitle').focus(); }, 50);
+}
+
+function submitEdit() {
+    var id    = document.getElementById('editId').value;
+    var title = document.getElementById('editTitle').value.trim();
+    if (!title) { document.getElementById('editTitle').focus(); return; }
+    fetch('/planner/task/' + id + '/update/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            title: title,
+            description: document.getElementById('editDesc').value.trim(),
+            priority: document.getElementById('editPriority').value,
+            status: document.getElementById('editStatus').value,
+            start_date: document.getElementById('editStartDate').value || null,
+            end_date:   document.getElementById('editEndDate').value || null
+        })
+    }).then(function() { closeModal('editModal'); location.reload(); });
+}
+
+/* ────────────────────────────────────────────
+   DELETE TASK
+──────────────────────────────────────────── */
+function deleteTask(id, e) {
+    e.stopPropagation();
+    var card = document.getElementById('task-' + id);
+    if (card) card.style.opacity = '0.3';
+    fetch('/planner/task/' + id + '/delete/', {
+        method: 'POST', headers: { 'X-CSRFToken': csrf }
+    }).then(function() { if (card) card.remove(); updateCounts(); });
+}
+
+/* ────────────────────────────────────────────
+   MODAL HELPERS
+──────────────────────────────────────────── */
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(function(overlay) {
+    overlay.addEventListener('click', function(e) { if (e.target === overlay) overlay.classList.remove('open'); });
+});
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-overlay.open').forEach(function(m) { m.classList.remove('open'); });
+    }
+    if (e.key === 'Enter' && e.ctrlKey) {
+        if (document.getElementById('addModal').classList.contains('open')) submitAdd();
+        if (document.getElementById('editModal').classList.contains('open')) submitEdit();
+    }
+});
+
+/* ────────────────────────────────────────────
+   GANTT CHART  (3-level: project → task → subtask)
+──────────────────────────────────────────── */
+var MONTH_PX     = 140;
+var ganttState   = {};
+var ganttCache   = [];   // array of project objects
+var collapsedMap = {};   // { 'proj_N': bool, 'task_ID': bool }
+
+function ganttStatusCls(status) {
+    if (status === 'done')                               return 'completed';
+    if (status === 'in_progress' || status === 'review') return 'in-progress';
+    return 'not-started';
+}
+function calcProgress(proj) {
+    var total = 0, done = 0;
+    (proj.tasks || []).forEach(function(t) {
+        total++;
+        if (t.status === 'done') done++;
+        (t.subtasks || []).forEach(function(s) {
+            total++;
+            if (s.status === 'done') done++;
+        });
+    });
+    return total === 0 ? 0 : Math.round((done / total) * 100);
+}
+function statusBadgeCls(status) {
+    if (status === 'done')        return 'completed';
+    if (status === 'in_progress') return 'in-progress';
+    if (status === 'review')      return 'review';
+    if (status === 'backlog')     return 'backlog';
+    return 'not-started';
+}
+function statusLabelText(status) {
+    var map = { backlog:'Backlog', todo:'Not Started', in_progress:'In Progress', review:'Review', done:'Done' };
+    return map[status] || status;
+}
+function progressFillCls(pct) {
+    if (pct >= 80) return 'high-pct';
+    if (pct >= 40) return 'mid-pct';
+    return '';
+}
+function monthStart(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+function fmtMonth(d) {
+    return d.toLocaleString('default', { month: 'short' }) + " '" + String(d.getFullYear()).slice(2);
+}
+function stripPrefix(title) { return String(title).replace(/^\[[^\]]+\]\s*/, ''); }
+
+function renderGantt() {
+    console.log('[Gantt] renderGantt() called — fetching /planner/api/');
+    fetch('/planner/api/')
+        .then(function(r) {
+            console.log('[Gantt] API response status:', r.status, r.statusText);
+            return r.json();
+        })
+        .then(function(data) {
+            console.log('[Gantt] Raw API data:', data);
+            console.log('[Gantt] Projects count:', (data.projects || []).length);
+            ganttCache = data.projects || [];
+            buildGantt(ganttCache);
+        })
+        .catch(function(err) {
+            console.error('[Gantt] API fetch error:', err);
+        });
+}
+
+function buildGantt(projects) {
+    console.log('[Gantt] buildGantt() called with', projects.length, 'project(s)');
+    console.log('[Gantt] Full projects payload:', JSON.parse(JSON.stringify(projects)));
+
+    var today = new Date(); today.setHours(0,0,0,0);
+    console.log('[Gantt] Today:', today.toISOString().slice(0,10));
+
+    // Collect all dates for range
+    var allDates = [today];
+    projects.forEach(function(p) {
+        console.log('[Gantt] Project "' + p.name + '" — start:', p.start_date, 'end:', p.end_date,
+                    '| tasks:', (p.tasks||[]).length, '| status:', p.status);
+        if (p.start_date) allDates.push(new Date(p.start_date + 'T00:00:00'));
+        if (p.end_date)   allDates.push(new Date(p.end_date   + 'T00:00:00'));
+        (p.tasks || []).forEach(function(t) {
+            console.log('  [Gantt]   Task #' + t.id + ' "' + t.title + '" — start:', t.start_date,
+                        'end:', t.end_date, '| status:', t.status, '| priority:', t.priority,
+                        '| subtasks:', (t.subtasks||[]).length);
+            if (t.start_date) allDates.push(new Date(t.start_date + 'T00:00:00'));
+            if (t.end_date)   allDates.push(new Date(t.end_date   + 'T00:00:00'));
+            (t.subtasks || []).forEach(function(s) {
+                console.log('    [Gantt]     Subtask #' + s.id + ' "' + s.title + '" — start:', s.start_date,
+                            'end:', s.end_date, '| status:', s.status, '| priority:', s.priority);
+                if (s.start_date) allDates.push(new Date(s.start_date + 'T00:00:00'));
+                if (s.end_date)   allDates.push(new Date(s.end_date   + 'T00:00:00'));
+            });
+        });
+    });
+
+    var rangeStart = monthStart(new Date(Math.min.apply(null, allDates)));
+    var rangeEnd   = new Date(Math.max.apply(null, allDates));
+    rangeEnd = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth() + 1, 0);
+    rangeStart.setMonth(rangeStart.getMonth() - 3);
+    rangeEnd.setMonth(rangeEnd.getMonth() + 3);
+    rangeEnd = new Date(rangeEnd.getFullYear(), rangeEnd.getMonth() + 1, 0);
+
+    var months = [];
+    var cur = new Date(rangeStart);
+    while (cur <= rangeEnd) { months.push(new Date(cur)); cur.setMonth(cur.getMonth() + 1); }
+
+    var totalDays  = (rangeEnd - rangeStart) / 86400000 + 1;
+    var totalWidth = months.length * MONTH_PX;
+    var pxPerDay   = totalWidth / totalDays;
+
+    console.log('[Gantt] Date range:', rangeStart.toISOString().slice(0,10), '→', rangeEnd.toISOString().slice(0,10));
+    console.log('[Gantt] Months:', months.length, '| totalWidth:', totalWidth + 'px', '| pxPerDay:', pxPerDay.toFixed(2));
+
+    ganttState = { rangeStart: rangeStart, pxPerDay: pxPerDay };
+
+    function toPx(dateStr) {
+        var d = new Date(dateStr + 'T00:00:00');
+        if (d < rangeStart) { console.warn('[Gantt] toPx: date', dateStr, 'is before rangeStart — clamping'); d = new Date(rangeStart); }
+        if (d > rangeEnd)   { console.warn('[Gantt] toPx: date', dateStr, 'is after rangeEnd — clamping');   d = new Date(rangeEnd);   }
+        return ((d - rangeStart) / 86400000) * pxPerDay;
+    }
+    function barW(s, e) {
+        var sd = new Date(s + 'T00:00:00'), ed = new Date(e + 'T00:00:00');
+        if (sd < rangeStart) sd = new Date(rangeStart);
+        if (ed > rangeEnd)   ed = new Date(rangeEnd);
+        var w = Math.max(((ed - sd) / 86400000 + 1) * pxPerDay, 6);
+        if (w <= 6) console.warn('[Gantt] barW: very narrow bar (', w.toFixed(1), 'px) for', s, '→', e);
+        return w;
+    }
+    function gridCells() {
+        var h = '';
+        months.forEach(function() { h += '<div class="gantt-grid-cell" style="width:' + MONTH_PX + 'px;"></div>'; });
+        return h;
+    }
+
+    // Month header
+    var hHtml = '';
+    months.forEach(function(m) {
+        hHtml += '<div class="gantt-month-cell" style="width:' + MONTH_PX + 'px;">' + fmtMonth(m) + '</div>';
+    });
+    var hi = document.getElementById('gantt-header-inner');
+    hi.innerHTML = hHtml;
+    hi.style.width = totalWidth + 'px';
+
+    var taskHtml = '';
+    var tlWrap   = '<div style="position:relative;min-width:' + totalWidth + 'px;">';
+
+    // Today line
+    var todayPx = ((today - rangeStart) / 86400000) * pxPerDay;
+    console.log('[Gantt] Today line at:', todayPx.toFixed(1) + 'px');
+    if (today >= rangeStart && today <= rangeEnd) {
+        tlWrap += '<div class="gantt-today-line" style="left:' + todayPx.toFixed(1) + 'px;"></div>';
+    } else {
+        console.warn('[Gantt] Today is outside the date range — today line not shown');
+    }
+
+    if (!projects || projects.length === 0) {
+        console.warn('[Gantt] No projects to render — showing empty state');
+        taskHtml = '<div class="gantt-empty"><div class="gantt-empty-icon">📅</div>No projects yet. Add tasks with dates to see them here.</div>';
+    } else {
+        projects.forEach(function(proj, projIdx) {
+            var projCollapsed = !!collapsedMap['proj_' + projIdx];
+            var projStatusCls = ganttStatusCls(proj.status);
+            var projPct      = calcProgress(proj);
+            var projBadgeCls = statusBadgeCls(proj.status || 'todo');
+            var projBadgeLbl = statusLabelText(proj.status || 'todo');
+            var projFillCls  = progressFillCls(projPct);
+
+            console.log('[Gantt] Rendering project [' + projIdx + '] "' + proj.name + '"',
+                        '| progress:', projPct + '%', '| badge:', projBadgeLbl,
+                        '| collapsed:', projCollapsed);
+
+            var projDates    = (proj.start_date && proj.end_date)
+                ? '&#128197; ' + proj.start_date.slice(0,7).replace('-','/') + ' &#8211; ' + proj.end_date.slice(0,7).replace('-','/')
+                : '';
+            if (!proj.start_date || !proj.end_date) {
+                console.warn('[Gantt] Project "' + proj.name + '" missing start_date or end_date — no summary bar');
+            }
+
+            taskHtml += '<div class="gantt-task-row level-0">';
+            taskHtml += '<button class="gantt-expand-btn" style="align-self:flex-start;margin-top:6px;" onclick="toggleProject(event,' + projIdx + ')">'
+                      + (projCollapsed ? '+' : '&minus;') + '</button>';
+            taskHtml += '<div class="gantt-task-label level-0-label">'
+                      + '<div class="gantt-proj-name-row">'
+                      +   '<span class="gantt-proj-name">' + escHtml(proj.name) + '</span>'
+                      +   '<span class="gantt-status-badge ' + projBadgeCls + '">' + projBadgeLbl + '</span>'
+                      + '</div>'
+                      + (projDates ? '<div class="gantt-proj-meta"><span>' + projDates + '</span></div>' : '')
+                      + '<div class="gantt-progress-wrap" style="width:100%;max-width:450px;">'
+                      +   '<div class="gantt-progress-track"><div class="gantt-progress-fill ' + projFillCls + '" style="width:' + projPct + '%;"></div></div>'
+                      +   '<span class="gantt-progress-pct">' + projPct + '%</span>'
+                      + '</div>'
+                      + '</div>';
+            taskHtml += '</div>';
+
+            // Level-0 timeline row (right panel)
+            tlWrap += '<div class="gantt-tl-row level-0-row" style="width:' + totalWidth + 'px;">';
+            tlWrap += gridCells();
+            if (proj.start_date && proj.end_date) {
+                var plx = toPx(proj.start_date).toFixed(1);
+                var pbw = barW(proj.start_date, proj.end_date).toFixed(1);
+                console.log('[Gantt]   Project bar: left=' + plx + 'px, width=' + pbw + 'px');
+                tlWrap += '<div class="gantt-bar summary-bar ' + projStatusCls + '"'
+                        + ' style="left:' + plx + 'px;width:' + pbw + 'px;"'
+                        + ' title="' + escHtml(proj.name) + ': ' + proj.start_date + ' → ' + proj.end_date + '">'
+                        + (parseFloat(pbw) > 70 ? escHtml(proj.name) : '')
+                        + '</div>';
+            }
+            tlWrap += '</div>';
+
+            // ── Level-1: Task rows
+            (proj.tasks || []).forEach(function(task) {
+                var hasSubtasks  = task.subtasks && task.subtasks.length > 0;
+                var taskCollapsed = !!collapsedMap['task_' + task.id];
+                var taskStatusCls = ganttStatusCls(task.status);
+                var hideTask = projCollapsed ? 'display:none;' : '';
+
+                console.log('[Gantt]   Task #' + task.id + ' "' + stripPrefix(task.title) + '"',
+                            '| start:', task.start_date, 'end:', task.end_date,
+                            '| hasSubtasks:', hasSubtasks, '| hidden:', !!projCollapsed);
+
+                if (!task.start_date || !task.end_date) {
+                    console.warn('[Gantt]   Task #' + task.id + ' "' + task.title + '" has NO dates — bar will be skipped');
+                }
+
+                // Level-1 left panel
+                taskHtml += '<div class="gantt-task-row level-1" data-level="1" data-proj="' + projIdx + '"'
+                          + ' style="' + hideTask + '" onclick="openEditGantt(' + task.id + ')">';
+                if (hasSubtasks) {
+                    taskHtml += '<button class="gantt-expand-btn" onclick="toggleTask(event,' + task.id + ',' + projIdx + ')">'
+                              + (taskCollapsed ? '+' : '&minus;') + '</button>';
+                } else {
+                    taskHtml += '<span style="width:22px;flex-shrink:0;display:inline-block;"></span>';
+                }
+                var taskBadgeCls = statusBadgeCls(task.status);
+                var taskBadgeLbl = statusLabelText(task.status);
+                taskHtml += '<div class="gantt-task-label level-1-label">'
+                          + '<span class="gantt-priority-dot ' + task.priority + '"></span>'
+                          + '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">' + escHtml(stripPrefix(task.title)) + '</span>'
+                          + '<span class="gantt-status-badge ' + taskBadgeCls + '" style="margin-left:4px;">' + taskBadgeLbl + '</span>'
+                          + '</div></div>';
+
+                // Level-1 right panel
+                tlWrap += '<div class="gantt-tl-row level-1-row" data-level="1" data-proj="' + projIdx + '"'
+                        + ' style="width:' + totalWidth + 'px;' + hideTask + '">';
+                tlWrap += gridCells();
+                if (task.start_date && task.end_date) {
+                    var tlx = toPx(task.start_date).toFixed(1);
+                    var tbw = barW(task.start_date, task.end_date).toFixed(1);
+                    console.log('[Gantt]   Task bar: left=' + tlx + 'px, width=' + tbw + 'px');
+                    tlWrap += '<div class="gantt-bar task-bar ' + taskStatusCls + '"'
+                            + ' style="left:' + tlx + 'px;width:' + tbw + 'px;"'
+                            + ' title="' + escHtml(task.title) + ': ' + task.start_date + ' → ' + task.end_date + '"'
+                            + ' onclick="event.stopPropagation();openEditGantt(' + task.id + ')">'
+                            + escHtml(stripPrefix(task.title))
+                            + '</div>';
+                }
+                tlWrap += '</div>';
+
+                // ── Level-2: Subtask rows
+                (task.subtasks || []).forEach(function(sub) {
+                    var subStatusCls = ganttStatusCls(sub.status);
+                    var hideSub = (projCollapsed || taskCollapsed) ? 'display:none;' : '';
+
+                    console.log('[Gantt]     Subtask #' + sub.id + ' "' + sub.title + '"',
+                                '| start:', sub.start_date, 'end:', sub.end_date,
+                                '| status:', sub.status, '| hidden:', !!(projCollapsed || taskCollapsed));
+
+                    if (!sub.start_date || !sub.end_date) {
+                        console.warn('[Gantt]     Subtask #' + sub.id + ' "' + sub.title + '" has NO dates — bar will be skipped');
+                    }
+
+                    // Level-2 left panel
+                    var subBadgeCls = statusBadgeCls(sub.status);
+                    var subBadgeLbl = statusLabelText(sub.status);
+                    taskHtml += '<div class="gantt-task-row level-2" data-level="2"'
+                              + ' data-proj="' + projIdx + '" data-task="' + task.id + '"'
+                              + ' style="' + hideSub + '" onclick="openEditGantt(' + sub.id + ')">'
+                              + '<span style="width:22px;flex-shrink:0;display:inline-block;"></span>'
+                              + '<div class="gantt-task-label level-2-label">'
+                              + '<span class="gantt-priority-dot ' + sub.priority + '"></span>'
+                              + '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;">' + escHtml(sub.title) + '</span>'
+                              + '<span class="gantt-status-badge ' + subBadgeCls + '" style="margin-left:4px;">' + subBadgeLbl + '</span>'
+                              + '</div></div>';
+
+                    // Level-2 right panel
+                    tlWrap += '<div class="gantt-tl-row level-2-row" data-level="2"'
+                            + ' data-proj="' + projIdx + '" data-task="' + task.id + '"'
+                            + ' style="width:' + totalWidth + 'px;' + hideSub + '">';
+                    tlWrap += gridCells();
+                    if (sub.start_date && sub.end_date) {
+                        var slx = toPx(sub.start_date).toFixed(1);
+                        var sbw = barW(sub.start_date, sub.end_date).toFixed(1);
+                        console.log('[Gantt]     Subtask bar: left=' + slx + 'px, width=' + sbw + 'px');
+                        tlWrap += '<div class="gantt-bar subtask-bar ' + subStatusCls + '"'
+                                + ' style="left:' + slx + 'px;width:' + sbw + 'px;"'
+                                + ' title="' + escHtml(sub.title) + ': ' + sub.start_date + ' → ' + sub.end_date + '"'
+                                + ' onclick="event.stopPropagation();openEditGantt(' + sub.id + ')">'
+                                + escHtml(sub.title)
+                                + '</div>';
+                    }
+                    tlWrap += '</div>';
+                });
+            });
+        });
+    }
+
+    tlWrap += '</div>';
+    document.getElementById('gantt-task-body').innerHTML = taskHtml;
+    document.getElementById('gantt-body').innerHTML = tlWrap;
+    console.log('[Gantt] DOM written — task rows in left panel:', document.getElementById('gantt-task-body').children.length);
+    console.log('[Gantt] DOM written — tl rows in right panel (inside wrapper):', document.getElementById('gantt-body').querySelectorAll('.gantt-tl-row').length);
+
+    // Synchronized scrolling
+    var body        = document.getElementById('gantt-body');
+    var taskBody    = document.getElementById('gantt-task-body');
+    var headerInner = document.getElementById('gantt-header-inner');
+    var syncing     = false;
+
+    body.addEventListener('scroll', function() {
+        headerInner.style.transform = 'translateX(-' + body.scrollLeft + 'px)';
+        if (!syncing) { syncing = true; taskBody.scrollTop = body.scrollTop; syncing = false; }
+    });
+    taskBody.addEventListener('scroll', function() {
+        if (!syncing) { syncing = true; body.scrollTop = taskBody.scrollTop; syncing = false; }
+    });
+
+    console.log('[Gantt] Build complete. scrollToToday scheduled in 80ms.');
+    setTimeout(scrollToToday, 80);
+
+}
+
+function scrollToToday() {
+    var body = document.getElementById('gantt-body');
+    var headerInner = document.getElementById('gantt-header-inner');
+    if (!body || !ganttState.pxPerDay) return;
+    var today = new Date(); today.setHours(0,0,0,0);
+    var todayPx = ((today - ganttState.rangeStart) / 86400000) * ganttState.pxPerDay;
+    var scrollPos = Math.max(0, todayPx - body.clientWidth / 3);
+    requestAnimationFrame(function() {
+        body.scrollLeft = scrollPos;
+        if (headerInner) headerInner.style.transform = 'translateX(-' + body.scrollLeft + 'px)';
+    });
+}
+
+function toggleProject(e, projIdx) {
+    e.stopPropagation();
+    var key = 'proj_' + projIdx;
+    collapsedMap[key] = !collapsedMap[key];
+    var collapsed = collapsedMap[key];
+    e.currentTarget.innerHTML = collapsed ? '+' : '&minus;';
+
+    if (collapsed) {
+        // Hide all children (level-1 and level-2) under this project
+        document.querySelectorAll(
+            '#gantt-task-body [data-proj="' + projIdx + '"], #gantt-body [data-proj="' + projIdx + '"]'
+        ).forEach(function(el) { el.style.display = 'none'; });
+    } else {
+        // Show level-1 rows
+        document.querySelectorAll(
+            '#gantt-task-body [data-proj="' + projIdx + '"][data-level="1"], #gantt-body [data-proj="' + projIdx + '"][data-level="1"]'
+        ).forEach(function(el) { el.style.display = ''; });
+        // Show level-2 rows only if their task is not collapsed
+        document.querySelectorAll(
+            '#gantt-task-body [data-proj="' + projIdx + '"][data-level="2"], #gantt-body [data-proj="' + projIdx + '"][data-level="2"]'
+        ).forEach(function(el) {
+            var taskId = el.dataset.task;
+            if (!collapsedMap['task_' + taskId]) el.style.display = '';
+        });
+    }
+}
+
+function toggleTask(e, taskId, projIdx) {
+    e.stopPropagation();
+    var key = 'task_' + taskId;
+    collapsedMap[key] = !collapsedMap[key];
+    var collapsed = collapsedMap[key];
+    e.currentTarget.innerHTML = collapsed ? '+' : '&minus;';
+
+    document.querySelectorAll(
+        '#gantt-task-body [data-task="' + taskId + '"], #gantt-body [data-task="' + taskId + '"]'
+    ).forEach(function(el) { el.style.display = collapsed ? 'none' : ''; });
+}
+
+function openEditGantt(id) {
+    var found = null;
+    (ganttCache || []).forEach(function(proj) {
+        (proj.tasks || []).forEach(function(t) {
+            if (t.id === id) found = t;
+            (t.subtasks || []).forEach(function(s) { if (s.id === id) found = s; });
+        });
+    });
+    if (found) {
+        openEdit(found.id, found.title, found.description || '', found.priority, found.status,
+                 found.start_date || '', found.end_date || '');
+    }
+}
+
+function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function escJs(s) {
+    return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n');
+}
+</script>
+{% endblock %}

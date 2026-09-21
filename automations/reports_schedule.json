@@ -1,0 +1,15 @@
+{
+  "_comment": "Recurring report tasks. The scheduler creates ProjectTask entries for today's reports each morning. Edit the schedule below to change the routine.",
+  "project_name": "Weekly Reports",
+  "priority": "high",
+  "company": "magnum_opus",
+  "default_time": "15:00",
+  "default_end_time": "17:00",
+  "schedule": {
+    "monday":    ["ICS Report", "External Report", "RTU Report", "CCC Report", "K9 Report"],
+    "tuesday":   ["ICS Report", "External Report", "RTU Report", "CCC Report"],
+    "wednesday": ["ICS Report", "External Report", "RTU Report", "CCC Report", "K9 Report"],
+    "thursday":  ["ICS Report", "External Report", "RTU Report", "CCC Report"],
+    "friday":    ["ICS Report", "External Report", "RTU Report", "CCC Report", "K9 Report"]
+  }
+}

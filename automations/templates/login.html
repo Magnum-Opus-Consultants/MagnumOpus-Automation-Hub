@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - MOC Automations</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="/static/favicon-192.png">
+    <link rel="apple-touch-icon" href="/static/favicon-192.png">
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            background: #f0f4f8;
+        }
+
+        /* Left panel */
+        .left-panel {
+            width: 45%;
+            background: #054B70;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 60px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .left-panel::before {
+            content: '';
+            position: absolute;
+            top: -120px;
+            right: -80px;
+            width: 400px;
+            height: 400px;
+            border-radius: 50%;
+            background: rgba(148, 188, 204, 0.15);
+        }
+
+        .left-panel::after {
+            content: '';
+            position: absolute;
+            bottom: -100px;
+            left: -60px;
+            width: 300px;
+            height: 300px;
+            border-radius: 50%;
+            background: rgba(148, 188, 204, 0.1);
+        }
+
+        .brand {
+            position: relative;
+            z-index: 1;
+        }
+
+        .brand-logo {
+            width: 52px;
+            height: 52px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 32px;
+            backdrop-filter: blur(4px);
+        }
+
+        .brand-logo svg {
+            width: 28px;
+            height: 28px;
+            fill: #fff;
+        }
+
+        .brand-name {
+            font-size: 13px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.6);
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            margin-bottom: 16px;
+        }
+
+        .brand-tagline {
+            font-size: 32px;
+            font-weight: 700;
+            color: #fff;
+            line-height: 1.3;
+            margin-bottom: 20px;
+        }
+
+        .brand-tagline span {
+            color: #94BCCC;
+        }
+
+        .brand-desc {
+            font-size: 14px;
+            color: rgba(255,255,255,0.6);
+            line-height: 1.7;
+            max-width: 320px;
+        }
+
+        .stats-row {
+            display: flex;
+            gap: 32px;
+            margin-top: 48px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .stat {
+            border-top: 2px solid rgba(148,188,204,0.4);
+            padding-top: 12px;
+        }
+
+        .stat-num {
+            font-size: 24px;
+            font-weight: 700;
+            color: #fff;
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: rgba(255,255,255,0.5);
+            margin-top: 2px;
+        }
+
+        /* Right panel */
+        .right-panel {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 40px;
+        }
+
+        .login-box {
+            width: 100%;
+            max-width: 380px;
+        }
+
+        .login-greeting {
+            font-size: 13px;
+            color: #605e5c;
+            margin-bottom: 6px;
+        }
+
+        .login-title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1b1a19;
+            margin-bottom: 32px;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: #605e5c;
+            letter-spacing: 0.5px;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px 16px;
+            font-size: 14px;
+            font-family: inherit;
+            border: 1.5px solid #e1dfdd;
+            border-radius: 6px;
+            outline: none;
+            background: #fff;
+            color: #1b1a19;
+            transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        .form-input:focus {
+            border-color: #054B70;
+            box-shadow: 0 0 0 3px rgba(5, 75, 112, 0.1);
+        }
+
+        .form-input::placeholder {
+            color: #c8c6c4;
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 13px;
+            background: #054B70;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: background 0.15s ease, transform 0.1s ease;
+            letter-spacing: 0.3px;
+        }
+
+        .btn-login:hover {
+            background: #043a58;
+        }
+
+        .btn-login:active {
+            transform: scale(0.99);
+        }
+
+        .error-message {
+            background: #fde7e9;
+            border-left: 3px solid #d13438;
+            color: #a4262c;
+            padding: 12px 16px;
+            border-radius: 4px;
+            font-size: 13px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .error-message::before {
+            content: '⚠';
+            font-size: 15px;
+        }
+
+        .divider {
+            height: 1px;
+            background: #edebe9;
+            margin: 28px 0;
+        }
+
+        .footer-text {
+            font-size: 12px;
+            color: #a19f9d;
+            text-align: center;
+        }
+
+        @media (max-width: 768px) {
+            .left-panel { display: none; }
+            .right-panel { padding: 32px 24px; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Left branding panel -->
+    <div class="left-panel">
+        <div class="brand">
+            <div class="brand-logo">
+                <svg viewBox="0 0 24 24"><path d="M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z"/></svg>
+            </div>
+            <div class="brand-name">MOC Automations</div>
+            <div class="brand-tagline">Data synced.<br><span>Always.</span></div>
+            <div class="brand-desc">Real-time OneDrive sync and Power BI integration for all stations. One platform, every report.</div>
+        </div>
+        <div class="stats-row">
+            <div class="stat">
+                <div class="stat-num">18</div>
+                <div class="stat-label">Stations</div>
+            </div>
+            <div class="stat">
+                <div class="stat-num">1hr</div>
+                <div class="stat-label">Sync cycle</div>
+            </div>
+            <div class="stat">
+                <div class="stat-num">24/7</div>
+                <div class="stat-label">Uptime</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right login panel -->
+    <div class="right-panel">
+        <div class="login-box">
+            <div class="login-greeting">Welcome back</div>
+            <h1 class="login-title">Sign in to continue</h1>
+
+            {% if error %}
+            <div class="error-message">{{ error }}</div>
+            {% endif %}
+
+            <form method="post">
+                {% csrf_token %}
+                <div class="form-group">
+                    <label class="form-label" for="username">Username</label>
+                    <input type="text" id="username" name="username" class="form-input" placeholder="Enter your username" required autofocus>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="password">Password</label>
+                    <input type="password" id="password" name="password" class="form-input" placeholder="Enter your password" required>
+                </div>
+                <button type="submit" class="btn-login">Sign in</button>
+            </form>
+
+            <div class="divider"></div>
+            <div class="footer-text">MOC Automations &mdash; Magnum Opus Consultants</div>
+        </div>
+    </div>
+</body>
+</html>

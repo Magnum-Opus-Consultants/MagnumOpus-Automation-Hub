@@ -1,0 +1,749 @@
+{% extends "base.html" %}
+
+{% block title %}Email Templates — Automations{% endblock %}
+
+{% block extra_styles %}
+.page-banner {
+    background: linear-gradient(135deg, #054B70 0%, #0a7ab5 100%);
+    border-radius: 12px;
+    padding: 28px 32px;
+    margin-bottom: 24px;
+    color: #fff;
+}
+.banner-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(255,255,255,0.55); margin-bottom: 4px; }
+.banner-title { font-size: 22px; font-weight: 700; }
+.banner-subtitle { font-size: 13px; color: rgba(255,255,255,0.65); margin-top: 2px; }
+
+/* Page sub-navigation tabs */
+.page-nav-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: 20px;
+    border-bottom: 2px solid var(--border);
+}
+.page-nav-tab {
+    padding: 10px 24px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    transition: all 0.15s;
+}
+.page-nav-tab:hover { color: var(--text-primary); }
+.page-nav-tab.active { color: #054B70; border-bottom-color: #054B70; }
+[data-theme="dark"] .page-nav-tab.active { color: #6cb4d8; border-bottom-color: #6cb4d8; }
+
+/* Tabs */
+.tp-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+}
+.tp-tab {
+    padding: 10px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    white-space: nowrap;
+    transition: all 0.15s;
+    background: none;
+}
+.tp-tab:hover { color: var(--text-primary); }
+.tp-tab.active { color: #054B70; border-bottom-color: #054B70; }
+[data-theme="dark"] .tp-tab.active { color: #6cb4d8; border-bottom-color: #6cb4d8; }
+
+/* Editor card */
+.editor-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+}
+.editor-row { margin-bottom: 18px; }
+.editor-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 6px; }
+.editor-input {
+    width: 100%; padding: 10px 14px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 14px; background: var(--surface); color: var(--text-primary); box-sizing: border-box;
+}
+.editor-input:focus { outline: none; border-color: #054B70; }
+.editor-textarea {
+    width: 100%; min-height: 220px; padding: 14px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 14px; font-family: inherit; line-height: 1.6; background: var(--surface);
+    color: var(--text-primary); resize: vertical; box-sizing: border-box;
+}
+.editor-textarea:focus { outline: none; border-color: #054B70; }
+.sig-textarea {
+    width: 100%; min-height: 100px; padding: 14px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 13px; font-family: inherit; line-height: 1.5; background: var(--surface);
+    color: var(--text-primary); resize: vertical; box-sizing: border-box;
+}
+.sig-textarea:focus { outline: none; border-color: #054B70; }
+
+/* Attachment area */
+.attach-area {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.attach-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border: 1px dashed var(--border); border-radius: 6px;
+    background: var(--surface); color: var(--text-secondary); cursor: pointer;
+    font-size: 13px; transition: all 0.15s;
+}
+.attach-btn:hover { border-color: #054B70; color: #054B70; }
+.attach-btn svg { width: 16px; height: 16px; fill: currentColor; }
+.attach-file {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 12px; background: rgba(5,75,112,0.06); border-radius: 6px;
+    font-size: 13px; color: var(--text-primary);
+}
+.attach-file a { color: #054B70; text-decoration: none; font-weight: 500; }
+.attach-file a:hover { text-decoration: underline; }
+.attach-remove {
+    background: none; border: none; cursor: pointer; color: #c0392b;
+    font-size: 16px; line-height: 1; padding: 0 2px;
+}
+[data-theme="dark"] .attach-file { background: rgba(108,180,216,0.1); }
+[data-theme="dark"] .attach-file a { color: #6cb4d8; }
+
+/* Footer */
+.editor-footer {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 20px; flex-wrap: wrap; gap: 12px;
+}
+.days-input-wrap {
+    display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary);
+}
+.days-input {
+    width: 60px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 5px;
+    font-size: 13px; background: var(--surface); color: var(--text-primary); text-align: center;
+    -moz-appearance: textfield;
+}
+.days-input::-webkit-outer-spin-button,
+.days-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.days-input:focus { outline: none; border-color: #054B70; }
+.save-btn {
+    padding: 10px 28px; background: #054B70; color: #fff; border: none; border-radius: 6px;
+    font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s;
+}
+.save-btn:hover { background: #03334e; }
+.save-btn:disabled { opacity: 0.5; cursor: default; }
+.test-send-btn {
+    padding: 10px 22px; background: #e67e22; color: #fff; border: none; border-radius: 6px;
+    font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.15s;
+}
+.test-send-btn:hover { background: #cf6d17; }
+.test-send-btn:disabled { opacity: 0.5; cursor: default; }
+.save-status { font-size: 12px; color: #1e7e34; opacity: 0; transition: opacity 0.3s; }
+.save-status.show { opacity: 1; }
+
+/* Schedule section */
+.schedule-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 24px;
+    margin-bottom: 24px;
+}
+.schedule-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 4px;
+}
+.schedule-subtitle {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 18px;
+}
+.schedule-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+}
+.schedule-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    background: var(--surface2, #f8f9fa);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+}
+[data-theme="dark"] .schedule-row { background: rgba(255,255,255,0.03); }
+.schedule-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-primary);
+    min-width: 40px;
+}
+.schedule-date {
+    flex: 1;
+    padding: 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    font-size: 13px;
+    background: var(--surface);
+    color: var(--text-primary);
+}
+.schedule-date:focus { outline: none; border-color: #054B70; }
+.schedule-set-btn {
+    padding: 7px 14px;
+    background: #054B70;
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.schedule-set-btn:hover { background: #03334e; }
+.schedule-set-btn:disabled { opacity: 0.5; cursor: default; }
+.schedule-clear-btn {
+    padding: 7px 10px;
+    background: none;
+    color: #c0392b;
+    border: 1px solid #c0392b;
+    border-radius: 5px;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+.schedule-clear-btn:hover { background: rgba(192,57,43,0.08); }
+.schedule-status {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+}
+.schedule-status.set { color: #1e7e34; }
+
+/* Variables hint */
+.variables-hint {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 18px; margin-bottom: 18px;
+}
+.variables-hint-title { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 8px; }
+.variables-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.var-tag {
+    display: inline-block; padding: 3px 10px; background: rgba(5,75,112,0.08); border-radius: 4px;
+    font-family: monospace; font-size: 12px; color: #054B70; cursor: pointer;
+}
+.var-tag:hover { background: rgba(5,75,112,0.16); }
+[data-theme="dark"] .var-tag { background: rgba(108,180,216,0.12); color: #6cb4d8; }
+[data-theme="dark"] .var-tag:hover { background: rgba(108,180,216,0.22); }
+
+/* HTML code editor */
+.html-textarea {
+    width: 100%; min-height: 280px; padding: 14px; border: 1px solid var(--border); border-radius: 6px;
+    font-size: 13px; font-family: 'Consolas', 'Monaco', 'Courier New', monospace; line-height: 1.5;
+    background: var(--surface); color: var(--text-primary); resize: vertical; box-sizing: border-box;
+    tab-size: 2; white-space: pre-wrap;
+}
+.html-textarea:focus { outline: none; border-color: #054B70; }
+[data-theme="dark"] .html-textarea { background: #1a1a2e; color: #e0e0e0; }
+.html-preview-btn {
+    padding: 6px 16px; border: 1px solid var(--border); border-radius: 6px;
+    background: var(--surface); color: var(--text-secondary); cursor: pointer;
+    font-size: 12px; font-weight: 600; transition: all 0.15s; white-space: nowrap;
+}
+.html-preview-btn:hover { border-color: #054B70; color: #054B70; }
+{% endblock %}
+
+{% block content %}
+<div class="page-nav-tabs">
+    <a href="{% url 'useu_list' %}" class="page-nav-tab">US-EU List</a>
+    <a href="{% url 'email_templates' %}" class="page-nav-tab active">Email Templates</a>
+    <a href="{% url 'reporting' %}" class="page-nav-tab">Reporting</a>
+</div>
+
+<div class="page-banner">
+    <div class="banner-eyebrow">Configuration</div>
+    <div class="banner-title">Email Templates</div>
+    <div class="banner-subtitle">Configure the email content, signature, and attachment for each touchpoint (1–10)</div>
+</div>
+
+<div class="tp-tabs" id="tpTabs"></div>
+
+<div class="variables-hint">
+    <div class="variables-hint-title">Available Variables (click to insert into the last focused editor)</div>
+    <div class="variables-list">
+        <span class="var-tag" onclick="insertVar('{% templatetag openvariable %}org_name{% templatetag closevariable %}')">{% templatetag openvariable %}org_name{% templatetag closevariable %}</span>
+        <span class="var-tag" onclick="insertVar('{% templatetag openvariable %}contact_name{% templatetag closevariable %}')">{% templatetag openvariable %}contact_name{% templatetag closevariable %}</span>
+        <span class="var-tag" onclick="insertVar('{% templatetag openvariable %}email{% templatetag closevariable %}')">{% templatetag openvariable %}email{% templatetag closevariable %}</span>
+        <span class="var-tag" onclick="insertVar('{% templatetag openvariable %}phone{% templatetag closevariable %}')">{% templatetag openvariable %}phone{% templatetag closevariable %}</span>
+    </div>
+</div>
+
+<div class="editor-card">
+    <div class="editor-row">
+        <div class="editor-label">Subject Line</div>
+        <input type="text" class="editor-input" id="tpSubject" placeholder="Enter email subject...">
+    </div>
+    <div class="editor-row">
+        <div class="editor-label">Email Body (Plain Text Fallback)</div>
+        <textarea class="editor-textarea" id="tpBody" placeholder="Write your email content here..."></textarea>
+    </div>
+    <div class="editor-row">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <div class="editor-label" style="margin-bottom:0;">HTML Body (paste your HTML code here — this is the actual email that gets sent)</div>
+            <button type="button" class="html-preview-btn" id="previewHtmlBtn" onclick="previewHtml()">Preview</button>
+        </div>
+        <textarea class="html-textarea" id="tpBodyHtml" placeholder="Paste your HTML email code here...&#10;&#10;Example:&#10;&lt;div style=&quot;font-family: Arial; font-size: 14px;&quot;&gt;&#10;  &lt;p&gt;Hi {{contact_name}},&lt;/p&gt;&#10;  &lt;p&gt;Your email content...&lt;/p&gt;&#10;&lt;/div&gt;"></textarea>
+    </div>
+    <input type="hidden" id="tpSignature" value="">
+    <div class="editor-row">
+        <div class="editor-label">Signature Image (inline) <span style="font-weight:400;color:var(--text-secondary);">— referenced as <code>cid:signature_tpN</code> in HTML</span></div>
+        <div class="attach-area" id="sigImgArea">
+            <label class="attach-btn" id="sigImgBtn">
+                <svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+                Upload signature image
+                <input type="file" id="sigImgInput" accept="image/*" style="display:none">
+            </label>
+            <div class="attach-file" id="sigImgInfo" style="display:none">
+                <img id="sigImgPreview" src="" alt="" style="height:28px;vertical-align:middle;border:1px solid var(--border);border-radius:4px;margin-right:8px;">
+                <a id="sigImgLink" href="#" target="_blank">filename.png</a>
+                <button class="attach-remove" onclick="clearSignatureImage()" title="Remove signature image">&times;</button>
+            </div>
+        </div>
+    </div>
+    <div class="editor-row">
+        <div class="editor-label">Attachment</div>
+        <div class="attach-area" id="attachArea">
+            <label class="attach-btn" id="attachBtn">
+                <svg viewBox="0 0 24 24"><path d="M16.5 6v11.5c0 2.21-1.79 4-4 4s-4-1.79-4-4V5a2.5 2.5 0 0 1 5 0v10.5c0 .83-.67 1.5-1.5 1.5s-1.5-.67-1.5-1.5V6H9v9.5a3 3 0 0 0 6 0V5c0-2.21-1.79-4-4-4S7 2.79 7 5v12.5c0 3.04 2.46 5.5 5.5 5.5s5.5-2.46 5.5-5.5V6h-1.5z"/></svg>
+                Choose file
+                <input type="file" id="attachInput" style="display:none">
+            </label>
+            <div class="attach-file" id="attachInfo" style="display:none">
+                <a id="attachLink" href="#" target="_blank">filename.pdf</a>
+                <button class="attach-remove" onclick="clearAttachment()" title="Remove attachment">&times;</button>
+            </div>
+        </div>
+    </div>
+    <div class="editor-footer">
+        <div style="font-size:12px;color:var(--text-secondary);">Sends on its scheduled date (set per contact on the US-EU List page).</div>
+        <div style="display:flex;align-items:center;gap:12px;">
+            <span class="save-status" id="saveStatus">Saved &#10003;</span>
+            <button class="save-btn" id="saveBtn" onclick="saveTemplate()">Save Template</button>
+        </div>
+    </div>
+
+    <!-- Send Test Email section -->
+    <div style="margin-top:18px;padding:20px 24px;background:var(--surface);border:1px solid var(--border);border-radius:10px;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#e67e22" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <span style="font-size:15px;font-weight:700;color:var(--text-primary);">Send a Test Email</span>
+        </div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">
+            Enter the email addresses you'd like to send a test to. The email will be exactly as clients receive it, with sample variable values.
+        </div>
+        <div style="display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap;">
+            <input type="text" class="editor-input" id="testEmailAddresses" placeholder="e.g. waldo@moc-pty.com, louis@gmail.com" style="flex:1;min-width:260px;">
+            <button class="test-send-btn" id="testSendBtn" onclick="sendTestEmail()">Send Test</button>
+        </div>
+        <div id="testSendResult" style="margin-top:10px;font-size:12px;display:none;"></div>
+    </div>
+    <input type="hidden" id="tpDays" value="0">
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const CSRF = '{{ csrf_token }}';
+    const templates = {{ templates_json|safe }};
+    let activeTP = 1;
+    let pendingFile = null;
+    let clearAttach = false;
+    let pendingSigImg = null;
+    let clearSigImg = false;
+
+    const tabsEl = document.getElementById('tpTabs');
+    const subjectEl = document.getElementById('tpSubject');
+    const bodyEl = document.getElementById('tpBody');
+    const sigEl = document.getElementById('tpSignature');
+    const daysEl = document.getElementById('tpDays');
+    const daysWrap = null;
+    const saveBtnEl = document.getElementById('saveBtn');
+    const saveStatusEl = document.getElementById('saveStatus');
+    const attachInput = document.getElementById('attachInput');
+    const attachInfo = document.getElementById('attachInfo');
+    const attachLink = document.getElementById('attachLink');
+    const attachBtn = document.getElementById('attachBtn');
+    const bodyHtmlEl = document.getElementById('tpBodyHtml');
+    const sigImgInput = document.getElementById('sigImgInput');
+    const sigImgInfo = document.getElementById('sigImgInfo');
+    const sigImgLink = document.getElementById('sigImgLink');
+    const sigImgBtn = document.getElementById('sigImgBtn');
+    const sigImgPreview = document.getElementById('sigImgPreview');
+
+    function getTemplate(num) {
+        return templates.find(t => t.touchpoint_number === num) || {
+            touchpoint_number: num, subject: '', body: '', body_html: '', signature: '',
+            attachment_name: '', attachment_url: '', days_after_previous: 7
+        };
+    }
+
+    function renderTabs() {
+        let html = '';
+        for (let i = 1; i <= 10; i++) {
+            html += '<button class="tp-tab' + (i === activeTP ? ' active' : '') + '" onclick="switchTab(' + i + ')">TP ' + i + '</button>';
+        }
+        tabsEl.innerHTML = html;
+    }
+
+    function loadTemplate(num) {
+        const t = getTemplate(num);
+        subjectEl.value = t.subject || '';
+        bodyEl.value = t.body || '';
+        sigEl.value = t.signature || '';
+        if (daysEl) daysEl.value = t.days_after_previous || 7;
+        bodyHtmlEl.value = t.body_html || '';
+        pendingFile = null;
+        clearAttach = false;
+        attachInput.value = '';
+
+        if (t.attachment_name) {
+            attachInfo.style.display = '';
+            attachBtn.style.display = 'none';
+            attachLink.textContent = t.attachment_name;
+            attachLink.href = t.attachment_url || '#';
+        } else {
+            attachInfo.style.display = 'none';
+            attachBtn.style.display = '';
+        }
+        pendingSigImg = null;
+        clearSigImg = false;
+        if (sigImgInput) sigImgInput.value = '';
+        if (t.signature_image_name) {
+            sigImgInfo.style.display = '';
+            sigImgBtn.style.display = 'none';
+            sigImgLink.textContent = t.signature_image_name;
+            sigImgLink.href = t.signature_image_url || '#';
+            sigImgPreview.src = t.signature_image_url || '';
+        } else if (sigImgInfo) {
+            sigImgInfo.style.display = 'none';
+            sigImgBtn.style.display = '';
+            sigImgPreview.src = '';
+        }
+        saveStatusEl.classList.remove('show');
+    }
+
+    attachInput.addEventListener('change', function() {
+        if (this.files && this.files[0]) {
+            pendingFile = this.files[0];
+            clearAttach = false;
+            attachInfo.style.display = '';
+            attachBtn.style.display = 'none';
+            attachLink.textContent = pendingFile.name;
+            attachLink.href = '#';
+        }
+    });
+
+    window.clearAttachment = function() {
+        pendingFile = null;
+        clearAttach = true;
+        attachInput.value = '';
+        attachInfo.style.display = 'none';
+        attachBtn.style.display = '';
+    };
+
+    if (sigImgInput) sigImgInput.addEventListener('change', function() {
+        if (this.files && this.files[0]) {
+            pendingSigImg = this.files[0];
+            clearSigImg = false;
+            sigImgInfo.style.display = '';
+            sigImgBtn.style.display = 'none';
+            sigImgLink.textContent = pendingSigImg.name;
+            sigImgLink.href = '#';
+            const reader = new FileReader();
+            reader.onload = e => { sigImgPreview.src = e.target.result; };
+            reader.readAsDataURL(pendingSigImg);
+        }
+    });
+
+    window.clearSignatureImage = function() {
+        pendingSigImg = null;
+        clearSigImg = true;
+        if (sigImgInput) sigImgInput.value = '';
+        sigImgInfo.style.display = 'none';
+        sigImgBtn.style.display = '';
+        sigImgPreview.src = '';
+    };
+
+    window.previewHtml = function() {
+        const html = bodyHtmlEl.value;
+        if (!html.trim()) return;
+        const win = window.open('', '_blank');
+        win.document.write(html);
+        win.document.close();
+    };
+
+    window.switchTab = function(num) {
+        activeTP = num;
+        renderTabs();
+        loadTemplate(num);
+    };
+
+    let lastFocusedEditor = bodyHtmlEl;
+    bodyEl.addEventListener('focus', () => lastFocusedEditor = bodyEl);
+    bodyHtmlEl.addEventListener('focus', () => lastFocusedEditor = bodyHtmlEl);
+
+    window.insertVar = function(v) {
+        const el = lastFocusedEditor;
+        const start = el.selectionStart;
+        const end = el.selectionEnd;
+        const text = el.value;
+        el.value = text.substring(0, start) + v + text.substring(end);
+        el.selectionStart = el.selectionEnd = start + v.length;
+        el.focus();
+    };
+
+    window.saveTemplate = function() {
+        saveBtnEl.disabled = true;
+        saveBtnEl.textContent = 'Saving...';
+
+        const fd = new FormData();
+        fd.append('touchpoint_number', activeTP);
+        fd.append('subject', subjectEl.value);
+        fd.append('body', bodyEl.value);
+        fd.append('signature', sigEl.value);
+        fd.append('days_after_previous', daysEl.value);
+        if (pendingFile) {
+            fd.append('attachment', pendingFile);
+        }
+        if (clearAttach) {
+            fd.append('clear_attachment', '1');
+        }
+        if (pendingSigImg) {
+            fd.append('signature_image', pendingSigImg);
+        }
+        if (clearSigImg) {
+            fd.append('clear_signature_image', '1');
+        }
+        fd.append('body_html', bodyHtmlEl.value);
+
+        fetch('{% url "email_template_save" %}', {
+            method: 'POST',
+            headers: {'X-CSRFToken': CSRF},
+            body: fd
+        })
+        .then(r => r.json())
+        .then(data => {
+            saveBtnEl.disabled = false;
+            saveBtnEl.textContent = 'Save Template';
+            if (data.ok) {
+                const existing = templates.find(t => t.touchpoint_number === activeTP);
+                const updated = {
+                    touchpoint_number: activeTP,
+                    subject: subjectEl.value,
+                    body: bodyEl.value,
+                    body_html: data.body_html || '',
+                    signature: sigEl.value,
+                    attachment_name: data.attachment_name || '',
+                    attachment_url: data.attachment_url || '',
+                    signature_image_name: data.signature_image_name || '',
+                    signature_image_url: data.signature_image_url || '',
+                    days_after_previous: parseInt(daysEl.value) || 7
+                };
+                if (existing) Object.assign(existing, updated);
+                else templates.push(updated);
+
+                pendingFile = null;
+                clearAttach = false;
+                attachInput.value = '';
+                if (data.attachment_name) {
+                    attachInfo.style.display = '';
+                    attachBtn.style.display = 'none';
+                    attachLink.textContent = data.attachment_name;
+                    attachLink.href = data.attachment_url || '#';
+                } else {
+                    attachInfo.style.display = 'none';
+                    attachBtn.style.display = '';
+                }
+
+                saveStatusEl.textContent = 'Saved \u2713';
+                saveStatusEl.style.color = '#1e7e34';
+                saveStatusEl.classList.add('show');
+                setTimeout(() => saveStatusEl.classList.remove('show'), 2000);
+            } else {
+                saveStatusEl.textContent = data.error || 'Error saving!';
+                saveStatusEl.style.color = '#c0392b';
+                saveStatusEl.classList.add('show');
+                setTimeout(() => {
+                    saveStatusEl.classList.remove('show');
+                    saveStatusEl.textContent = 'Saved \u2713';
+                    saveStatusEl.style.color = '';
+                }, 3000);
+            }
+        })
+        .catch(err => {
+            saveBtnEl.disabled = false;
+            saveBtnEl.textContent = 'Save Template';
+            saveStatusEl.textContent = 'Error saving!';
+            saveStatusEl.style.color = '#c0392b';
+            saveStatusEl.classList.add('show');
+            setTimeout(() => {
+                saveStatusEl.classList.remove('show');
+                saveStatusEl.textContent = 'Saved \u2713';
+                saveStatusEl.style.color = '';
+            }, 3000);
+        });
+    };
+
+    const testSendBtn = document.getElementById('testSendBtn');
+    const testEmailInput = document.getElementById('testEmailAddresses');
+    const testResultEl = document.getElementById('testSendResult');
+
+    window.sendTestEmail = function() {
+        const raw = testEmailInput.value.trim();
+        if (!raw) {
+            testEmailInput.focus();
+            testEmailInput.style.borderColor = '#e67e22';
+            setTimeout(() => testEmailInput.style.borderColor = '', 2000);
+            return;
+        }
+
+        // Parse comma-separated emails
+        const emails = raw.split(',').map(e => e.trim()).filter(e => e);
+        if (emails.length === 0) return;
+
+        testSendBtn.disabled = true;
+        testSendBtn.textContent = 'Sending...';
+        testResultEl.style.display = 'none';
+
+        fetch('{% url "send_test_touchpoint" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify({touchpoint_number: activeTP, recipients: emails})
+        })
+        .then(r => r.json())
+        .then(data => {
+            testSendBtn.disabled = false;
+            testSendBtn.textContent = 'Send Test';
+            testResultEl.style.display = 'block';
+            if (data.ok) {
+                const ok = data.results.filter(r => r.ok);
+                const fail = data.results.filter(r => !r.ok);
+                let html = '<span style="color:#1e7e34;">Sent to ' + ok.length + '/' + data.results.length + ' recipients.</span>';
+                if (fail.length) {
+                    html += '<br><span style="color:#c0392b;">Failed: ' + fail.map(r => r.email + ' (' + r.status + ')').join(', ') + '</span>';
+                }
+                testResultEl.innerHTML = html;
+            } else {
+                testResultEl.innerHTML = '<span style="color:#c0392b;">' + (data.error || 'Unknown error') + '</span>';
+            }
+        })
+        .catch(err => {
+            testSendBtn.disabled = false;
+            testSendBtn.textContent = 'Send Test';
+            testResultEl.style.display = 'block';
+            testResultEl.innerHTML = '<span style="color:#c0392b;">Network error</span>';
+        });
+    };
+
+    renderTabs();
+    loadTemplate(1);
+
+    // ── Schedule Section ──
+    const scheduleGrid = document.getElementById('scheduleGrid');
+    const schedules = {};
+
+    function renderScheduleGrid() {
+        if (!scheduleGrid) return;
+        let html = '';
+        for (let i = 2; i <= 10; i++) {
+            const val = schedules[i] || '';
+            const hasDate = !!val;
+            // Convert DD-MM-YYYY display format back to YYYY-MM-DD for date input
+            let inputVal = '';
+            if (val) {
+                const parts = val.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+                if (parts) {
+                    inputVal = parts[3] + '-' + parts[2] + '-' + parts[1];
+                } else {
+                    inputVal = val; // already YYYY-MM-DD
+                }
+            }
+            html += '<div class="schedule-row">'
+                + '<span class="schedule-label">TP ' + i + '</span>'
+                + '<input type="date" class="schedule-date" id="schedDate' + i + '" value="' + inputVal + '">'
+                + '<button class="schedule-set-btn" onclick="setSchedule(' + i + ')" id="schedBtn' + i + '">Set</button>'
+                + (hasDate ? '<button class="schedule-clear-btn" onclick="clearSchedule(' + i + ')">Clear</button>' : '')
+                + '</div>';
+        }
+        scheduleGrid.innerHTML = html;
+    }
+
+    function loadSchedules() {
+        fetch('{% url "get_touchpoint_schedules" %}')
+            .then(r => r.json())
+            .then(data => {
+                if (data.ok) {
+                    Object.assign(schedules, data.schedules);
+                    renderScheduleGrid();
+                }
+            });
+    }
+
+    window.setSchedule = function(tpNum) {
+        const dateInput = document.getElementById('schedDate' + tpNum);
+        const dateVal = dateInput.value;
+        if (!dateVal) { alert('Please select a date first.'); return; }
+
+        const btn = document.getElementById('schedBtn' + tpNum);
+        btn.disabled = true;
+        btn.textContent = 'Setting...';
+
+        fetch('{% url "set_touchpoint_schedule" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify({touchpoint_number: tpNum, scheduled_date: dateVal})
+        })
+        .then(r => r.json())
+        .then(data => {
+            btn.disabled = false;
+            btn.textContent = 'Set';
+            if (data.ok) {
+                schedules[tpNum] = data.date || dateVal;
+                renderScheduleGrid();
+                alert('TP' + tpNum + ' scheduled for ' + data.date + ' — updated ' + data.updated + ' contacts.');
+            } else {
+                alert('Error: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(() => {
+            btn.disabled = false;
+            btn.textContent = 'Set';
+            alert('Network error');
+        });
+    };
+
+    window.clearSchedule = function(tpNum) {
+        if (!confirm('Clear the scheduled date for TP' + tpNum + '? This will remove the date from all contacts.')) return;
+
+        fetch('{% url "set_touchpoint_schedule" %}', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+            body: JSON.stringify({touchpoint_number: tpNum, scheduled_date: ''})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.ok) {
+                delete schedules[tpNum];
+                renderScheduleGrid();
+            }
+        });
+    };
+
+})();
+</script>
+{% endblock %}

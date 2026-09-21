@@ -1,0 +1,373 @@
+{% extends 'base.html' %}
+
+{% block title %}Users - MOC Automations{% endblock %}
+
+{% block extra_styles %}
+.stats-row { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+.stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 16px 20px; min-width: 140px; }
+.stat-label { color: var(--text-secondary); font-size: 12px; margin-bottom: 4px; }
+.stat-value { color: var(--text-primary); font-size: 24px; font-weight: 600; }
+
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 4px; margin-bottom: 16px; }
+.card-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.card-header-left { display: flex; align-items: center; gap: 8px; }
+.card-header svg { width: 18px; height: 18px; fill: #054B70; }
+.card-title { color: var(--text-primary); font-size: 14px; font-weight: 600; }
+.card-body { padding: 16px 20px; }
+
+/* Add user form */
+.add-form { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.form-group { display: flex; flex-direction: column; gap: 4px; }
+.form-group label { font-size: 12px; color: var(--text-secondary); font-weight: 500; }
+.form-input {
+    padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px;
+    font-size: 13px; background: var(--bg); color: var(--text-primary);
+    min-width: 160px;
+}
+.form-input:focus { outline: none; border-color: #054B70; }
+
+.btn { background: #054B70; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.btn:hover { background: #043a58; }
+.btn svg { width: 14px; height: 14px; fill: currentColor; }
+.btn-danger { background: #d13438; }
+.btn-danger:hover { background: #a4262c; }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+
+/* User table */
+.user-table { width: 100%; border-collapse: collapse; }
+.user-table th { padding: 10px 16px; text-align: left; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+.user-table td { padding: 12px 16px; font-size: 13px; color: var(--text-primary); border-bottom: 1px solid var(--border); vertical-align: middle; }
+.user-table tr:last-child td { border-bottom: none; }
+.user-table tr:hover td { background: var(--surface2); }
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+.badge-you { background: #deecf9; color: #0078d4; }
+.badge-staff { background: #dff6dd; color: #107c10; }
+
+/* Edit password inline form */
+.edit-form { display: flex; gap: 6px; align-items: center; }
+.edit-form input { padding: 5px 10px; border: 1px solid var(--border); border-radius: 4px; font-size: 12px; background: var(--bg); color: var(--text-primary); width: 140px; }
+
+/* Messages */
+.messages { margin-bottom: 16px; }
+.msg { padding: 10px 14px; border-radius: 4px; font-size: 13px; margin-bottom: 8px; }
+.msg-success { background: #dff6dd; color: #107c10; border: 1px solid #bad5b4; }
+.msg-error { background: #fde7e9; color: #d13438; border: 1px solid #f3b0b3; }
+
+@media (max-width: 600px) {
+    .add-form { flex-direction: column; align-items: stretch; }
+    .form-input { min-width: 0; width: 100%; }
+    .user-table th:nth-child(3), .user-table td:nth-child(3) { display: none; }
+    .edit-form input { width: 110px; }
+}
+
+/* Modal */
+.u-modal-backdrop {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+    display: none; align-items: center; justify-content: center;
+    z-index: 1000; backdrop-filter: blur(3px);
+}
+.u-modal-backdrop.open { display: flex; }
+.u-modal {
+    background: var(--surface, #fff); color: var(--text-primary, #323130);
+    border-radius: 12px; box-shadow: 0 24px 60px rgba(0,0,0,0.25);
+    width: min(520px, 92vw); max-height: 90vh; overflow: auto;
+    border: 1px solid var(--border, #edebe9);
+    animation: um-in .16s ease-out;
+}
+@keyframes um-in { from { transform: translateY(8px); opacity: 0 } to { transform: none; opacity: 1 } }
+.u-modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 22px 14px; border-bottom: 1px solid var(--border, #edebe9);
+}
+.u-modal-title { font-size: 16px; font-weight: 700; margin: 0; }
+.u-modal-title small { display: block; font-size: 12px; font-weight: 500; color: var(--text-secondary, #605e5c); margin-top: 2px; }
+.u-modal-close {
+    background: transparent; border: none; cursor: pointer; font-size: 22px;
+    color: var(--text-secondary, #605e5c); line-height: 1; padding: 4px 8px;
+    border-radius: 6px;
+}
+.u-modal-close:hover { background: var(--hover, #f3f2f1); color: var(--text-primary, #323130); }
+.u-modal-body { padding: 18px 22px; display: flex; flex-direction: column; gap: 14px; }
+.u-field { display: flex; flex-direction: column; gap: 6px; }
+.u-field > label { font-size: 12px; font-weight: 600; letter-spacing: 0.4px; text-transform: uppercase; color: var(--text-secondary, #605e5c); }
+.u-field select, .u-field input[type="password"] {
+    padding: 9px 12px; border: 1px solid var(--border, #edebe9); border-radius: 6px;
+    font-size: 13px; background: var(--bg, #fff); color: var(--text-primary, #323130);
+}
+.u-field select:focus, .u-field input:focus { outline: none; border-color: #054B70; box-shadow: 0 0 0 3px rgba(5, 75, 112, 0.12); }
+.u-pages {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px;
+    padding: 12px; background: var(--bg, #fafafa); border: 1px solid var(--border, #edebe9); border-radius: 8px;
+}
+.u-pages label { display: flex; gap: 8px; align-items: center; font-size: 13px; cursor: pointer; }
+.u-pages label:hover { color: #054B70; }
+.u-pages input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; }
+.u-hint { font-size: 11px; color: var(--text-muted, #888); margin-top: 4px; }
+.u-modal-footer {
+    display: flex; gap: 8px; justify-content: flex-end;
+    padding: 14px 22px 18px; border-top: 1px solid var(--border, #edebe9);
+}
+.u-btn {
+    padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600;
+    cursor: pointer; border: 1px solid var(--border, #edebe9); background: var(--bg, #fff); color: var(--text-primary, #323130);
+}
+.u-btn:hover { background: var(--hover, #f3f2f1); }
+.u-btn-primary { background: #054B70; color: #fff; border-color: #054B70; }
+.u-btn-primary:hover { background: #0a7ab5; border-color: #0a7ab5; }
+
+/* Action buttons in table */
+.u-actions { display: inline-flex; gap: 6px; }
+.u-actions .btn { padding: 6px 10px; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1 class="page-title">User Management</h1>
+    <p class="page-subtitle">Add, edit, or remove user accounts</p>
+</div>
+
+{% if messages %}
+<div class="messages">
+    {% for message in messages %}
+    <div class="msg {% if message.tags == 'error' %}msg-error{% else %}msg-success{% endif %}">{{ message }}</div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="stat-label">Total Users</div>
+        <div class="stat-value">{{ users|length }}</div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-header-left">
+            <svg viewBox="0 0 24 24"><path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            <span class="card-title">Add New User</span>
+        </div>
+    </div>
+    <div class="card-body">
+        <form method="post" action="{% url 'user_create' %}">
+            {% csrf_token %}
+            <div class="add-form">
+                <div class="form-group">
+                    <label for="new-username">Username</label>
+                    <input type="text" id="new-username" name="username" class="form-input" placeholder="e.g. john" required autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label for="new-password">Password</label>
+                    <input type="password" id="new-password" name="password" class="form-input" placeholder="Set password" required autocomplete="new-password">
+                </div>
+                <button type="submit" class="btn">
+                    <svg viewBox="0 0 24 24"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+                    Add User
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-header-left">
+            <svg viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+            <span class="card-title">All Users</span>
+        </div>
+    </div>
+    <div style="overflow-x: auto;">
+        <table class="user-table">
+            <thead>
+                <tr>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>Page Access</th>
+                    <th>Date Joined</th>
+                    <th>Last Login</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                <tr>
+                    <td>
+                        {{ user.username }}
+                        {% if user == current_user %}<span class="badge badge-you">You</span>{% endif %}
+                    </td>
+                    <td>
+                        {% if user.is_superuser %}
+                            <span class="badge badge-staff" style="background:#054B70;color:#fff;">Admin</span>
+                        {% else %}
+                            <span class="badge badge-staff">User</span>
+                        {% endif %}
+                    </td>
+                    <td style="font-size:12px;color:var(--text-secondary);">
+                        {% if user.is_superuser %}
+                            Everything (admin)
+                        {% else %}
+                            {% if user.profile.can_data_analysis %}Data Analysis · {% endif %}
+                            {% if user.profile.can_emailing %}US-EU List · {% endif %}
+                            {% if user.profile.can_planner %}Planner · {% endif %}
+                            {% if user.profile.can_sync_monitor %}Sync Monitor · {% endif %}
+                            {% if user.profile.can_automations %}Automations · {% endif %}
+                            {% if not user.profile.can_data_analysis and not user.profile.can_emailing and not user.profile.can_planner and not user.profile.can_sync_monitor and not user.profile.can_automations %}<span style="color:var(--text-muted);">nothing yet</span>{% endif %}
+                        {% endif %}
+                    </td>
+                    <td>{{ user.date_joined|date:"d M Y" }}</td>
+                    <td>{% if user.last_login %}{{ user.last_login|date:"d M Y H:i" }}{% else %}Never{% endif %}</td>
+                    <td style="white-space:nowrap;">
+                        <div class="u-actions">
+                            <button type="button" class="btn btn-sm" onclick="openEditModal({{ user.pk }})">
+                                <svg viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                                Edit
+                            </button>
+                            <button type="button" class="btn btn-sm" onclick="openPwModal({{ user.pk }})">
+                                <svg viewBox="0 0 24 24"><path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zm-6 9c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1 1.71 0 3.1 1.39 3.1 3.1v2z"/></svg>
+                                Password
+                            </button>
+                            {% if user != current_user %}
+                            <form method="post" action="{% url 'user_delete' user.pk %}" onsubmit="return confirm('Delete user {{ user.username }}?')" style="display:inline;">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-danger">
+                                    <svg viewBox="0 0 24 24"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                                    Delete
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </td>
+                </tr>
+
+                <!-- Edit modal (Role + Pages) -->
+                <div id="edit-modal-{{ user.pk }}" class="u-modal-backdrop" onclick="if(event.target===this)closeModal('edit-modal-{{ user.pk }}')">
+                    <div class="u-modal">
+                        <form method="post" action="{% url 'user_edit' user.pk %}">
+                            {% csrf_token %}
+                            <div class="u-modal-header">
+                                <div>
+                                    <h3 class="u-modal-title">Edit access — {{ user.username }}
+                                        <small>Role and which pages this user can see</small>
+                                    </h3>
+                                </div>
+                                <button type="button" class="u-modal-close" onclick="closeModal('edit-modal-{{ user.pk }}')">×</button>
+                            </div>
+                            <div class="u-modal-body">
+                                <div class="u-field">
+                                    <label>Role</label>
+                                    <select name="role">
+                                        <option value="user"  {% if not user.is_superuser %}selected{% endif %}>User — only pages ticked below</option>
+                                        <option value="admin" {% if user.is_superuser %}selected{% endif %}>Admin — full access to everything</option>
+                                    </select>
+                                </div>
+                                <div class="u-field">
+                                    <label>Pages this user can see</label>
+                                    <div class="u-pages">
+                                        <label><input type="checkbox" name="can_data_analysis" {% if user.profile.can_data_analysis %}checked{% endif %}> Data Analysis</label>
+                                        <label><input type="checkbox" name="can_emailing"      {% if user.profile.can_emailing %}checked{% endif %}> US-EU List</label>
+                                        <label><input type="checkbox" name="can_planner"       {% if user.profile.can_planner %}checked{% endif %}> Planner</label>
+                                        <label><input type="checkbox" name="can_sync_monitor"  {% if user.profile.can_sync_monitor %}checked{% endif %}> Sync Monitor</label>
+                                        <label><input type="checkbox" name="can_automations"   {% if user.profile.can_automations %}checked{% endif %}> Automations</label>
+                                    </div>
+                                    <div class="u-hint">Admins see everything — these tick-boxes are ignored when Role = Admin.</div>
+                                </div>
+                            </div>
+                            <div class="u-modal-footer">
+                                <button type="button" class="u-btn" onclick="closeModal('edit-modal-{{ user.pk }}')">Cancel</button>
+                                <button type="submit" class="u-btn u-btn-primary">Save changes</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Password modal -->
+                <div id="pw-modal-{{ user.pk }}" class="u-modal-backdrop" onclick="if(event.target===this)closeModal('pw-modal-{{ user.pk }}')">
+                    <div class="u-modal">
+                        <form method="post" action="{% url 'user_edit' user.pk %}">
+                            {% csrf_token %}
+                            <!-- Keep existing role/access unchanged on a password-only update -->
+                            <input type="hidden" name="role" value="{% if user.is_superuser %}admin{% else %}user{% endif %}">
+                            {% if user.profile.can_data_analysis %}<input type="hidden" name="can_data_analysis" value="on">{% endif %}
+                            {% if user.profile.can_emailing %}<input type="hidden" name="can_emailing" value="on">{% endif %}
+                            {% if user.profile.can_planner %}<input type="hidden" name="can_planner" value="on">{% endif %}
+                            {% if user.profile.can_sync_monitor %}<input type="hidden" name="can_sync_monitor" value="on">{% endif %}
+                            {% if user.profile.can_automations %}<input type="hidden" name="can_automations" value="on">{% endif %}
+                            <div class="u-modal-header">
+                                <div>
+                                    <h3 class="u-modal-title">Change password — {{ user.username }}
+                                        <small>Set a new login password for this account</small>
+                                    </h3>
+                                </div>
+                                <button type="button" class="u-modal-close" onclick="closeModal('pw-modal-{{ user.pk }}')">×</button>
+                            </div>
+                            <div class="u-modal-body">
+                                <div class="u-field">
+                                    <label>New password</label>
+                                    <input type="password" name="password" autocomplete="new-password" placeholder="Type the new password" required>
+                                    <div class="u-hint">The user will need to use this next time they log in.</div>
+                                </div>
+                            </div>
+                            <div class="u-modal-footer">
+                                <button type="button" class="u-btn" onclick="closeModal('pw-modal-{{ user.pk }}')">Cancel</button>
+                                <button type="submit" class="u-btn u-btn-primary">Update password</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+                {% empty %}
+                <tr><td colspan="6" style="text-align:center; color: var(--text-muted); padding: 24px;">No users found.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function openEditModal(id) {
+    const m = document.getElementById('edit-modal-' + id);
+    if (m) m.classList.add('open');
+    // wire the role dropdown to toggle the page checkboxes
+    const roleSel = m.querySelector('select[name="role"]');
+    const boxes = m.querySelectorAll('.u-pages input[type="checkbox"]');
+    const applyRole = () => {
+        const isAdmin = roleSel.value === 'admin';
+        boxes.forEach(b => {
+            if (isAdmin) {
+                b.dataset.prev = b.checked ? '1' : '0';
+                b.checked = true;
+                b.disabled = true;
+            } else {
+                b.disabled = false;
+                // restore what was previously checked if we cached it
+                if (b.dataset.prev !== undefined) {
+                    b.checked = b.dataset.prev === '1';
+                }
+            }
+        });
+    };
+    roleSel.onchange = applyRole;
+    applyRole();
+}
+function openPwModal(id) {
+    const m = document.getElementById('pw-modal-' + id);
+    if (m) m.classList.add('open');
+    setTimeout(() => {
+        const input = m && m.querySelector('input[name="password"]');
+        if (input) input.focus();
+    }, 50);
+}
+function closeModal(id) {
+    const m = document.getElementById(id);
+    if (m) m.classList.remove('open');
+}
+// Close any open modal on Escape
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.u-modal-backdrop.open').forEach(m => m.classList.remove('open'));
+    }
+});
+</script>
+{% endblock %}
