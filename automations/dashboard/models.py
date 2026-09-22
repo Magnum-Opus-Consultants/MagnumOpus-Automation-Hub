@@ -2119,3 +2119,254 @@ class PricingRow(models.Model):
 
     def __str__(self):
         return f'{self.block} {self.client} {self.month_label}'
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# System testing
+# ══════════════════════════════════════════════════════════════════════════════
+# Replaces the hand-maintained "Management Live Sheet" workbook that was kept
+# per engagement. The workbook carried one sheet per surface under test, a
+# legend defining the status vocabularies, and a dashboard whose totals were
+# typed by hand - and drifted (the E-Crop pack shipped "32 total App items"
+# against "36 App PASS"). Here the vocabularies are choices and every dashboard
+# figure is derived, so the two cannot disagree.
+
+
+class TestProject(models.Model):
+    """One testing engagement: a client system under test over a window."""
+    name = models.CharField(max_length=200, unique=True)
+    client = models.CharField(max_length=200, blank=True, default='')
+    summary = models.TextField(
+        blank=True, default='',
+        help_text='The blurb at the top of the pack, explaining what it covers.')
+    # The window is a pair of dates. The free-text field is kept because
+    # imported workbooks write it as prose ("14 - 18 September", sometimes with
+    # no year at all), and losing what the pack actually said would be worse
+    # than carrying both; it is only shown when no dates have been picked.
+    window_start = models.DateField(null=True, blank=True)
+    window_end = models.DateField(null=True, blank=True)
+    testing_window = models.CharField(
+        max_length=120, blank=True, default='',
+        help_text='As written on an imported pack, e.g. "14 - 18 September".')
+    version_label = models.CharField(
+        max_length=120, blank=True, default='',
+        help_text='Build under test, e.g. "Inspector App Version 2.1.5".')
+    is_archived = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='test_projects')
+
+    class Meta:
+        db_table = 'test_project'
+        ordering = ['is_archived', 'name']
+
+    def __str__(self):
+        return self.name
+
+
+class TestArea(models.Model):
+    """A surface under test - one worksheet in the old workbook.
+
+    "Inspector App" and "Inspector Web" were separate sheets precisely because
+    they carry separate readiness figures, so the rollup is per area.
+    """
+    project = models.ForeignKey(
+        TestProject, on_delete=models.CASCADE, related_name='areas')
+    name = models.CharField(
+        max_length=120,
+        help_text='Named for the system being tested, e.g. "Inspector App".')
+    order = models.IntegerField(default=0)
+
+    class Meta:
+        db_table = 'test_area'
+        ordering = ['order', 'id']
+        unique_together = [('project', 'name')]
+
+    def __str__(self):
+        return f'{self.project.name} - {self.name}'
+
+
+class TestVersion(models.Model):
+    """A build released against one app during a round of testing.
+
+    Fixes land mid-round, so an app does not have "a version" - it has a chain
+    of them. The E-Crop pack recorded exactly this in its banner, as
+    "Version 2.1.5 -> 2.1.6 -> 2.1.7 -> 2.1.8", because four builds shipped
+    while testing was still running. Holding them as rows means the current
+    build is the last one rather than a field someone has to remember to
+    overwrite, and the history of what was tested against survives.
+    """
+    area = models.ForeignKey(
+        TestArea, on_delete=models.CASCADE, related_name='versions')
+    label = models.CharField(max_length=80, help_text='e.g. "2.1.8".')
+    note = models.CharField(
+        max_length=300, blank=True, default='',
+        help_text='What this build changed, if it is worth recording.')
+    released_on = models.DateField(null=True, blank=True)
+    order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'test_version'
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return f'{self.area.name} {self.label}'
+
+
+class TestItem(models.Model):
+    """One row of a testing sheet: an issue raised, triaged and signed off.
+
+    The four vocabularies below are the workbook's "Legend & Criteria" sheet,
+    kept as choices so a typo cannot create a new status that the dashboard
+    then silently fails to count.
+    """
+    BUCKET_CHOICES = [
+        ('in_scope_change', 'In Scope Change'),
+        ('change_request', 'Change Request'),
+        ('new_development', 'New Development'),
+        ('developer_enhancement', 'Developer Enhancements'),
+    ]
+    DEV_STATUS_CHOICES = [
+        ('in_progress', 'In Progress'),
+        ('done_internally_tested', 'Done & Internally Tested'),
+        ('requires_clarification', 'Requires Clarification'),
+        ('rectified_requires_testing', 'Rectified & Requires Testing'),
+    ]
+    TESTED_CHOICES = [
+        ('tested', 'Tested'),
+        ('not_tested', 'Not Tested'),
+    ]
+    READINESS_CHOICES = [
+        ('pass', 'PASS'),
+        ('requires_action', 'REQUIRES ACTION'),
+        ('outstanding', 'OUTSTANDING'),
+    ]
+
+    area = models.ForeignKey(
+        TestArea, on_delete=models.CASCADE, related_name='items')
+    issue = models.CharField(max_length=300)
+    description = models.TextField(blank=True, default='')
+
+    # Triage, not a verdict: which bucket an item falls into is a property of
+    # the item itself and does not change when it is retested.
+    bucket = models.CharField(
+        max_length=32, choices=BUCKET_CHOICES, default='in_scope_change')
+
+    order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'test_item'
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return self.issue
+
+    @property
+    def current(self):
+        """The latest pass. Every verdict on this item comes from here."""
+        rounds = list(self.iterations.all())
+        return rounds[-1] if rounds else None
+
+
+class TestIteration(models.Model):
+    """One pass of testing against one item.
+
+    An item that comes back REQUIRES ACTION is fixed and checked again, and the
+    second verdict does not replace the first - the pair is the audit trail
+    showing the issue was raised, actioned and re-verified. So the verdict lives
+    on the pass, not on the item, and the item's status is simply its latest
+    pass. This is also why the readiness rollup counts items by their last
+    iteration rather than by a column someone overwrote.
+    """
+    item = models.ForeignKey(
+        TestItem, on_delete=models.CASCADE, related_name='iterations')
+    number = models.IntegerField(default=1, help_text='1 for the first test.')
+
+    dev_status = models.CharField(
+        max_length=32, choices=TestItem.DEV_STATUS_CHOICES, default='in_progress')
+    tested = models.CharField(
+        max_length=16, choices=TestItem.TESTED_CHOICES, default='not_tested')
+    readiness = models.CharField(
+        max_length=20, choices=TestItem.READINESS_CHOICES, default='requires_action')
+    client_feedback = models.TextField(
+        blank=True, default='',
+        help_text='The client-side column, e.g. "Live review: PASS".')
+
+    # The release this pass belongs to. Every pass has one: a version is the
+    # sheet, and an item appears on a release's sheet exactly when it has a pass
+    # against that release. Deleting a release therefore deletes its sheet.
+    version = models.ForeignKey(
+        TestVersion, on_delete=models.CASCADE, related_name='iterations')
+    tested_on = models.DateField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'test_iteration'
+        ordering = ['number', 'id']
+        indexes = [
+            models.Index(fields=['item', 'number']),
+        ]
+
+    def __str__(self):
+        return f'{self.item.issue} #{self.number}'
+
+
+class TestShareLink(models.Model):
+    """A link that lets a reviewer work on one project, and nothing else.
+
+    Testing is done with the client in the room, and they need to record their
+    own verdict. Giving them a platform account would hand them every project,
+    so instead a link carries a token scoped to a single project and to the
+    three columns a reviewer fills in: the client test/review status, the
+    readiness status and their comments. Everything else - other projects,
+    importing, creating projects, editing the issues themselves - is simply not
+    reachable through it.
+    """
+    project = models.ForeignKey(
+        TestProject, on_delete=models.CASCADE, related_name='share_links')
+    token = models.CharField(max_length=64, unique=True, db_index=True)
+    label = models.CharField(
+        max_length=120, blank=True, default='',
+        help_text='Who this link was given to, so it can be revoked by name.')
+    is_active = models.BooleanField(default=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(
+        User, null=True, blank=True, on_delete=models.SET_NULL,
+        related_name='test_share_links')
+    last_opened_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'test_share_link'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.project.name} ({self.label or "shared link"})'
+
+    @staticmethod
+    def new_token():
+        return secrets.token_urlsafe(32)[:64]
+
+
+class TestNote(models.Model):
+    """The workbook's trailing "Notes" sheet - enhancements parked for later."""
+    project = models.ForeignKey(
+        TestProject, on_delete=models.CASCADE, related_name='notes')
+    text = models.TextField()
+    is_done = models.BooleanField(default=False)
+    order = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'test_note'
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return self.text[:60]

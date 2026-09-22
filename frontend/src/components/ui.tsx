@@ -94,7 +94,11 @@ export function AppShell({
           </div>
         )}
       </motion.div>
-      <main className={`mx-auto w-full min-w-0 flex-1 px-5 py-4 ${wide ? "max-w-[1600px]" : "max-w-7xl"}`}>
+      {/* Collapsing the rail is a request for room, so the reading-width cap
+          comes off with it and the page fills the screen. Wide tables are the
+          reason anyone collapses it in the first place. */}
+      <main className={`mx-auto w-full min-w-0 flex-1 px-5 py-4 ${
+        collapsed ? "max-w-none" : wide ? "max-w-[1600px]" : "max-w-7xl"}`}>
         {children}
       </main>
     </div>
@@ -309,7 +313,10 @@ export function Pill({ active, children, ...rest }: React.ButtonHTMLAttributes<H
  */
 export function Modal({ title, onClose, children, footer, wide, compact, xl }: { title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode; wide?: boolean; compact?: boolean; xl?: boolean }) {
   return (
-    <div className={`fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/40 p-4 sm:p-10 ${
+    // Marked so a page that polls for background changes can hold off while a
+    // dialog is open, rather than refreshing underneath it.
+    <div data-modal-open
+         className={`fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/40 p-4 sm:p-10 ${
       compact ? "items-center" : "items-start"}`}>
       <div className={`w-full rounded-xl bg-surface shadow-2xl ring-panel ${
         compact ? "max-w-md" : xl ? "max-w-6xl" : wide ? "max-w-4xl" : "max-w-2xl"}`}>

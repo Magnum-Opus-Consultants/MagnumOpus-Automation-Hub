@@ -90,6 +90,7 @@ const NAV: { label: string; href: string; module: string | null; admin?: boolean
   { label: "Project Tracker", href: "/tasks", module: "tasks", section: "Delivery", icon: "board", projects: true },
   { label: "Client Requests", href: "/client-requests", module: "client_requests", section: "Delivery", icon: "mail" },
   { label: "Repositories", href: "/repos", module: "repos", section: "Delivery", icon: "git" },
+  { label: "Readiness Testing", href: "/readiness-testing", module: "system_testing", section: "Delivery", icon: "check" },
   { label: "Activity", href: "/activity", module: null, section: "Reference", icon: "clock" },
   { label: "Handbook", href: "/handbook", module: "handbook", section: "Reference", icon: "docs" },
   { label: "Users & Access", href: "/access", module: null, admin: true, section: "Administration", icon: "users" },

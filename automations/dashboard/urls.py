@@ -4,6 +4,8 @@ from . import api_platform as platform_api
 from . import api_public as public_api
 from . import client_requests as cr
 from . import workspace_access as wsa
+from . import system_testing as st
+from . import system_testing_share as st_share
 from . import handbook as hb
 from . import awa_api as awa
 from . import management_api as mgmt
@@ -283,4 +285,36 @@ urlpatterns = [
     path('automations/', views.automations_panel, name='automations_panel'),
     path('automations/toggle/', views.automation_toggle, name='automation_toggle'),
     path('automations/stop-emails/', views.automation_stop_all_emails, name='automation_stop_all_emails'),
+
+    # ── System testing (the Management Live Sheet, as a module) ──────────────
+    path('api/system-testing/projects', st.api_test_projects, name='api_test_projects'),
+    path('api/system-testing/projects/create', st.api_test_project_save, name='api_test_project_create'),
+    path('api/system-testing/projects/<int:pk>', st.api_test_project_detail, name='api_test_project_detail'),
+    path('api/system-testing/projects/<int:pk>/save', st.api_test_project_save, name='api_test_project_save'),
+    path('api/system-testing/projects/<int:pk>/delete', st.api_test_project_delete, name='api_test_project_delete'),
+    path('api/system-testing/projects/<int:pk>/duplicate', st.api_test_project_duplicate, name='api_test_project_duplicate'),
+    path('api/system-testing/projects/<int:pk>/changes', st.api_test_changes, name='api_test_changes'),
+    path('api/system-testing/projects/<int:pk>/export', st.api_test_export, name='api_test_export'),
+    path('api/system-testing/projects/<int:pk>/export.pdf', st.api_test_export_pdf, name='api_test_export_pdf'),
+    path('api/system-testing/import', st.api_test_import, name='api_test_import'),
+    # Reviewer share links: owner side, then the token-only reviewer side.
+    path('api/system-testing/projects/<int:pk>/share-links', st_share.api_share_links, name='api_share_links'),
+    path('api/system-testing/projects/<int:pk>/share-links/create', st_share.api_share_link_create, name='api_share_link_create'),
+    path('api/system-testing/share-links/<int:pk>/revoke', st_share.api_share_link_revoke, name='api_share_link_revoke'),
+    path('api/public/readiness/<str:token>', st_share.public_readiness, name='public_readiness'),
+    path('api/public/readiness/<str:token>/changes', st_share.public_readiness_changes, name='public_readiness_changes'),
+    path('api/public/readiness/<str:token>/rows/<int:pk>', st_share.public_readiness_save, name='public_readiness_save'),
+    path('api/system-testing/areas/create', st.api_test_area_save, name='api_test_area_create'),
+    path('api/system-testing/areas/<int:pk>', st.api_test_area_save, name='api_test_area_save'),
+    path('api/system-testing/areas/<int:pk>/delete', st.api_test_area_delete, name='api_test_area_delete'),
+    path('api/system-testing/areas/<int:pk>/versions', st.api_test_version_create, name='api_test_version_create'),
+    path('api/system-testing/versions/<int:pk>/delete', st.api_test_version_delete, name='api_test_version_delete'),
+    path('api/system-testing/items/create', st.api_test_item_save, name='api_test_item_create'),
+    path('api/system-testing/items/<int:pk>', st.api_test_item_save, name='api_test_item_save'),
+    path('api/system-testing/items/<int:pk>/delete', st.api_test_item_delete, name='api_test_item_delete'),
+    path('api/system-testing/items/<int:pk>/iterations', st.api_test_iteration_create, name='api_test_iteration_create'),
+    path('api/system-testing/iterations/<int:pk>/delete', st.api_test_iteration_delete, name='api_test_iteration_delete'),
+    path('api/system-testing/notes/create', st.api_test_note_save, name='api_test_note_create'),
+    path('api/system-testing/notes/<int:pk>', st.api_test_note_save, name='api_test_note_save'),
+    path('api/system-testing/notes/<int:pk>/delete', st.api_test_note_delete, name='api_test_note_delete'),
 ]

@@ -5,3 +5,7 @@ node_modules/
 __pycache__/
 *.pyc
 .env
+
+# Playwright run artefacts
+frontend/test-results/
+frontend/playwright-report/

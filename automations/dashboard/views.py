@@ -154,6 +154,9 @@ SENTINEL_MODULES = [
     {'key': 'documentation', 'label': 'Documentation', 'desc': 'Company systems, folders and documents.'},
     {'key': 'domains', 'label': 'Domains', 'desc': 'Domain registrations, DNS, SSL and renewal dates.'},
     {'key': 'repos', 'label': 'Repositories', 'desc': 'Code repositories and their recent commit history.'},
+    # The key is persisted in Django Groups as "mod_system_testing", so it
+    # stays as it is; only the name people see was changed.
+    {'key': 'system_testing', 'label': 'Readiness Testing', 'desc': 'Live testing sheets, readiness rollups and client packs.'},
 ]
 _MODULE_KEYS = [m['key'] for m in SENTINEL_MODULES]
 
