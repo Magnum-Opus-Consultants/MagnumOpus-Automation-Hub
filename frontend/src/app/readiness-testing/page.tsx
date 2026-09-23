@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore,
+} from "react";
 import { canAccess, Icon, type Me } from "@/components/Sidebar";
 import {
   AppShell, PageHead, Section, Button, EmptyState, Modal,
@@ -118,6 +120,28 @@ function chainOf(area: AreaSummary): string {
 }
 
 /** Look up a status swatch from the legend the server sent. */
+/* Row density, kept in localStorage so it survives a reload, and served through
+   a store so the value can be read during render instead of written in after
+   mount. getServer answers false so the markup React hydrates against is
+   stable; the real preference lands on the first client snapshot. Storage can
+   throw (private mode, blocked cookies), so every access is guarded. */
+const COMPACT_KEY = "rt.compact";
+const compactPref = {
+  listeners: new Set<() => void>(),
+  subscribe(cb: () => void) {
+    compactPref.listeners.add(cb);
+    return () => { compactPref.listeners.delete(cb); };
+  },
+  get() {
+    try { return localStorage.getItem(COMPACT_KEY) === "1"; } catch { return false; }
+  },
+  getServer() { return false; },
+  set(next: boolean) {
+    try { localStorage.setItem(COMPACT_KEY, next ? "1" : "0"); } catch {}
+    compactPref.listeners.forEach((l) => l());
+  },
+};
+
 function swatch(vocab: Vocab | null, label: string): LegendEntry | null {
   if (!vocab) return null;
   for (const block of vocab.legend) {
@@ -296,9 +320,10 @@ function AutoTextarea({ value, onChange, placeholder, className = "" }: {
  * change one select, for every item, every day of testing, is most of the work
  * of running the sheet. Save only lights up once something has changed, so the
  * row still reads as data until you touch it. */
-function ItemRow({ item, vocab, busy, onSave, onRetest, onDelete, onDirty }: {
+function ItemRow({ item, vocab, compact, busy, onSave, onRetest, onDelete, onDirty }: {
   item: Item;
   vocab: Vocab | null;
+  compact: boolean;
   busy: boolean;
   onSave: (patch: Partial<Item>) => Promise<void>;
   onRetest: () => void;
@@ -318,6 +343,11 @@ function ItemRow({ item, vocab, busy, onSave, onRetest, onDelete, onDirty }: {
   // be told apart from a local one.
   const [seen, setSeen] = useState(serverValues);
   const [open, setOpen] = useState(false);
+  /* Compact clamps the description; this opens the one row you are reading
+     without leaving compact. Kept separate from `open` (the build history) so
+     expanding the text does not drag the earlier builds along with it. */
+  const [expanded, setExpanded] = useState(false);
+  const clamped = compact && !expanded;
 
   /* Someone else - the team here, or a client through a share link - may edit
      this same row while it is on screen. Rather than remounting the row (which
@@ -369,10 +399,16 @@ function ItemRow({ item, vocab, busy, onSave, onRetest, onDelete, onDirty }: {
                  : { backgroundColor: "transparent" }}
       >
         {options?.map((o) => {
-          const def = swatchFor(o.label)?.definition;
+          /* An option with no colour of its own must say so explicitly: left
+             unset it inherits the select's fill, which paints the whole open
+             list in the current choice's colour. Each option carries its own
+             swatch, so the list reads as the legend rather than one block. */
+          const os = swatchFor(o.label);
           return (
             <option key={o.key} value={o.key}
-                    title={def ? `${o.label} — ${def}` : o.label}>
+                    title={os?.definition ? `${o.label} — ${os.definition}` : o.label}
+                    style={os ? { backgroundColor: os.fill, color: os.ink }
+                              : { backgroundColor: "var(--c-surface)", color: "var(--c-ink)" }}>
               {o.label}
             </option>
           );
@@ -384,10 +420,28 @@ function ItemRow({ item, vocab, busy, onSave, onRetest, onDelete, onDirty }: {
   return (
     <>
       <tr className="border-b border-stroke align-top last:border-0">
-        <td className="px-2 py-2 align-top">
-          <div className="font-medium break-words whitespace-pre-wrap text-ink">
-            {item.issue}
-          </div>
+        <td className={`px-2 align-top ${compact ? "py-1.5" : "py-2"}`}>
+          {/* In compact the issue is the handle for the rest of the text. In
+              full view there is nothing hidden, so it stays plain and is not
+              announced as a control. */}
+          {compact ? (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              aria-expanded={expanded}
+              title={expanded ? "Hide the full description" : "Show the full description"}
+              className="flex w-full items-start gap-1 text-left font-medium text-ink
+                         hover:text-brand"
+            >
+              <span className="mt-[3px] shrink-0 text-[9px] text-ink-3">
+                {expanded ? "▼" : "▶"}
+              </span>
+              <span className="break-words whitespace-pre-wrap">{item.issue}</span>
+            </button>
+          ) : (
+            <div className="font-medium break-words whitespace-pre-wrap text-ink">
+              {item.issue}
+            </div>
+          )}
           {item.history.length > 0 && (
             <button onClick={() => setOpen(!open)}
                     className="mt-1 text-[11px] text-brand hover:underline">
@@ -397,28 +451,38 @@ function ItemRow({ item, vocab, busy, onSave, onRetest, onDelete, onDirty }: {
             </button>
           )}
         </td>
-        <td className="px-2 py-2 align-top text-[12px] leading-relaxed text-ink-2">
-          <div className="break-words whitespace-pre-wrap">{item.description}</div>
+        <td className={`px-2 align-top text-[12px] leading-relaxed text-ink-2 ${
+          compact ? "py-1.5" : "py-2"}`}>
+          <div className={`break-words whitespace-pre-wrap ${clamped ? "line-clamp-2" : ""}`}
+               title={clamped ? item.description : undefined}>
+            {item.description}
+          </div>
+          {clamped && item.description.length > 90 && (
+            <button onClick={() => setExpanded(true)}
+                    className="mt-0.5 text-[11px] font-medium text-brand hover:underline">
+              more
+            </button>
+          )}
         </td>
-        <td className="px-2 py-2 align-top w-40">
+        <td className={`px-2 align-top w-40 ${compact ? "py-1.5" : "py-2"}`}>
           {cell(draft.bucket, vocab?.buckets,
                 (v) => setDraft({ ...draft, bucket: v }))}
         </td>
-        <td className="px-2 py-2 align-top w-48">
+        <td className={`px-2 align-top w-48 ${compact ? "py-1.5" : "py-2"}`}>
           {cell(draft.dev_status, vocab?.dev_statuses,
                 (v) => setDraft({ ...draft, dev_status: v }))}
         </td>
-        <td className="px-2 py-2 align-top w-28">
+        <td className={`px-2 align-top w-28 ${compact ? "py-1.5" : "py-2"}`}>
           {cell(draft.tested, vocab?.tested,
                 (v) => setDraft({ ...draft, tested: v }))}
         </td>
-        <td className="px-2 py-2 align-top w-40">
+        <td className={`px-2 align-top w-40 ${compact ? "py-1.5" : "py-2"}`}>
           {cell(draft.readiness, vocab?.readiness,
                 (v) => setDraft({ ...draft, readiness: v }))}
         </td>
         {/* Free text, not a vocabulary: this is where the reviewer writes what
             they actually found, so it stays a box you type into. */}
-        <td className="px-2 py-2 align-top w-64">
+        <td className={`px-2 align-top w-64 ${compact ? "py-1.5" : "py-2"}`}>
           <AutoTextarea
             value={draft.client_feedback}
             onChange={(v) => setDraft({ ...draft, client_feedback: v })}
@@ -496,6 +560,13 @@ export default function SystemTestingPage() {
   const [filter, setFilter] = useState<string>("All");
   const [sheetVersion, setSheetVersion] = useState<number | null>(null);
   const [search, setSearch] = useState("");
+  /* Compact trades the full description for a two-line preview, so a sheet of
+     thirty items is scannable in one screen instead of one row per screen.
+     The full text is a click on the issue away. Read through the store rather
+     than an effect so the server render has a defined answer. */
+  const compact = useSyncExternalStore(
+    compactPref.subscribe, compactPref.get, compactPref.getServer);
+  const toggleCompact = (next: boolean) => compactPref.set(next);
 
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -1356,6 +1427,26 @@ export default function SystemTestingPage() {
                         {sheet!.rollup.carried_over} carried over from an earlier build
                       </span>
                     )}
+
+                    {/* Density sits with the filters because it does the same
+                        job: deciding how much of the sheet you see at once. */}
+                    <div className="ml-auto flex items-center gap-1 rounded-lg border border-stroke p-0.5">
+                      {([["Full", false], ["Compact", true]] as const).map(([label, val]) => (
+                        <button
+                          key={label}
+                          onClick={() => toggleCompact(val)}
+                          aria-pressed={compact === val}
+                          title={val ? "Two-line previews — click an issue for the rest"
+                                     : "Show every description in full"}
+                          className={`rounded-md px-2.5 py-1 text-[11px] font-semibold transition ${
+                            compact === val
+                              ? "bg-brand text-white"
+                              : "text-ink-2 hover:bg-subtle"}`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   {visibleItems.length === 0 ? (
@@ -1370,16 +1461,19 @@ export default function SystemTestingPage() {
                     // and stays visible, so width is what keeps each row
                     // shallow. StickyScroller keeps the bar on screen.
                     <StickyScroller>
-                      <table className="w-full min-w-[1960px] table-fixed text-sm">
+                      {/* Compact pulls ~560px out of the table, which is what
+                          stops the sideways scroll on a normal screen. */}
+                      <table className={`w-full table-fixed text-sm ${
+                        compact ? "min-w-[1400px]" : "min-w-[1960px]"}`}>
                         <thead>
                           <tr style={{ backgroundColor: NAVY }} className="text-left text-white">
                             {[["Issue", "w-80"],
-                              ["Description", "w-[28rem]"],
+                              ["Description", compact ? "w-64" : "w-[28rem]"],
                               ["Feedback Bucket", "w-44"],
                               ["Development Feedback", "w-52"],
                               ["Client Test / Review Status", "w-40"],
                               ["Readiness Status", "w-44"],
-                              ["Client Feedback / Comments", "w-[26rem]"],
+                              ["Client Feedback / Comments", compact ? "w-56" : "w-[26rem]"],
                               ["", "w-28"]].map(([h, w], i) => (
                               <th key={i}
                                   className={`${w} px-3 py-2 text-[11px] font-semibold uppercase tracking-wide`}>
@@ -1394,6 +1488,7 @@ export default function SystemTestingPage() {
                               key={it.iteration_id}
                               item={it}
                               vocab={vocab}
+                              compact={compact}
                               busy={busy}
                               onSave={(patch) => saveRow(it, patch)}
                               onRetest={() => setRetestItem({

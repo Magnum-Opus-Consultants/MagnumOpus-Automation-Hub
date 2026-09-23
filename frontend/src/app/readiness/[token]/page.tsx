@@ -225,10 +225,15 @@ function ReviewRow({ row, vocab, onSave, saving }: {
                          focus:ring-2 focus:ring-sky-500/40"
               style={s ? { backgroundColor: s.fill, color: s.ink } : undefined}>
         {options.map((o) => {
-          const def = swatch(vocab.legend, o.label)?.definition;
+          /* An option with no colour of its own must say so explicitly: left
+             unset it inherits the select's fill, which paints the whole open
+             list in the current choice's colour. */
+          const os = swatch(vocab.legend, o.label);
           return (
             <option key={o.key} value={o.key}
-                    title={def ? `${o.label} — ${def}` : o.label}>
+                    title={os?.definition ? `${o.label} — ${os.definition}` : o.label}
+                    style={os ? { backgroundColor: os.fill, color: os.ink }
+                              : { backgroundColor: "#fff", color: "#0f172a" }}>
               {o.label}
             </option>
           );
