@@ -258,6 +258,37 @@ def _run_station_email_sync(key):
         update_sync_health(key, 'error', str(e))
 
 
+def run_receive_consignments_pull():
+    """Refresh the unbooked-cargo table from CargoWise.
+
+    Runs the same management command a person would, so a scheduled refresh and
+    a hand-run one cannot drift apart. Credentials come from settings; with none
+    configured this logs and returns rather than failing every hour, because a
+    workstation running the platform has no business talking to CargoWise.
+
+    Zero rows is the normal, healthy answer - it means nothing is awaiting
+    action - so it is logged plainly rather than as a warning.
+    """
+    from django.conf import settings
+
+    if not getattr(settings, 'CW_USERNAME', '') or not getattr(settings, 'CW_PASSWORD', ''):
+        logger.info('[receive_consignments] CargoWise credentials not set; skipping')
+        return
+    try:
+        from django.core.management import call_command
+        from .models import ReceiveConsignment
+
+        call_command('pull_receive_consignments',
+                     branches=getattr(settings, 'RC_PULL_BRANCHES', 'DOR,CON'),
+                     gate_from=getattr(settings, 'RC_PULL_GATE_FROM', '2026-08-03'),
+                     verbosity=0)
+        awaiting = ReceiveConsignment.objects.filter(
+            is_unbooked=True, is_latest_snapshot=True, in_warehouse__gt=0).count()
+        logger.info('[receive_consignments] refreshed; %s awaiting action', awaiting)
+    except Exception:
+        logger.exception('[receive_consignments] pull failed')
+
+
 def run_weekly_reports_job():
     """Each morning, refresh today's recurring report tasks in the tracker.
 
@@ -1733,6 +1764,22 @@ def start_scheduler():
         _awa_daily, trigger=CronTrigger(hour=10, minute=0),
         id='awa_reports', name='CargoWise reports to SharePoint',
         replace_existing=True, coalesce=True, misfire_grace_time=3600,
+    )
+
+    # Unbooked cargo awaiting action, straight from CargoWise into the table the
+    # Bruce report reads. Hourly rather than daily like the reports above: this
+    # one is a worklist, so a figure that is right at 12:00 and stale by 14:00
+    # is worse than useless - somebody chases cargo that was cleared hours ago.
+    # The pull is two small OData queries, so the hour costs nothing.
+    scheduler.add_job(
+        run_receive_consignments_pull,
+        trigger=IntervalTrigger(hours=1),
+        id='receive_consignments_pull',
+        name='Pull unbooked receive consignments from CargoWise',
+        replace_existing=True,
+        coalesce=True,              # a missed window runs once, not once per miss
+        misfire_grace_time=1800,
+        next_run_time=datetime.now() + timedelta(minutes=5),
     )
 
     for _i, (_key, _fn, _desc) in enumerate(_EMAIL_JOBS):

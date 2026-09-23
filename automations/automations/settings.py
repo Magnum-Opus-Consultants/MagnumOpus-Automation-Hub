@@ -118,6 +118,23 @@ AWA_REPORT_TIMEOUT = int(os.getenv('AWA_REPORT_TIMEOUT', '1500'))
 AWA_NOTIFY_TO = os.getenv('AWA_NOTIFY_TO', 'Ethan.Sevenster@moc-pty.com')
 PLATFORM_BASE_URL = os.getenv('PLATFORM_BASE_URL', 'https://workspace.moc-pty.com')
 
+# ── CargoWise (WiseGrid) OData ──────────────────────────────────────────────
+# Read by dashboard/cargowise.py for the reports this platform pulls itself,
+# rather than hands to a script on disk. Credentials come from the environment
+# only: with none set the scheduled pull logs that it is not configured and
+# does nothing, which is the right behaviour on a machine that should not be
+# talking to CargoWise at all.
+CW_BASE_URL = os.getenv('CW_BASE_URL', 'https://www-isbint.wisegrid.net')
+CW_MODULE = os.getenv('CW_MODULE', 'TWD')
+CW_ODATA_MODEL = os.getenv('CW_ODATA_MODEL', 'TransitWarehouse')
+CW_USERNAME = os.getenv('CW_USERNAME', '')
+CW_PASSWORD = os.getenv('CW_PASSWORD', '')
+CW_DEPARTMENT_CODE = os.getenv('CW_DEPARTMENT_CODE', 'BRN')
+# Branches the unbooked-cargo pull covers, and the gate-in floor that the saved
+# grid view "AWA LAX UNBOOKED CARGO CLEANUP" uses.
+RC_PULL_BRANCHES = os.getenv('RC_PULL_BRANCHES', 'DOR,CON')
+RC_PULL_GATE_FROM = os.getenv('RC_PULL_GATE_FROM', '2026-08-03')
+
 # ── Up Management Report ────────────────────────────────────────────────────
 # Off. This report goes to upper management, so the weekly send stays disabled
 # until it is turned on deliberately and a recipient list is set. Generating
