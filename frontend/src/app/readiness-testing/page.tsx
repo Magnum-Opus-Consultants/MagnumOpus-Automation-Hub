@@ -285,10 +285,11 @@ function StickyScroller({ children }: { children: React.ReactNode }) {
    fixed-height box hides most of them behind an inner scrollbar - which is the
    one place on this sheet where the text is the point. Height is measured from
    the content after every change, and once on mount for what was loaded. */
-function AutoTextarea({ value, onChange, placeholder, className = "" }: {
+function AutoTextarea({ value, onChange, placeholder, plain = false, className = "" }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  plain?: boolean;
   className?: string;
 }) {
   const fit = (el: HTMLTextAreaElement | null) => {
@@ -305,10 +306,17 @@ function AutoTextarea({ value, onChange, placeholder, className = "" }: {
       rows={1}
       placeholder={placeholder}
       onChange={(e) => { fit(e.currentTarget); onChange(e.target.value); }}
-      className={`w-full resize-none overflow-hidden rounded bg-subtle px-2 py-1.5
+      /* `plain` is for the columns that are the sheet's own content rather than
+         a box to fill in: it reads as text and only shows it is a field on
+         hover or focus. Set as one class per variant, not layered over the
+         other, because two background utilities in one string resolve by
+         stylesheet order rather than by which was written last. */
+      className={`w-full resize-none overflow-hidden rounded px-2 py-1.5
                   text-[12px] leading-relaxed text-ink ring-1 ring-transparent
                   placeholder:text-ink-3 hover:ring-stroke focus:outline-none
-                  focus:ring-brand/40 ${className}`}
+                  focus:ring-brand/40
+                  ${plain ? "bg-transparent hover:bg-subtle focus:bg-subtle" : "bg-subtle"}
+                  ${className}`}
     />
   );
 }
@@ -330,9 +338,13 @@ function ItemRow({ item, vocab, compact, busy, onSave, onRetest, onDelete, onDir
   onDelete: () => void;
   onDirty: (id: number, dirty: boolean) => void;
 }) {
-  const fields = ["bucket", "dev_status", "tested", "readiness",
-                  "client_feedback"] as const;
+  /* issue and description ride the same machinery as the selects: listing them
+     here is what gives them dirty-tracking, the Save button, and the field-by-
+     field merge when someone else edits the row while you are typing in it. */
+  const fields = ["issue", "description", "bucket", "dev_status", "tested",
+                  "readiness", "client_feedback"] as const;
   const serverValues = () => ({
+    issue: item.issue, description: item.description,
     bucket: item.bucket, dev_status: item.dev_status,
     tested: item.tested, readiness: item.readiness,
     client_feedback: item.client_feedback,
@@ -421,27 +433,29 @@ function ItemRow({ item, vocab, compact, busy, onSave, onRetest, onDelete, onDir
     <>
       <tr className="border-b border-stroke align-top last:border-0">
         <td className={`px-2 align-top ${compact ? "py-1.5" : "py-2"}`}>
-          {/* In compact the issue is the handle for the rest of the text. In
-              full view there is nothing hidden, so it stays plain and is not
-              announced as a control. */}
-          {compact ? (
-            <button
-              onClick={() => setExpanded(!expanded)}
-              aria-expanded={expanded}
-              title={expanded ? "Hide the full description" : "Show the full description"}
-              className="flex w-full items-start gap-1 text-left font-medium text-ink
-                         hover:text-brand"
-            >
-              <span className="mt-[3px] shrink-0 text-[9px] text-ink-3">
+          {/* The title is typed into, so in compact the chevron beside it - not
+              the text - is what expands the row. Clicking into the words has to
+              put a caret there, or you could never edit a title in compact. */}
+          <div className="flex items-start gap-1">
+            {compact && (
+              <button
+                onClick={() => setExpanded(!expanded)}
+                aria-expanded={expanded}
+                title={expanded ? "Collapse this row" : "Show the full description"}
+                className="mt-1.5 shrink-0 rounded px-0.5 text-[9px] text-ink-3
+                           hover:bg-subtle hover:text-brand"
+              >
                 {expanded ? "▼" : "▶"}
-              </span>
-              <span className="break-words whitespace-pre-wrap">{item.issue}</span>
-            </button>
-          ) : (
-            <div className="font-medium break-words whitespace-pre-wrap text-ink">
-              {item.issue}
-            </div>
-          )}
+              </button>
+            )}
+            <AutoTextarea
+              value={draft.issue}
+              onChange={(v) => setDraft({ ...draft, issue: v })}
+              placeholder="Issue title…"
+              plain
+              className="font-medium"
+            />
+          </div>
           {item.history.length > 0 && (
             <button onClick={() => setOpen(!open)}
                     className="mt-1 text-[11px] text-brand hover:underline">
@@ -453,15 +467,27 @@ function ItemRow({ item, vocab, compact, busy, onSave, onRetest, onDelete, onDir
         </td>
         <td className={`px-2 align-top text-[12px] leading-relaxed text-ink-2 ${
           compact ? "py-1.5" : "py-2"}`}>
-          <div className={`break-words whitespace-pre-wrap ${clamped ? "line-clamp-2" : ""}`}
-               title={clamped ? item.description : undefined}>
-            {item.description}
-          </div>
-          {clamped && item.description.length > 90 && (
-            <button onClick={() => setExpanded(true)}
-                    className="mt-0.5 text-[11px] font-medium text-brand hover:underline">
-              more
+          {/* Clamped, the description is a preview you tap to open - a textarea
+              cannot be line-clamped and still be typed into. Once open, and in
+              full view, it is the editable field itself. */}
+          {clamped ? (
+            <button
+              onClick={() => setExpanded(true)}
+              title={`${item.description}\n\nClick to edit`}
+              className="w-full text-left hover:text-ink"
+            >
+              <span className="line-clamp-2 break-words whitespace-pre-wrap">
+                {item.description || <span className="text-ink-3">No description…</span>}
+              </span>
             </button>
+          ) : (
+            <AutoTextarea
+              value={draft.description}
+              onChange={(v) => setDraft({ ...draft, description: v })}
+              placeholder="What was found…"
+              plain
+              className="text-ink-2"
+            />
           )}
         </td>
         <td className={`px-2 align-top w-40 ${compact ? "py-1.5" : "py-2"}`}>
@@ -493,7 +519,11 @@ function ItemRow({ item, vocab, compact, busy, onSave, onRetest, onDelete, onDir
           {dirty && (
             <button
               onClick={() => onSave(draft)}
-              disabled={busy}
+              /* The server rejects a blank title with a 400. Catching it here
+                 means an emptied title reads as "finish this", not as a failed
+                 save after the fact. */
+              disabled={busy || !draft.issue.trim()}
+              title={!draft.issue.trim() ? "An issue needs a title before it can be saved" : undefined}
               className="rounded-md bg-brand px-2.5 py-1 text-[11px] font-semibold
                          text-white hover:opacity-90 disabled:opacity-50"
             >
