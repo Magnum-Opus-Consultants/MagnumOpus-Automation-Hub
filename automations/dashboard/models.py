@@ -2370,3 +2370,122 @@ class TestNote(models.Model):
 
     def __str__(self):
         return self.text[:60]
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Receive consignments (Bruce report)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class ReceiveConsignmentImport(models.Model):
+    """One load of a Receive Consignments export, so a reload is traceable.
+
+    Mirrors PricingImport: the source is a CargoWise TWD export that somebody
+    downloads and drops in a folder. Keeping the load as a row means the report
+    can say where its figures came from, and a bad load is one delete away.
+    """
+    filename = models.CharField(max_length=400)
+    file_size = models.BigIntegerField(default=0)
+    file_modified = models.DateTimeField(null=True, blank=True)
+    # Taken from the export's own filename, which carries the moment CargoWise
+    # produced it - the only trustworthy ordering when several exports overlap.
+    export_timestamp = models.DateTimeField(null=True, blank=True)
+    loaded_at = models.DateTimeField(auto_now_add=True)
+    row_count = models.IntegerField(default=0)
+    notes = models.TextField(blank=True, default='')
+
+    class Meta:
+        db_table = 'receive_consignment_import'
+        ordering = ['-export_timestamp', '-loaded_at']
+
+    def __str__(self):
+        return f'{self.filename} ({self.row_count} rows)'
+
+
+class ReceiveConsignment(models.Model):
+    """A row of the Receive Consignments export, with the report's derived
+    fields resolved at load time rather than in Power BI.
+
+    The Bruce report used to read the .xlsx directly and work all of this out
+    in Power Query. Holding it here instead means the numbers are computed once,
+    in one place, and anything that can reach the database sees the same answer -
+    the report, a query, a future page on the platform.
+
+    Unbooked is the whole point: cargo received without a CargoWise booking,
+    which is what has to be chased.
+    """
+    source = models.ForeignKey(ReceiveConsignmentImport, on_delete=models.CASCADE,
+                               related_name='rows')
+
+    # ── As exported ──────────────────────────────────────────────────────────
+    receive_consignment_id = models.CharField(max_length=60, db_index=True)
+    rcn_reference = models.CharField(max_length=60, blank=True, default='')
+    next_open_service = models.CharField(max_length=120, blank=True, default='')
+    consignor = models.TextField(blank=True, default='')
+    consignee = models.TextField(blank=True, default='')
+    booking_party = models.TextField(blank=True, default='')
+    number_of_packages = models.IntegerField(default=0)
+    bkd = models.IntegerField(default=0, verbose_name='Booked')
+    arv = models.IntegerField(default=0, verbose_name='Arrived')
+    ctt = models.IntegerField(default=0, verbose_name='Counted')
+    pic = models.IntegerField(default=0, verbose_name='Picked')
+    put = models.IntegerField(default=0, verbose_name='Put away')
+    in_warehouse = models.IntegerField(default=0)
+    overs = models.IntegerField(default=0)
+    warehouse = models.CharField(max_length=120, blank=True, default='')
+    service_level = models.CharField(max_length=120, blank=True, default='')
+    next_discharge_port = models.CharField(max_length=120, blank=True, default='')
+    completion_date = models.DateTimeField(null=True, blank=True)
+
+    # ── Derived at load ──────────────────────────────────────────────────────
+    # CargoWise writes parties as "NAME, STREET, CITY STATE ZIP, COUNTRY", so
+    # the trading name and country are split out for grouping.
+    consignor_name = models.CharField(max_length=200, blank=True, default='')
+    consignor_country = models.CharField(max_length=80, blank=True, default='')
+    consignee_name = models.CharField(max_length=200, blank=True, default='')
+    consignee_country = models.CharField(max_length=80, blank=True, default='')
+    booking_party_name = models.CharField(max_length=200, blank=True, default='')
+    booking_party_country = models.CharField(max_length=80, blank=True, default='')
+
+    # CargoWise writes these as "CODE - Description". Split so a slicer can use
+    # the short code and a label can use the readable half.
+    warehouse_code = models.CharField(max_length=40, blank=True, default='')
+    warehouse_name = models.CharField(max_length=120, blank=True, default='')
+    service_level_code = models.CharField(max_length=40, blank=True, default='')
+    service_level_name = models.CharField(max_length=120, blank=True, default='')
+
+    # The date on its own, for the join to the Date table: a datetime carries a
+    # time and would miss every match.
+    completion_date_only = models.DateField(null=True, blank=True, db_index=True)
+
+    is_unbooked = models.BooleanField(default=False, db_index=True)
+    has_overs = models.BooleanField(default=False)
+    has_consignee = models.BooleanField(default=False)
+    has_discharge_port = models.BooleanField(default=False)
+    has_next_open_service = models.BooleanField(default=False)
+
+    age_days = models.IntegerField(null=True, blank=True)
+    age_bucket = models.CharField(max_length=20, blank=True, default='')
+    age_bucket_order = models.IntegerField(default=99)
+
+    # ── Provenance ───────────────────────────────────────────────────────────
+    source_file = models.CharField(max_length=400, blank=True, default='')
+    export_timestamp = models.DateTimeField(null=True, blank=True)
+    file_modified = models.DateTimeField(null=True, blank=True)
+    # One consignment can legitimately appear in several exports, so the
+    # consignment id alone is not unique. File plus id is.
+    row_key = models.CharField(max_length=480, blank=True, default='', db_index=True)
+    # A consignment can appear in several overlapping exports. Only the newest
+    # one counts, or every figure is multiplied by however many files mention it.
+    is_latest_snapshot = models.BooleanField(default=True, db_index=True)
+
+    class Meta:
+        db_table = 'receive_consignment'
+        ordering = ['-age_days', 'receive_consignment_id']
+        indexes = [
+            models.Index(fields=['is_unbooked', 'in_warehouse'],
+                         name='rc_unbooked_inwhse_idx'),
+            models.Index(fields=['is_latest_snapshot'], name='rc_latest_idx'),
+        ]
+
+    def __str__(self):
+        return f'{self.receive_consignment_id} ({self.booking_party_name})'
