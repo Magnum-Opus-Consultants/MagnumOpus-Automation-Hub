@@ -5,11 +5,11 @@ import { useSearchParams } from "next/navigation";
 import { canAccess, Icon, type Me } from "@/components/Sidebar";
 import {
   AppShell, PageHead, Button, EmptyState, Pill,
-  TextInput, AreaInput, SelectInput, ContextMenu, ConfirmDialog,
+  TextInput, AreaInput, SelectInput, ContextMenu, ConfirmDialog, Modal,
   type MenuItem,
 } from "@/components/ui";
 import {
-  BUCKETS, STATE_DOT, PRIORITY_STRIP, PRIORITY_TEXT, PRIORITY_ORDER,
+  BUCKETS, statusesIn, STATE_DOT, statusTone, PRIORITY_STRIP, PRIORITY_TEXT, PRIORITY_ORDER,
   NO_PROJECT, NO_LIST, MONTHS, DOW,
   parseISO, toISO, addDays, startOfDay, dayDiff, monthMatrix, periodLabel,
   labelOf, fmtHours, rollUp, sumTotals,
@@ -45,6 +45,61 @@ const BUCKET_LABEL: Record<string, string> = {
   discrepancy: "Completed — data discrepancy",
 };
 type PriorityFilter = (typeof PRIORITY_FILTERS)[number];
+
+/* A status select that carries its colour, grouped by what the work is doing.
+
+   Each <option> is given its own fill: left alone they inherit the select's
+   background, which paints the whole open list in the current choice's colour
+   and makes ten statuses look like one. Safari and macOS Chrome ignore option
+   colours, so the chosen status also shows as a dot on the control itself -
+   the colour is a second signal, never the only one. */
+function StatusSelect({ id, value, statuses, onChange, className = "" }: {
+  id?: string;
+  value: string;
+  statuses: Choice[];
+  onChange: (v: string) => void;
+  className?: string;
+}) {
+  const tone = statusTone(value);
+  const groups = useMemo(() => {
+    const order: string[] = [];
+    const byGroup = new Map<string, Choice[]>();
+    for (const c of statuses) {
+      const g = BUCKET_GROUP[c[0]] ?? "Other";
+      if (!byGroup.has(g)) { byGroup.set(g, []); order.push(g); }
+      byGroup.get(g)!.push(c);
+    }
+    return order.map((g) => [g, byGroup.get(g)!] as const);
+  }, [statuses]);
+
+  return (
+    <div className="relative">
+      <span className={`pointer-events-none absolute left-2.5 top-1/2 h-2 w-2 -translate-y-1/2
+                        rounded-full ${STATE_DOT[value] ?? "bg-ink-3"}`} />
+      <select
+        id={id}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ backgroundColor: tone.bg, color: tone.fg }}
+        className={`h-9 w-full cursor-pointer rounded-md pl-6 pr-2 text-sm font-medium
+                    ring-control focus-ring ${className}`}
+      >
+        {groups.map(([group, items]) => (
+          <optgroup key={group} label={group}>
+            {items.map(([v, l]) => {
+              const t = statusTone(v);
+              return (
+                <option key={v} value={v} style={{ backgroundColor: t.bg, color: t.fg }}>
+                  {BUCKET_LABEL[v] ?? l}
+                </option>
+              );
+            })}
+          </optgroup>
+        ))}
+      </select>
+    </div>
+  );
+}
 
 type Form = {
   title: string; description: string; status: string; priority: string;
@@ -225,13 +280,19 @@ function TasksInner() {
 
     if (grouping === "Bucket") {
       return BUCKETS
-        .map((key) => ({
-          key, label: labelOf(statuses, key), dot: STATE_DOT[key],
-          droppable: key as string | null,
-          items: cards.filter((t) => t.status === key).sort(sort),
-        }))
-        // An empty Backlog column is just noise; the others anchor the workflow.
-        .filter((c) => c.key !== "backlog" || c.items.length > 0);
+        .map((key) => {
+          // A column holds its own status plus the ones that qualify it, so a
+          // task can never fall between the columns and disappear.
+          const held = statusesIn(key);
+          return {
+            key, label: labelOf(statuses, key), dot: STATE_DOT[key],
+            droppable: key as string | null,
+            items: cards.filter((t) => held.includes(t.status)).sort(sort),
+          };
+        })
+        // Backlog and On Hold are states a board need not always show; empty,
+        // they are noise. The rest anchor the workflow and always stand.
+        .filter((c) => !["backlog", "on_hold"].includes(c.key) || c.items.length > 0);
     }
     if (grouping === "Priority") {
       return ["critical", "high", "medium", "low"].map((key) => ({
@@ -498,7 +559,13 @@ function TasksInner() {
   }
 
   function beginCreate(status: string, parent: Task | null = null, projectName = "", listName = "") {
-    setCreating({ parent, status, project: projectName, list: listName });
+    /* Inside a workspace the board only lists that workspace's projects, so a
+       task created against "" saves and then cannot be seen from the board it
+       was created on. Fall back to the workspace's first project rather than
+       to nothing; if it has none, the dialog explains why and blocks. */
+    const fallback = workspace ? (wsProjects?.[0] ?? "") : "";
+    const chosen = projectName || fallback;
+    setCreating({ parent, status, project: chosen, list: listName });
     setNewTitle("");
     setTimeout(() => newRef.current?.focus(), 0);
   }
@@ -624,10 +691,23 @@ function TasksInner() {
   }
 
   const projectOpts = ["All", ...(data?.projects ?? []), NO_PROJECT];
+
+  /* The projects a new task may be filed under. Scoped to a workspace, only
+     that workspace's own projects qualify - anything else is invisible from
+     here the moment it is saved. */
+  const createProjectOpts = workspace ? (wsProjects ?? []) : (data?.projects ?? []);
+  /* Nothing to file it under and no "No project" escape hatch: saving would
+     produce a task this board can never show. */
+  const createBlocked = !!workspace && createProjectOpts.length === 0;
   const todayISO = toISO(new Date());
 
   /** Planner-style card, shared by the board and calendar. */
-  function Card({ t, compact = false }: { t: Task; compact?: boolean }) {
+  /* `column` is the board column this card is sitting in, so the card can tell
+     when its own status is not the column's plain case. Undefined elsewhere
+     (the calendar, the tree), where there is no column to differ from. */
+  function Card({ t, compact = false, column }: {
+    t: Task; compact?: boolean; column?: string;
+  }) {
     const kids = kidsOf(t.id);
     const doneKids = kids.filter((k) => k.status === "done").length;
     const totals = rollUp(t, kids);
@@ -661,6 +741,16 @@ function TasksInner() {
                 <span className={`text-[11px] font-semibold ${PRIORITY_TEXT[t.priority]}`}>
                   {labelOf(priorities, t.priority)}
                 </span>
+                {/* A column holds more than one status, so a card that is not
+                    the column's plain case states which it is - otherwise
+                    "needs guidance" or "cancelled" would read as ordinary. */}
+                {t.status !== column && (
+                  <span className="rounded px-1.5 py-0.5 text-[11px] font-semibold"
+                        style={{ backgroundColor: statusTone(t.status).bg,
+                                 color: statusTone(t.status).fg }}>
+                    {BUCKET_LABEL[t.status] ?? labelOf(statuses, t.status)}
+                  </span>
+                )}
                 <DueChip date={t.end_date} done={t.status === "done"} />
                 <TimeChip totals={totals} compact />
                 {t.project_name && (
@@ -749,36 +839,81 @@ function TasksInner() {
         </label>
       </div>
 
-      {/* Top-level inline creator */}
+      {/* Top-level creator. A dialog rather than a strip in the toolbar: the
+          project is the field that decides whether the task is ever seen again,
+          and inline it was a 9rem select most people never looked at. */}
       {creating && !creating.parent && (
-        <div className="mb-3 flex items-center gap-2 rounded-lg bg-surface p-2 ring-panel">
-          <span className={`h-2 w-2 shrink-0 rounded-full ${STATE_DOT[creating.status]}`} />
-          <input
-            ref={newRef}
-            value={newTitle}
-            onChange={(e) => setNewTitle(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void quickCreate(creating.status, null, newTitle, creating.project);
-              if (e.key === "Escape") { setCreating(null); setNewTitle(""); }
-            }}
-            placeholder="Task title, then press Enter"
-            className="h-8 flex-1 rounded-md bg-transparent px-2 text-sm text-ink placeholder:text-ink-3 focus-ring"
-          />
-          <select value={creating.project}
-                  onChange={(e) => setCreating({ ...creating, project: e.target.value })}
-                  className="h-8 max-w-36 rounded-md bg-surface px-2 text-xs text-ink-2 ring-control focus-ring">
-            <option value="">No project</option>
-            {(data?.projects ?? []).map((p) => <option key={p} value={p}>{p}</option>)}
-          </select>
-          <select value={creating.status}
-                  onChange={(e) => setCreating({ ...creating, status: e.target.value })}
-                  className="h-8 rounded-md bg-surface px-2 text-xs text-ink-2 ring-control focus-ring">
-            {statuses.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-          </select>
-          <Button variant="primary" spinning={saving}
-                  onClick={() => void quickCreate(creating.status, null, newTitle, creating.project)}>Add</Button>
-          <Button variant="ghost" onClick={() => { setCreating(null); setNewTitle(""); }}>Cancel</Button>
-        </div>
+        <Modal
+          title="New task"
+          compact
+          onClose={() => { setCreating(null); setNewTitle(""); }}
+          footer={
+            <>
+              <Button variant="ghost"
+                      onClick={() => { setCreating(null); setNewTitle(""); }}>Cancel</Button>
+              <Button variant="primary" spinning={saving}
+                      disabled={!newTitle.trim() || createBlocked}
+                      onClick={() => void quickCreate(
+                        creating.status, null, newTitle, creating.project)}>
+                Add task
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-4 pb-2">
+            <div>
+              <label htmlFor="new-task-title"
+                     className="mb-1 block text-xs font-medium text-ink-2">Title</label>
+              <input
+                id="new-task-title"
+                ref={newRef}
+                value={newTitle}
+                onChange={(e) => setNewTitle(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && newTitle.trim() && !createBlocked) {
+                    void quickCreate(creating.status, null, newTitle, creating.project);
+                  }
+                }}
+                placeholder="What needs doing?"
+                className="h-9 w-full rounded-md bg-surface px-2.5 text-sm text-ink
+                           ring-control placeholder:text-ink-3 focus-ring"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="new-task-project"
+                       className="mb-1 block text-xs font-medium text-ink-2">Project</label>
+                <select id="new-task-project" value={creating.project}
+                        onChange={(e) => setCreating({ ...creating, project: e.target.value })}
+                        className="h-9 w-full rounded-md bg-surface px-2 text-sm text-ink
+                                   ring-control focus-ring">
+                  {/* Inside a workspace, "No project" is a task nobody will see
+                      again, so it is not offered there. */}
+                  {!workspace && <option value="">No project</option>}
+                  {createProjectOpts.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <div>
+                <label htmlFor="new-task-status"
+                       className="mb-1 block text-xs font-medium text-ink-2">Status</label>
+                <StatusSelect id="new-task-status" value={creating.status} statuses={statuses}
+                              onChange={(v) => setCreating({ ...creating, status: v })} />
+              </div>
+            </div>
+
+            {/* A workspace with nothing in it cannot hold a task: the board
+                lists a workspace's projects, so a task with no project would
+                save and then vanish. Say so here rather than let that happen. */}
+            {createBlocked && (
+              <p className="rounded-md bg-warnx-bg px-3 py-2 text-xs leading-relaxed text-warnx">
+                <strong>{workspace}</strong> has no projects yet. A task has to belong
+                to one to show on this board — add a project to {workspace} first,
+                otherwise the task saves but never appears.
+              </p>
+            )}
+          </div>
+        </Modal>
       )}
 
       {loading ? (
@@ -824,7 +959,7 @@ function TasksInner() {
                   {col.items.length === 0 && (
                     <p className="px-1 py-2 text-center text-xs text-ink-3">{isOver ? "Drop here" : "Empty"}</p>
                   )}
-                  {col.items.map((t) => <Card key={t.id} t={t} />)}
+                  {col.items.map((t) => <Card key={t.id} t={t} column={col.key} />)}
                 </div>
               </section>
             );
@@ -1238,13 +1373,14 @@ function TasksInner() {
                 <div className="sm:col-span-2">
                   <TextInput label="Title" value={form.title} onChange={(v) => setForm({ ...form, title: v })} />
                 </div>
-                <SelectInput label="Bucket" value={form.status}
-                             onChange={(v) => setForm({ ...form, status: v })}
-                             options={statuses.map(([value, l]) => ({
-                               value,
-                               label: BUCKET_LABEL[value] ?? l,
-                               group: BUCKET_GROUP[value],
-                             }))} />
+                {/* Same control as the create dialog, so a status is the same
+                    colour wherever it is set. */}
+                <div>
+                  <label htmlFor="edit-task-status"
+                         className="mb-1 block text-xs font-medium text-ink-2">Bucket</label>
+                  <StatusSelect id="edit-task-status" value={form.status} statuses={statuses}
+                                onChange={(v) => setForm({ ...form, status: v })} />
+                </div>
                 <SelectInput label="Priority" value={form.priority}
                              onChange={(v) => setForm({ ...form, priority: v })}
                              options={priorities.map(([value, l]) => ({ value, label: l }))} />

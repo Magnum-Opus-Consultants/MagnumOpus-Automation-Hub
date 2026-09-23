@@ -31,12 +31,64 @@ export type Payload = {
   people?: { id: number; name: string; username?: string }[];
 };
 
-export const BUCKETS = ["backlog", "todo", "in_progress", "review", "done"] as const;
+export const BUCKETS =
+  ["backlog", "todo", "in_progress", "review", "on_hold", "done"] as const;
 
+/* Which statuses each column holds.
+
+   The board used to filter `status === column`, so the five statuses without a
+   column of their own - guidance required, the two completed-but-waiting ones,
+   on hold, cancelled - put a task nowhere at all: it saved, then vanished off
+   the board. Every status now belongs to exactly one column.
+
+   On Hold earns its own column because "stopped" is not a stage of the work and
+   folding it into another would misreport it. The rest sit with the stage they
+   qualify: needing guidance is still in progress, completed-but-waiting is
+   still review, and cancelled is closed. A card whose status is not the
+   column's own says so on its face, so nothing is lost by the grouping. */
+export const BUCKET_STATUSES: Record<string, readonly string[]> = {
+  backlog: ["backlog"],
+  todo: ["todo"],
+  in_progress: ["in_progress", "in_progress_guidance"],
+  review: ["review", "review_pending", "discrepancy"],
+  on_hold: ["on_hold"],
+  done: ["done", "cancelled"],
+};
+/** Every status a column shows, defaulting to the column's own key. */
+export const statusesIn = (col: string) => BUCKET_STATUSES[col] ?? [col];
+
+/* Every status, not just the five with a board column: a task set to On Hold
+   still draws a dot wherever it is listed, and a missing entry renders nothing
+   at all rather than something neutral. */
 export const STATE_DOT: Record<string, string> = {
   backlog: "bg-ink-3", todo: "bg-infox", in_progress: "bg-brand",
-  review: "bg-warnx", done: "bg-good",
+  in_progress_guidance: "bg-warnx", review: "bg-warnx",
+  review_pending: "bg-warnx", discrepancy: "bg-bad",
+  on_hold: "bg-ink-3", cancelled: "bg-ink-3", done: "bg-good",
 };
+
+/* Fill and text for a status shown as a chip or a coloured <option>. Written as
+   CSS custom properties rather than Tailwind classes because an <option> can
+   only be coloured by inline style, and because every one of these tokens has a
+   dark-mode value - so the same map works in both themes.
+
+   The colour follows what the work is doing, matching BUCKET_GROUP: not started
+   is neutral, working is blue, anything waiting on somebody is amber, a data
+   discrepancy is red because it needs correcting, and closed is green or grey. */
+export const STATUS_TONE: Record<string, { bg: string; fg: string }> = {
+  backlog:              { bg: "var(--c-subtle)",    fg: "var(--c-ink-2)" },
+  todo:                 { bg: "var(--c-infox-bg)",  fg: "var(--c-infox)" },
+  in_progress:          { bg: "var(--c-brand-tint)", fg: "var(--c-brand)" },
+  in_progress_guidance: { bg: "var(--c-warnx-bg)",  fg: "var(--c-warnx)" },
+  review:               { bg: "var(--c-warnx-bg)",  fg: "var(--c-warnx)" },
+  review_pending:       { bg: "var(--c-warnx-bg)",  fg: "var(--c-warnx)" },
+  discrepancy:          { bg: "var(--c-bad-bg)",    fg: "var(--c-bad)" },
+  on_hold:              { bg: "var(--c-subtle)",    fg: "var(--c-ink-2)" },
+  cancelled:            { bg: "var(--c-subtle)",    fg: "var(--c-ink-3)" },
+  done:                 { bg: "var(--c-good-bg)",   fg: "var(--c-good)" },
+};
+export const statusTone = (key: string) =>
+  STATUS_TONE[key] ?? { bg: "var(--c-surface)", fg: "var(--c-ink)" };
 export const PRIORITY_STRIP: Record<string, string> = {
   critical: "bg-bad", high: "bg-warnx", medium: "bg-infox", low: "bg-ink-3",
 };
