@@ -1150,21 +1150,26 @@ export default function SystemTestingPage() {
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[820px] text-sm">
                   <thead>
+                    {/* Widths are set here rather than left to the content:
+                        the project cell runs to three lines and would otherwise
+                        take whatever it liked, leaving the narrow columns to
+                        drift. Each header sits over its own column and is
+                        aligned the way that column's values are. */}
                     <tr className="border-b border-stroke text-left text-[11px] uppercase tracking-wide text-ink-3">
-                      <th className="py-2 pr-3 font-medium">Project</th>
-                      <th className="py-2 pr-3 font-medium">Client</th>
-                      <th className="py-2 pr-3 font-medium">Testing window</th>
-                      <th className="py-2 pr-3 font-medium">Apps</th>
-                      <th className="py-2 pr-3 font-medium">Items</th>
-                      <th className="py-2 pr-3 font-medium">Readiness</th>
-                      <th className="py-2 pr-3 font-medium" />
+                      <th className="w-[30%] py-2 pr-3 font-medium">Project</th>
+                      <th className="w-[15%] py-2 pr-3 font-medium">Client</th>
+                      <th className="w-[13%] py-2 pr-3 font-medium">Testing window</th>
+                      <th className="w-[18%] py-2 pr-3 font-medium">Apps</th>
+                      <th className="w-16 py-2 pr-3 text-right font-medium">Items</th>
+                      <th className="w-36 py-2 pr-3 font-medium">Readiness</th>
+                      <th className="py-2 font-medium" />
                     </tr>
                   </thead>
                   <tbody>
                     {projects.map((p) => (
                       <tr key={p.id}
                           className="border-b border-stroke last:border-0 hover:bg-subtle/50">
-                        <td className="py-3 pr-3">
+                        <td className="py-3 pr-3 align-top">
                           <button onClick={() => openProject(p.id)}
                                   className="text-left font-medium text-ink hover:text-brand">
                             {p.name}
@@ -1180,9 +1185,9 @@ export default function SystemTestingPage() {
                             </div>
                           )}
                         </td>
-                        <td className="py-3 pr-3 text-ink-2">{p.client || "—"}</td>
-                        <td className="py-3 pr-3 text-ink-2">{p.window_label || "—"}</td>
-                        <td className="py-3 pr-3 text-ink-2">
+                        <td className="py-3 pr-3 align-top text-ink-2">{p.client || "—"}</td>
+                        <td className="py-3 pr-3 align-top text-ink-2">{p.window_label || "—"}</td>
+                        <td className="py-3 pr-3 align-top text-ink-2">
                           {p.areas.length === 0 ? "—" : (
                             <span className="flex flex-wrap gap-1">
                               {p.areas.map((a) => (
@@ -1194,10 +1199,14 @@ export default function SystemTestingPage() {
                             </span>
                           )}
                         </td>
-                        <td className="py-3 pr-3 text-ink-2">{p.rollup.total}</td>
-                        <td className="py-3 pr-3">
+                        <td className="py-3 pr-3 align-top text-right tabular-nums text-ink-2">{p.rollup.total}</td>
+                        <td className="py-3 pr-3 align-top">
+                          {/* The figure is given a fixed width and tabular
+                              figures so the bars all end on the same line and
+                              the percentages read as a column rather than
+                              shifting with the width of each number. */}
                           <span className="flex items-center gap-2">
-                            <span className="h-1.5 w-20 overflow-hidden rounded-full bg-subtle">
+                            <span className="h-1.5 w-20 shrink-0 overflow-hidden rounded-full bg-subtle">
                               <span className="block h-full rounded-full"
                                     style={{
                                       width: `${p.rollup.readiness_pct}%`,
@@ -1206,12 +1215,12 @@ export default function SystemTestingPage() {
                                         : p.rollup.outstanding > 0 ? RED : AMBER,
                                     }} />
                             </span>
-                            <span className="text-[12px] font-medium text-ink">
+                            <span className="w-10 text-right text-[12px] font-medium tabular-nums text-ink">
                               {p.rollup.readiness_pct}%
                             </span>
                           </span>
                         </td>
-                        <td className="py-3 pr-3 text-right whitespace-nowrap">
+                        <td className="py-3 align-top text-right whitespace-nowrap">
                           <Button icon="link" onClick={() => openShare(p)}>
                             Share
                           </Button>
