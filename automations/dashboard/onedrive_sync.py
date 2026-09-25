@@ -373,10 +373,17 @@ def process_excel_file(file_content, filename):
             print(f"  Could not determine branch for {filename} - skipping")
             return []
         if '-' in branch:
-            logger.warning('[turnover] %s covers several branches (%s); its rows are '
-                           'filed under the combined label and cannot be split per '
-                           'branch. Run the report grouped by Transaction Branch to '
-                           'get one file each.', filename, branch)
+            # Skipped, not loaded under a combined label. Those branches are now
+            # sent as one file each, so a combined file is the same revenue a
+            # second time - and loading it double counts every month it covers.
+            # Left as a warning rather than silence: if the separate files ever
+            # stop arriving, this says so instead of a branch quietly emptying.
+            logger.warning('[turnover] %s covers several branches (%s) and was skipped. '
+                           'Those branches are sent separately; loading this as well '
+                           'would count the same revenue twice. If they are no longer '
+                           'sent separately, this file is the only source and the skip '
+                           'needs revisiting.', filename, branch)
+            return []
 
         # Extract report date from row 11
         report_date = extract_report_date(ws)
