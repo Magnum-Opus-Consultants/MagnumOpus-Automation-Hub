@@ -1237,11 +1237,17 @@ export default function SystemTestingPage() {
                             </span>
                           </span>
                         </td>
-                        <td className="py-3 pr-1 align-top text-right whitespace-nowrap">
-                          <Button icon="link" onClick={() => openShare(p)}>
-                            Share
-                          </Button>
-                          <span className="ml-2 inline-block align-middle">
+                        <td className="py-3 pr-1 align-top">
+                          {/* A flex row, not three inline buttons. Laid out
+                              inline they align on the text baseline, and Share
+                              carries an icon that moves its baseline - so it
+                              sat 4px above the other two. Two of the three had
+                              been wrapped in align-middle to paper over it,
+                              which is why only Share was out. */}
+                          <div className="flex items-center justify-end gap-2">
+                            <Button icon="link" onClick={() => openShare(p)}>
+                              Share
+                            </Button>
                             <Button icon="sync"
                                     onClick={() => setRetestModal({
                                       from: p,
@@ -1251,10 +1257,8 @@ export default function SystemTestingPage() {
                                     })}>
                               Retest
                             </Button>
-                          </span>
-                          <span className="ml-2 inline-block align-middle">
                             <Button onClick={() => openProject(p.id)}>Open</Button>
-                          </span>
+                          </div>
                         </td>
                       </tr>
                     ))}
