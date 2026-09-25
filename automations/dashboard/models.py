@@ -51,6 +51,18 @@ class ProjectTask(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='backlog')
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium')
     project_name = models.CharField(max_length=100, blank=True, default='')
+    # Which workspace a task belongs to when it belongs to no project.
+    #
+    # A task's workspace is normally inferred from its project, so this stays
+    # empty for the great majority of them. But a task does not have to have a
+    # project, and one that does not had nothing to infer from: it either
+    # vanished from every workspace board or, once shown, appeared on all of
+    # them. Recording the workspace it was created in is what lets an unfiled
+    # task belong somewhere. Set on creation and otherwise left alone - the
+    # project, where there is one, remains what decides.
+    workspace = models.ForeignKey('Workspace', null=True, blank=True,
+                                  on_delete=models.SET_NULL,
+                                  related_name='unfiled_tasks')
     # ClickUp-style hierarchy: a project holds lists, a list holds tasks, a task
     # holds subtasks. Kept as a label on the task (like project_name) rather
     # than its own table, so the two levels stay consistent.

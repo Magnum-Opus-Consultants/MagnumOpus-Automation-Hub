@@ -10,6 +10,8 @@ import { Icon } from "@/components/Sidebar";
 export type Task = {
   id: number; title: string; description: string; status: string; priority: string;
   project_name: string; list_name: string; company: string; company_display: string;
+  /** Only set on a task with no project - the project decides otherwise. */
+  workspace?: string;
   parent: number | null;
   start_date: string | null; end_date: string | null;
   start_time: string | null; end_time: string | null;

@@ -260,12 +260,20 @@ function TasksInner() {
     if (needle && !`${t.title} ${t.description} ${t.project_name}`.toLowerCase().includes(needle)) return false;
     if (priority !== "All" && t.priority !== priority.toLowerCase()) return false;
     if (project !== "All" && (t.project_name || NO_PROJECT) !== project) return false;
-    // Scoped to a workspace: only its projects. wsProjects === null means the
-    // page is not workspace-scoped at all.
-    if (wsProjects !== null && !wsProjects.includes(t.project_name || "")) return false;
+    /* Scoped to a workspace. A task with a project belongs wherever that
+       project does; one without carries its own workspace, set when it was
+       created. Excluding the latter is what made a new task save and then
+       apparently vanish - and showing it everywhere instead would have put one
+       workspace's loose tasks on every other workspace's board. */
+    if (wsProjects !== null) {
+      const belongs = t.project_name
+        ? wsProjects.includes(t.project_name)
+        : t.workspace === workspace;
+      if (!belongs) return false;
+    }
     if (hideDone && t.status === "done") return false;
     return true;
-  }, [q, priority, project, hideDone, wsProjects]);
+  }, [q, priority, project, hideDone, wsProjects, workspace]);
 
   const visible = useMemo(() => all.filter(matches), [all, matches]);
 
@@ -504,11 +512,17 @@ function TasksInner() {
     if (!clean) return;
     setSaving(true);
     try {
+      const projectFor = parent?.project_name
+        ?? (projectName === NO_PROJECT ? "" : projectName);
       const body: Record<string, unknown> = {
         title: clean, status, priority: "medium",
-        project_name: parent?.project_name ?? (projectName === NO_PROJECT ? "" : projectName),
+        project_name: projectFor,
         list_name: parent?.list_name ?? (listName === NO_LIST ? "" : listName),
       };
+      /* Only a task with no project needs this: with one, the project already
+         says which workspace it sits in, and storing a second answer invites
+         the two to disagree after a project is moved. */
+      if (!projectFor && workspace) body.workspace = workspace;
       if (parent) body.parent = parent.id;
       await fetch("/api/tasks/create", {
         method: "POST",
@@ -696,9 +710,6 @@ function TasksInner() {
      that workspace's own projects qualify - anything else is invisible from
      here the moment it is saved. */
   const createProjectOpts = workspace ? (wsProjects ?? []) : (data?.projects ?? []);
-  /* Nothing to file it under and no "No project" escape hatch: saving would
-     produce a task this board can never show. */
-  const createBlocked = !!workspace && createProjectOpts.length === 0;
   const todayISO = toISO(new Date());
 
   /** Planner-style card, shared by the board and calendar. */
@@ -852,7 +863,7 @@ function TasksInner() {
               <Button variant="ghost"
                       onClick={() => { setCreating(null); setNewTitle(""); }}>Cancel</Button>
               <Button variant="primary" spinning={saving}
-                      disabled={!newTitle.trim() || createBlocked}
+                      disabled={!newTitle.trim()}
                       onClick={() => void quickCreate(
                         creating.status, null, newTitle, creating.project)}>
                 Add task
@@ -870,7 +881,7 @@ function TasksInner() {
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" && newTitle.trim() && !createBlocked) {
+                  if (e.key === "Enter" && newTitle.trim()) {
                     void quickCreate(creating.status, null, newTitle, creating.project);
                   }
                 }}
@@ -888,9 +899,10 @@ function TasksInner() {
                         onChange={(e) => setCreating({ ...creating, project: e.target.value })}
                         className="h-9 w-full rounded-md bg-surface px-2 text-sm text-ink
                                    ring-control focus-ring">
-                  {/* Inside a workspace, "No project" is a task nobody will see
-                      again, so it is not offered there. */}
-                  {!workspace && <option value="">No project</option>}
+                  {/* A task need not belong to a project. One filed under
+                      none still shows on the board, so this is a real choice
+                      rather than a way to lose the task. */}
+                  <option value="">No project</option>
                   {createProjectOpts.map((p) => <option key={p} value={p}>{p}</option>)}
                 </select>
               </div>
@@ -902,16 +914,6 @@ function TasksInner() {
               </div>
             </div>
 
-            {/* A workspace with nothing in it cannot hold a task: the board
-                lists a workspace's projects, so a task with no project would
-                save and then vanish. Say so here rather than let that happen. */}
-            {createBlocked && (
-              <p className="rounded-md bg-warnx-bg px-3 py-2 text-xs leading-relaxed text-warnx">
-                <strong>{workspace}</strong> has no projects yet. A task has to belong
-                to one to show on this board — add a project to {workspace} first,
-                otherwise the task saves but never appears.
-              </p>
-            )}
           </div>
         </Modal>
       )}

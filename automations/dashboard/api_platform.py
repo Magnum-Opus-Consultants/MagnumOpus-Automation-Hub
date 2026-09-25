@@ -509,6 +509,8 @@ def _task_dict(t):
         'status': t.status,
         'priority': t.priority,
         'project_name': t.project_name,
+        # Only set on tasks with no project; the project decides otherwise.
+        'workspace': t.workspace.name if t.workspace else '',
         'list_name': t.list_name,
         'company': t.company,
         'company_display': t.get_company_display() if t.company else '',
@@ -565,6 +567,12 @@ def _apply_task_fields(rec, data):
         if f in data:
             value = data.get(f)
             setattr(rec, f, (value or '').strip() if isinstance(value, str) else (value or ''))
+    # Only meaningful for a task with no project: a project already says which
+    # workspace the work sits in. An unknown name is ignored rather than
+    # refused, so a rename elsewhere cannot start rejecting new tasks.
+    if 'workspace' in data:
+        name = (data.get('workspace') or '').strip()
+        rec.workspace = Workspace.objects.filter(name=name).first() if name else None
     if data.get('status') in _TASK_STATUSES:
         rec.status = data['status']
     if data.get('priority') in _TASK_PRIORITIES:
