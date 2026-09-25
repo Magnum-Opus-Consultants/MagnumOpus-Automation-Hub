@@ -1161,21 +1161,25 @@ export default function SystemTestingPage() {
                 own readiness figure.
               </p>
               <div className="overflow-x-auto">
-                <table className="w-full min-w-[820px] text-sm">
+                {/* 820px could not hold six columns of content plus three
+                    buttons, so the last cell was pushed past the edge and
+                    "Open" lost its right-hand side. Below this the wrapper
+                    scrolls sideways instead of clipping. */}
+                <table className="w-full min-w-[1080px] text-sm">
                   <thead>
-                    {/* Widths are set here rather than left to the content:
-                        the project cell runs to three lines and would otherwise
-                        take whatever it liked, leaving the narrow columns to
-                        drift. Each header sits over its own column and is
-                        aligned the way that column's values are. */}
+                    {/* Only the narrow columns are given a width, and the
+                        buttons a floor wide enough to hold all three. Pinning
+                        the wide columns as percentages squeezed this last cell
+                        until "Open" was clipped off the edge - the project name
+                        can take the slack instead, which is what it did before. */}
                     <tr className="border-b border-stroke text-left text-[11px] uppercase tracking-wide text-ink-3">
-                      <th className="w-[30%] py-2 pr-3 font-medium">Project</th>
-                      <th className="w-[15%] py-2 pr-3 font-medium">Client</th>
-                      <th className="w-[13%] py-2 pr-3 font-medium">Testing window</th>
-                      <th className="w-[18%] py-2 pr-3 font-medium">Apps</th>
+                      <th className="py-2 pr-3 font-medium">Project</th>
+                      <th className="py-2 pr-3 font-medium">Client</th>
+                      <th className="py-2 pr-3 font-medium">Testing window</th>
+                      <th className="py-2 pr-3 font-medium">Apps</th>
                       <th className="w-16 py-2 pr-3 text-right font-medium">Items</th>
-                      <th className="w-36 py-2 pr-3 font-medium">Readiness</th>
-                      <th className="py-2 font-medium" />
+                      <th className="w-32 py-2 pr-3 font-medium">Readiness</th>
+                      <th className="w-[248px] py-2 pr-1 font-medium" />
                     </tr>
                   </thead>
                   <tbody>
@@ -1233,7 +1237,7 @@ export default function SystemTestingPage() {
                             </span>
                           </span>
                         </td>
-                        <td className="py-3 align-top text-right whitespace-nowrap">
+                        <td className="py-3 pr-1 align-top text-right whitespace-nowrap">
                           <Button icon="link" onClick={() => openShare(p)}>
                             Share
                           </Button>
