@@ -133,6 +133,10 @@ function TasksInner() {
   // "not scoped to a workspace"; null means "not loaded yet".
   const [wsProjects, setWsProjects] = useState<string[] | null>(null);
   const [workspace, setWorkspace] = useState<string | null>(null);
+  /* The one list being looked at, from ?list= in the sidebar link. A list is
+     the narrowest thing you can open, so opening one shows that list and
+     nothing else - the workspace around it is not the question being asked. */
+  const [listScope, setListScope] = useState<string | null>(null);
 
   const [selected, setSelected] = useState<number | null>(null);
   const [form, setForm] = useState<Form | null>(null);
@@ -203,6 +207,7 @@ function TasksInner() {
     const w = params?.get("workspace");
      
     setWorkspace(w);
+    setListScope(params?.get("list") ?? null);
     if (!w) {
        
       setWsProjects(null);
@@ -255,25 +260,39 @@ function TasksInner() {
 
   const kidsOf = useCallback((id: number) => childrenOf.get(id) ?? [], [childrenOf]);
 
-  const matches = useCallback((t: Task) => {
-    const needle = q.trim().toLowerCase();
-    if (needle && !`${t.title} ${t.description} ${t.project_name}`.toLowerCase().includes(needle)) return false;
-    if (priority !== "All" && t.priority !== priority.toLowerCase()) return false;
-    if (project !== "All" && (t.project_name || NO_PROJECT) !== project) return false;
-    /* Scoped to a workspace. A task with a project belongs wherever that
-       project does; one without carries its own workspace, set when it was
-       created. Excluding the latter is what made a new task save and then
-       apparently vanish - and showing it everywhere instead would have put one
-       workspace's loose tasks on every other workspace's board. */
+  /* What is being looked at: the workspace, and the list within it. Kept apart
+     from the filter box and the priority chips because the two answer different
+     questions - the heading counts the scope, so typing in the filter must not
+     appear to change how much work exists. */
+  const inScope = useCallback((t: Task) => {
+    /* A task with a project belongs wherever that project does; one without
+       carries its own workspace, set when it was created. Excluding the latter
+       is what made a new task save and then apparently vanish - and showing it
+       everywhere instead would have put one workspace's loose tasks on every
+       other workspace's board. */
     if (wsProjects !== null) {
       const belongs = t.project_name
         ? wsProjects.includes(t.project_name)
         : t.workspace === workspace;
       if (!belongs) return false;
     }
+    // A list is the narrowest thing you can open: it shows that list alone.
+    if (listScope !== null && (t.list_name || "") !== listScope) return false;
+    return true;
+  }, [wsProjects, workspace, listScope]);
+
+  const matches = useCallback((t: Task) => {
+    if (!inScope(t)) return false;
+    const needle = q.trim().toLowerCase();
+    if (needle && !`${t.title} ${t.description} ${t.project_name}`.toLowerCase().includes(needle)) return false;
+    if (priority !== "All" && t.priority !== priority.toLowerCase()) return false;
+    if (project !== "All" && (t.project_name || NO_PROJECT) !== project) return false;
     if (hideDone && t.status === "done") return false;
     return true;
-  }, [q, priority, project, hideDone, wsProjects, workspace]);
+  }, [inScope, q, priority, project, hideDone]);
+
+  /* Everything in scope, before the filters. What the heading counts. */
+  const scoped = useMemo(() => all.filter(inScope), [all, inScope]);
 
   const visible = useMemo(() => all.filter(matches), [all, matches]);
 
@@ -316,22 +335,26 @@ function TasksInner() {
     }));
   }, [visible, grouping, statuses, priorities]);
 
+  /* Counted over what is in scope, not over every task on the system. The
+     heading names the workspace or list being viewed, so counting everything
+     told you the size of the database rather than the size of the thing you
+     opened. */
   const stats = useMemo(() => {
-    const open = all.filter((t) => t.status !== "done");
+    const open = scoped.filter((t) => t.status !== "done");
     const today = startOfDay(new Date()).getTime();
-    const totals = sumTotals(all.filter((t) => t.parent == null).map((t) => rollUp(t, kidsOf(t.id))));
+    const totals = sumTotals(scoped.filter((t) => t.parent == null).map((t) => rollUp(t, kidsOf(t.id))));
     return {
-      total: all.length,
+      total: scoped.length,
       open: open.length,
       critical: open.filter((t) => t.priority === "critical").length,
       overdue: open.filter((t) => {
         const d = parseISO(t.end_date);
         return d && d.getTime() < today;
       }).length,
-      done: all.filter((t) => t.status === "done").length,
+      done: scoped.filter((t) => t.status === "done").length,
       totals,
     };
-  }, [all, kidsOf]);
+  }, [scoped, kidsOf]);
 
   const weeks = useMemo(() => monthMatrix(month.y, month.m), [month]);
 
@@ -579,7 +602,9 @@ function TasksInner() {
        to nothing; if it has none, the dialog explains why and blocks. */
     const fallback = workspace ? (wsProjects?.[0] ?? "") : "";
     const chosen = projectName || fallback;
-    setCreating({ parent, status, project: chosen, list: listName });
+    // Added while looking at one list, it belongs to that list - otherwise it
+    // saves and immediately drops out of the view it was created in.
+    setCreating({ parent, status, project: chosen, list: listName || listScope || "" });
     setNewTitle("");
     setTimeout(() => newRef.current?.focus(), 0);
   }
@@ -787,7 +812,9 @@ function TasksInner() {
   return (
     <AppShell active="Project Tracker" me={me} wide>
       <PageHead
-        title={workspace ?? "Project Tracker"}
+        /* Name the list when one is open. The counts below are of the list, not
+           the workspace, so the heading has to say which is being counted. */
+        title={listScope ?? workspace ?? "Project Tracker"}
         subtitle={loading ? "Loading work items…"
           : `${stats.open} open · ${stats.critical} critical · ${stats.overdue} overdue · ${stats.done} done · `
             + `${fmtHours(stats.totals.hasAct ? stats.totals.act : null)} logged of `
