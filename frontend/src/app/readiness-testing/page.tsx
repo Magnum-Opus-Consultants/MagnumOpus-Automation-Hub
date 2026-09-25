@@ -753,8 +753,17 @@ export default function SystemTestingPage() {
             if (counts.get(sh.version_id) !== sh.items.length) mustReload = true;
             const serverSheet = server?.sheets.find(
               (x: { version_id: number }) => x.version_id === sh.version_id);
-            const items = sh.items.map(
-              (it) => patches.get(it.iteration_id) ?? it);
+            /* A row holding unsaved edits keeps the object it already has.
+               Replacing it with the server's copy mid-edit is what threw away
+               a dropdown someone had just changed: the row is rebuilt from the
+               incoming item, and the change goes with it. dirtyRows is written
+               by every row as it gains and loses unsaved changes - it was being
+               kept and never consulted, so the guard this comment describes did
+               not actually exist. */
+            const items = sh.items.map((it) =>
+              dirtyRows.current.has(it.iteration_id)
+                ? it
+                : patches.get(it.iteration_id) ?? it);
             const touched = items.some((it, i) => it !== sh.items[i]);
             if (!touched && serverSheet?.rollup === sh.rollup) return sh;
             return { ...sh, items, rollup: serverSheet?.rollup ?? sh.rollup };
@@ -764,7 +773,11 @@ export default function SystemTestingPage() {
         return next;
       });
 
-      if (mustReload) {
+      /* A full reload rebuilds every row from the server, so it takes unsaved
+         edits with it. Rows only stay dirty until they are saved or discarded,
+         and the reload is triggered by a count change that will still be true
+         next tick - so waiting costs five seconds and saves someone's typing. */
+      if (mustReload && dirtyRows.current.size === 0) {
         await loadDetail(projectId, false);
         await loadProjects(projectId);
       }
