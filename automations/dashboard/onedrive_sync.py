@@ -294,21 +294,59 @@ def extract_report_date(ws):
 
 KNOWN_BRANCHES = ['ATL', 'DFW', 'HEC', 'HNL', 'HOU', 'ICS', 'IMP', 'JFK', 'LAX', 'LCL', 'ORD', 'PPG', 'CON', 'DOR']
 
-def get_branch_from_file(ws):
-    """Extract branch code from inside the Excel file by scanning header rows."""
+def get_branches_from_file(ws):
+    """Every transaction branch the file declares, in the order written.
+
+    The header reads "Transaction Branches: CON, DOR" when a report covers more
+    than one. The old pattern stopped at the comma, so a combined CON+DOR file
+    was read as CON and every row in it - DOR's included - was filed under CON.
+    That is invisible in the result: the figures look complete, they are simply
+    attributed to the wrong branch.
+
+    Returns [] when nothing recognisable is found, so the caller can say so
+    rather than guess.
+    """
     for row_idx in range(1, 12):
         try:
             for col_idx in range(1, 5):
                 cell_val = str(ws.cell(row=row_idx, column=col_idx).value or '')
-                # Match "Transaction Branches: IMP" style
-                m = re.search(r'Transaction Branches?:\s*([A-Z\-]+)', cell_val, re.IGNORECASE)
-                if m:
-                    candidate = m.group(1).strip().upper()
-                    if candidate in KNOWN_BRANCHES:
-                        return candidate
-        except:
+                # Branch(?:es)? rather than Branches?, which reads as "Branche"
+                # plus an optional s and so never matched the singular heading.
+                # Capture the whole list, commas and all, then split it.
+                m = re.search(r'Transaction Branch(?:es)?:\s*([A-Za-z0-9,\s\-]+)', cell_val,
+                              re.IGNORECASE)
+                if not m:
+                    continue
+                found = []
+                for part in re.split(r'[,\s]+', m.group(1).strip().upper()):
+                    part = part.strip('-').strip()
+                    if part and part in KNOWN_BRANCHES and part not in found:
+                        found.append(part)
+                if found:
+                    return found
+        except Exception:
             continue
-    return None
+    return []
+
+
+def get_branch_from_file(ws):
+    """The single branch a file belongs to, or a combined label when it covers
+    several.
+
+    A file holding two branches has no single answer, and the rows carry no
+    branch of their own, so the two cannot be separated after the fact. Naming
+    it for both - CON-DOR - at least reports what the figures actually are
+    instead of hiding half of them inside the other branch. Splitting it has to
+    happen where the report is produced: CargoWise can group the same report by
+    Transaction Branch and send one file per branch, as it already does for the
+    other twelve.
+    """
+    branches = get_branches_from_file(ws)
+    if not branches:
+        return None
+    if len(branches) == 1:
+        return branches[0]
+    return '-'.join(branches)
 
 
 def process_excel_file(file_content, filename):
@@ -326,8 +364,19 @@ def process_excel_file(file_content, filename):
         if not branch:
             branch = get_branch_from_file(ws)
         if not branch:
+            # Silently returning [] here is how the CON-DOR feed went seven
+            # months without anybody noticing: the sync reported success, the
+            # branch simply stopped receiving rows. Warn loudly enough to show
+            # up in the log even though the caller still skips the file.
+            logger.warning('[turnover] could not determine branch for %s - file skipped; '
+                           'its figures are missing from the report', filename)
             print(f"  Could not determine branch for {filename} - skipping")
             return []
+        if '-' in branch:
+            logger.warning('[turnover] %s covers several branches (%s); its rows are '
+                           'filed under the combined label and cannot be split per '
+                           'branch. Run the report grouped by Transaction Branch to '
+                           'get one file each.', filename, branch)
 
         # Extract report date from row 11
         report_date = extract_report_date(ws)
