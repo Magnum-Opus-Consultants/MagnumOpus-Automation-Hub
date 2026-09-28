@@ -275,6 +275,12 @@ def load(path, user=None, make_active=True, sheet=SHEET):
             created = _dtm(cell(raw, 'Created Time (UTC)'))
             booked = _dtm(cell(raw, 'Booked'))
             month_label = _s(cell(raw, 'Month'), 30)
+            # The raw export has no Month column; the processed workbook does.
+            # Without it the month-based visuals and the duplicate rule (which
+            # groups by month) lose these rows, so work it out from the date.
+            if not month_label and created:
+                month_label = created.strftime('%B %Y')
+            month_start = _month_start(month_label, created)
             origin = _s(cell(raw, 'Origin'), 20)
             dest = _s(cell(raw, 'Destination'), 20)
 
@@ -325,10 +331,13 @@ def load(path, user=None, make_active=True, sheet=SHEET):
                 client_name=_s(cell(raw, 'Client Name'), 255),
                 branch=_s(cell(raw, 'Branch'), 40),
                 month_label=month_label,
-                month_start=_month_start(month_label, created),
-                year=_i(cell(raw, 'Year')),
-                quarter=_s(cell(raw, 'Quarter'), 4),
-                month_sort=_i(cell(raw, 'Month Sort')),
+                month_start=month_start,
+                # the workbook's values where it has them; the same values,
+                # derived, where it does not (Month Sort is the month of the year)
+                year=_i(cell(raw, 'Year')) or (month_start.year if month_start else None),
+                quarter=(_s(cell(raw, 'Quarter'), 4)
+                         or (f'Q{(month_start.month - 1) // 3 + 1}' if month_start else '')),
+                month_sort=_i(cell(raw, 'Month Sort')) or (month_start.month if month_start else None),
                 quote_no=_i(cell(raw, 'Quote #')),
                 booking_no=booking,
                 quote_status=_s(cell(raw, 'Quote Status')),
@@ -367,10 +376,15 @@ def load(path, user=None, make_active=True, sheet=SHEET):
         _apply_duplicate_flags(imp, dup_key_count)
 
     imp.quote_rows = counts[PricingRow.QUOTE]
-    imp.turnover_rows = counts[PricingRow.TURNOVER]
     imp.skipped_rows = skipped
+    # Income always comes from the platform's latest turnover data, whatever
+    # turnover block the workbook carried.
+    t_rows, t_first, t_last = refresh_turnover(imp)
+    imp.turnover_rows = t_rows if t_first else counts[PricingRow.TURNOVER]
     imp.notes = (f'{len(header)} columns read from "{sheet}". '
-                 f'Duplicate flags {"computed here" if needs_dup else "taken from the workbook"}.')
+                 f'Duplicate flags {"computed here" if needs_dup else "taken from the workbook"}. '
+                 + (f'Turnover from turnover_data, {t_first:%b %Y} to {t_last:%b %Y}.' if t_first
+                    else 'No turnover data found.'))
     if make_active:
         with transaction.atomic():
             PricingImport.objects.filter(is_active=True).update(is_active=False)
@@ -381,6 +395,60 @@ def load(path, user=None, make_active=True, sheet=SHEET):
     logger.info('[pricing] loaded %s: %s quote + %s turnover rows',
                 imp.filename, imp.quote_rows, imp.turnover_rows)
     return imp
+
+
+# Income comes from the turnover data the platform loads from the weekly
+# turnover emails, not from the pricing workbook, so a pricing update always
+# carries the latest income. The report has always shown a rolling twelve
+# months of it, per client and branch.
+TURNOVER_MONTHS = 12
+# HEC's turnover stopped in September 2025, and it was never in this report.
+TURNOVER_BRANCHES_EXCLUDED = ('HEC',)
+# The turnover block numbers months on from January 2024 (= 1), unlike the
+# quote block's month of the year; kept, because the report sorts by it.
+TURNOVER_SORT_BASE_YEAR = 2024
+
+
+def refresh_turnover(imp, months=TURNOVER_MONTHS):
+    """Replace an import's turnover block with the latest turnover_data.
+
+    Takes the last `months` months up to the newest month in turnover_data.
+    CON and DOR stay separate branches, as the turnover emails now report them.
+    Returns (rows, first month, last month); (0, None, None) when there is no
+    turnover data, in which case the import's turnover block is left as it is.
+    """
+    from django.db import connection
+
+    excluded = list(TURNOVER_BRANCHES_EXCLUDED)
+    with connection.cursor() as cur:
+        cur.execute('select max(date) from turnover_data where branch <> all(%s)', [excluded])
+        latest = cur.fetchone()[0]
+        if latest is None:
+            return 0, None, None
+        last = dt.date(latest.year, latest.month, 1)
+        k = last.year * 12 + last.month - 1 - (months - 1)
+        first = dt.date(k // 12, k % 12 + 1, 1)
+        cur.execute("""
+            select debtor, max(debtor_name), branch, date_trunc('month', date)::date, sum(value)
+            from turnover_data
+            where date >= %s and date < %s and branch <> all(%s)
+            group by debtor, branch, date_trunc('month', date)""",
+                    [first, dt.date(last.year + (last.month == 12), last.month % 12 + 1, 1), excluded])
+        data = cur.fetchall()
+
+    rows = [PricingRow(
+        source=imp, block=PricingRow.TURNOVER, row_number=i + 1,
+        client=(debtor or '')[:60], client_name=(name or '')[:255], branch=(branch or '')[:40],
+        month_label=m.strftime('%B %Y'), month_start=m, year=m.year,
+        quarter=f'Q{(m.month - 1) // 3 + 1}',
+        month_sort=(m.year - TURNOVER_SORT_BASE_YEAR) * 12 + m.month,
+        total_income=value, duplicate_flag='Unique',
+    ) for i, (debtor, name, branch, m, value) in enumerate(data)]
+
+    with transaction.atomic():
+        imp.rows.filter(block=PricingRow.TURNOVER).delete()
+        PricingRow.objects.bulk_create(rows, batch_size=BATCH)
+    return len(rows), first, last
 
 
 def _apply_duplicate_flags(imp, key_count):
