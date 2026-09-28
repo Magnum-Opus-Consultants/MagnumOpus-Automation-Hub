@@ -9,6 +9,8 @@ dashboard by debtor and wonders why a customer's sales all sit in one place.
 SimpleTestCase rather than TestCase: this is string parsing and touches no
 database, so the suite runs anywhere without needing rights to create one.
 """
+from datetime import date
+
 from django.test import SimpleTestCase
 
 # Absolute, not relative: the app has no __init__.py and works as a namespace
@@ -109,3 +111,45 @@ class BranchDetectionTests(SimpleTestCase):
         """Verbatim from the 2026-09-22 CON-DOR attachment."""
         self.assertEqual(get_branch_from_file(_Sheet('Transaction Branches: CON, DOR')),
                          'CON-DOR')
+
+
+class PickUpdownYearTests(SimpleTestCase):
+    """Which year's SharePoint file an Up Down Trader extract may replace.
+
+    The extract replaces a whole year's file, so the rule errs towards leaving
+    the file alone: replacing a full year with part of one would drop months
+    of history from the Excel report without anything failing.
+    """
+
+    def pick(self, stats, today=date(2026, 9, 28)):
+        from dashboard.scheduler import _pick_updown_year
+        return _pick_updown_year(stats, today)
+
+    def test_a_year_to_date_extract_replaces_its_year(self):
+        """The 27 Sep 2026 email: Jan-Sep 2026 plus a few bad future ETDs."""
+        stats = [(2026, '2026-01', 31068), (2027, '2027-02', 1), (2033, '2033-03', 27),
+                 (2037, '2037-01', 1)]
+        self.assertEqual(self.pick(stats), (2026, None))
+
+    def test_an_extract_that_does_not_start_in_january_is_left_alone(self):
+        year, why = self.pick([(2026, '2026-04', 20000)])
+        self.assertIsNone(year)
+        self.assertIn('not January', why)
+
+    def test_a_rolling_extract_spanning_new_year_is_left_alone(self):
+        """Aug 2026 - Jan 2027 must not overwrite the full 2026 file."""
+        year, why = self.pick([(2026, '2026-08', 15000), (2027, '2027-01', 3000)],
+                              today=date(2027, 1, 25))
+        self.assertIsNone(year)
+
+    def test_a_small_extract_is_left_alone(self):
+        year, why = self.pick([(2026, '2026-01', 40)])
+        self.assertIsNone(year)
+        self.assertIn('only 40 rows', why)
+
+    def test_a_future_year_is_never_chosen(self):
+        year, why = self.pick([(2031, '2031-01', 5000)])
+        self.assertIsNone(year)
+
+    def test_an_empty_extract_is_left_alone(self):
+        self.assertEqual(self.pick([]), (None, 'the extract is empty'))

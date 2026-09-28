@@ -96,6 +96,17 @@ def run_ppg_sync_job():
 
 EMAIL_MAILBOX = 'ethan.sevenster@moc-pty.com'
 
+# The Up Down Trader email is the source of truth for that report. Each new one
+# replaces the current year's file in this SharePoint folder, which the monthly
+# rebuild (run_updown_trader_sync_job) reads, and is forwarded to Data
+# Excellence, where a Power Automate flow files it for ISCM.
+UPDOWN_SP_SITE = 'magnumopusconsultantspty352.sharepoint.com:/sites/DataPrime'
+UPDOWN_SP_FOLDER = 'Clients/ISCM/Up Down Trader Report/Shipment Data'
+UPDOWN_FORWARD_TO = ('Data Excellence', 'data.excellence@intelligentscm.com')
+# On the forwarded copy's subject. Data Excellence sent the original, so the
+# copy may come straight back; anything carrying this tag is never picked up.
+UPDOWN_FORWARD_TAG = '[Sentinel]'
+
 # key -> (sender, subject-contains, parser function name, pnl table name)
 # All financial-analysis stations share the same {table}_pnl schema:
 #   (division, account_name, value, date, date_fixed, budget_actual, week, report_date)
@@ -463,23 +474,135 @@ def _run_turnover_email_sync():
         update_sync_health('turnover', 'error', str(e))
 
 
+def _pick_updown_year(year_stats, today):
+    """The year whose SharePoint file an Up Down Trader extract should replace.
+
+    year_stats is [(year, first_month, rows)] for the loaded extract. The
+    extract runs from 1 January to date, so the year it covers is the one with
+    the most rows, and it has to start in that year's January: an extract that
+    does not would replace a whole year's file with part of one. Returns
+    (year, None), or (None, reason) when the file should be left alone.
+    """
+    if not year_stats:
+        return None, 'the extract is empty'
+    year, first_month, rows = max(year_stats, key=lambda s: s[2])
+    if year > today.year:
+        return None, f'most rows are dated {year}, after this year'
+    if rows < 1000:
+        return None, f'only {rows} rows for {year}'
+    if first_month != f'{year}-01':
+        return None, f'{year} starts in {first_month}, not January'
+    return year, None
+
+
+def _updown_publish_year_file(tmp_path, year, headers):
+    """Put the extract in the SharePoint folder as that year's file.
+
+    The file it replaces is copied into the folder's Archive first, named for
+    the day it was last changed, so an earlier extract can always be got back.
+    """
+    import os
+    import time
+
+    import requests
+
+    G = 'https://graph.microsoft.com/v1.0'
+    target = f'Shipment profile {year}.XLSX'
+    site_id = requests.get(f'{G}/sites/{UPDOWN_SP_SITE}', headers=headers, timeout=30).json()['id']
+    drive_id = requests.get(f'{G}/sites/{site_id}/drive', headers=headers, timeout=30).json()['id']
+    r = requests.get(f'{G}/drives/{drive_id}/root:/{UPDOWN_SP_FOLDER}:/children',
+                     headers=headers, timeout=30)
+    r.raise_for_status()
+    by_name = {i['name'].lower(): i for i in r.json().get('value', [])}
+
+    old, archive = by_name.get(target.lower()), by_name.get('archive')
+    if old and archive:
+        name = f'Shipment profile {year} ({old["lastModifiedDateTime"][:10]}).XLSX'
+        cr = requests.post(
+            f'{G}/drives/{drive_id}/items/{old["id"]}/copy?@microsoft.graph.conflictBehavior=replace',
+            headers=headers, timeout=30,
+            json={'parentReference': {'driveId': drive_id, 'id': archive['id']}, 'name': name})
+        cr.raise_for_status()
+        # The copy runs in the background. Replacing the file before it has
+        # finished would archive the new extract rather than the old one.
+        status = {}
+        for _ in range(60):
+            status = requests.get(cr.headers['Location'], timeout=30).json()
+            if status.get('status') in ('completed', 'failed'):
+                break
+            time.sleep(3)
+        if status.get('status') != 'completed':
+            raise RuntimeError(f'archiving {target} did not finish ({status.get("status")})')
+
+    sess = requests.post(
+        f'{G}/drives/{drive_id}/root:/{UPDOWN_SP_FOLDER}/{target}:/createUploadSession',
+        headers=headers, timeout=30, json={'item': {'@microsoft.graph.conflictBehavior': 'replace'}})
+    sess.raise_for_status()
+    upload_url = sess.json()['uploadUrl']
+    size = os.path.getsize(tmp_path)
+    chunk = 320 * 1024 * 20          # upload sessions take multiples of 320 KiB
+    with open(tmp_path, 'rb') as fh:
+        start = 0
+        while start < size:
+            data = fh.read(chunk)
+            end = start + len(data) - 1
+            ur = requests.put(upload_url, data=data, timeout=300,
+                              headers={'Content-Length': str(len(data)),
+                                       'Content-Range': f'bytes {start}-{end}/{size}'})
+            ur.raise_for_status()
+            start = end + 1
+    return target
+
+
+def _updown_forward(msg, att_name, headers):
+    """Forward the report, attachment and all, to Data Excellence.
+
+    A Power Automate flow on that mailbox files it for ISCM, picking it out by
+    the tag on the subject. createForward keeps the attachment on Microsoft's
+    side, so the twenty-megabyte workbook never has to fit sendMail's 4 MB.
+    """
+    import os
+
+    import requests
+
+    base = f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages'
+    name, address = UPDOWN_FORWARD_TO
+    dr = requests.post(
+        f'{base}/{msg["id"]}/createForward', headers=headers, timeout=60,
+        json={'toRecipients': [{'emailAddress': {'name': name, 'address': address}}],
+              'comment': ('The latest Up Down Trader shipment profile report, forwarded '
+                          'automatically by Sentinel for the SharePoint folder.\n'
+                          f'File: {att_name}\nReceived: {msg["receivedDateTime"][:10]}')})
+    dr.raise_for_status()
+    draft_id = dr.json()['id']
+    subject = f'{UPDOWN_FORWARD_TAG} Up Down Trader Report - {os.path.splitext(att_name)[0]}'
+    requests.patch(f'{base}/{draft_id}', headers=headers, timeout=60,
+                   json={'subject': subject}).raise_for_status()
+    requests.post(f'{base}/{draft_id}/send', headers=headers, timeout=60).raise_for_status()
+    return subject
+
+
 def _run_updown_email_sync():
-    """Fetch the latest Up Down Trader email and load it into shipment_profile.
+    """Fetch the latest Up Down Trader email and make it the report's data.
 
-    The report arrives as a Shipment Profile workbook each week. It was being
-    read from a SharePoint folder instead, which meant somebody had to put it
-    there first - and the scheduled job that did the reading imported a module
-    path that does not exist, so it had never run at all.
+    The report arrives as a Shipment Profile workbook each week, and that email
+    is the source of truth. Each new one is:
 
-    The workbook is a full snapshot rather than a delta, so the load replaces
-    the table wholesale. Idempotent on the message id: the same email is not
-    loaded twice.
+      1. loaded into shipment_profile (a full snapshot, so the table is replaced),
+      2. put in the DataPrime SharePoint folder as the current year's file, and
+         the tables the Excel report reads are rebuilt from that folder,
+      3. forwarded to Data Excellence, where Power Automate files it for ISCM.
+
+    The steps after the load run independently, so a SharePoint or mail failure
+    still leaves the data loaded, and the sync health message says which parts
+    went through. Idempotent on the message id and on the report file's name:
+    a copy that comes back round is not loaded or forwarded again.
     """
     import base64
-    import io
     import json
     import os
     import tempfile
+    from datetime import date
 
     import requests
 
@@ -502,9 +625,12 @@ def _run_updown_email_sync():
         r = requests.get(url, headers=headers, timeout=45)
         r.raise_for_status()
 
+        # The tagged subject is our own forward - in Sent Items, or on its way
+        # back from Data Excellence. Never the report to process.
         msg = next((m for m in r.json().get('value', [])
                     if m.get('hasAttachments')
-                    and SUBJECT_KEY in (m.get('subject') or '').lower()), None)
+                    and SUBJECT_KEY in (m.get('subject') or '').lower()
+                    and UPDOWN_FORWARD_TAG.lower() not in (m.get('subject') or '').lower()), None)
         if not msg:
             update_sync_health('updown_trader', 'success',
                                'No Up Down Trader email found', 0)
@@ -512,13 +638,13 @@ def _run_updown_email_sync():
 
         try:
             last = json.load(open(STATE_FILE))
-            if last.get('message_id') == msg['id']:
-                update_sync_health('updown_trader', 'success',
-                                   f'Already processed: {msg["receivedDateTime"][:10]}',
-                                   last.get('rows', 0))
-                return
         except Exception:
-            pass
+            last = {}
+        if last.get('message_id') == msg['id']:
+            update_sync_health('updown_trader', 'success',
+                               f'Already processed: {msg["receivedDateTime"][:10]}',
+                               last.get('rows', 0))
+            return
 
         ar = requests.get(
             f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}'
@@ -530,6 +656,17 @@ def _run_updown_email_sync():
         if not att:
             update_sync_health('updown_trader', 'error',
                                'Up Down Trader email had no Excel attachment', 0)
+            return
+
+        # The report's file name carries its print time, so a second email with
+        # the same file is a copy of one already handled, not a new report.
+        done_files = last.get('files') or ([last['file']] if last.get('file') else [])
+        if att['name'] in done_files:
+            last['message_id'] = msg['id']
+            with open(STATE_FILE, 'w') as fh:
+                json.dump(last, fh)
+            update_sync_health('updown_trader', 'success',
+                               f'Already processed: {att["name"]}', last.get('rows', 0))
             return
 
         # Written to disk rather than held in memory: the workbook runs to
@@ -547,15 +684,47 @@ def _run_updown_email_sync():
         with connection.cursor() as cur:
             cur.execute('select count(*) from shipment_profile')
             rows = cur.fetchone()[0]
+            cur.execute(r"""select left(shipment_report_date, 4)::int,
+                                   min(left(shipment_report_date, 7)), count(*)
+                            from shipment_profile
+                            where shipment_report_date ~ '^\d{4}-\d{2}'
+                            group by 1""")
+            year_stats = cur.fetchall()
 
+        # Recorded now: the load is what makes the email processed. The steps
+        # below report their own outcome and are not retried on later runs.
         with open(STATE_FILE, 'w') as fh:
             json.dump({'message_id': msg['id'], 'subject': msg.get('subject'),
                        'received': msg['receivedDateTime'], 'file': att['name'],
-                       'rows': rows}, fh)
-
-        update_sync_health('updown_trader', 'success',
-                           f'Email {msg["receivedDateTime"][:10]}: {rows} rows', rows)
+                       'files': (done_files + [att['name']])[-20:], 'rows': rows}, fh)
         logger.info('[updown] loaded %s rows from %s', rows, att['name'])
+
+        steps, failed = [f'{rows} rows loaded'], False
+
+        year, why_not = _pick_updown_year(year_stats, date.today())
+        if year is None:
+            steps.append(f'SharePoint file left alone: {why_not}')
+            logger.warning('[updown] SharePoint file not replaced: %s', why_not)
+        else:
+            try:
+                target = _updown_publish_year_file(tmp_path, year, headers)
+                run_updown_trader_sync_job(raise_errors=True)
+                steps.append(f'{target} replaced and Excel data rebuilt')
+            except Exception as e:
+                failed = True
+                steps.append(f'SharePoint/rebuild failed: {e}')
+                logger.exception('[updown] SharePoint publish or rebuild failed')
+
+        try:
+            _updown_forward(msg, att['name'], headers)
+            steps.append(f'forwarded to {UPDOWN_FORWARD_TO[1]}')
+        except Exception as e:
+            failed = True
+            steps.append(f'forward failed: {e}')
+            logger.exception('[updown] forward to Data Excellence failed')
+
+        update_sync_health('updown_trader', 'error' if failed else 'success',
+                           f'Email {msg["receivedDateTime"][:10]}: ' + '; '.join(steps), rows)
 
     except Exception as e:
         logger.exception('[updown] email sync failed')
@@ -1629,8 +1798,12 @@ def check_bounce_emails():
 
 
 
-def run_updown_trader_sync_job():
-    """Monthly scheduled sync of Up-Down Trader data from SharePoint."""
+def run_updown_trader_sync_job(raise_errors=False):
+    """Monthly scheduled sync of Up-Down Trader data from SharePoint.
+
+    raise_errors lets the email sync, which calls this straight after putting a
+    new file in the folder, tell a failed rebuild from a good one.
+    """
     import tempfile
     import requests as req
     from django.db import connection
@@ -1645,8 +1818,8 @@ def run_updown_trader_sync_job():
         )
         from .views import _get_graph_token
 
-        SITE = 'magnumopusconsultantspty352.sharepoint.com:/sites/DataPrime'
-        FOLDER = 'Clients/ISCM/Up Down Trader Report/Shipment Data'
+        SITE = UPDOWN_SP_SITE
+        FOLDER = UPDOWN_SP_FOLDER
 
         token = _get_graph_token()
         if not token:
@@ -1761,6 +1934,8 @@ def run_updown_trader_sync_job():
     except Exception as e:
         logger.error(f"Up-Down Trader scheduled sync error: {e}")
         update_sync_health('updown_trader', 'error', str(e))
+        if raise_errors:
+            raise
 
 
 def run_sync_digest_job():
