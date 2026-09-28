@@ -204,15 +204,12 @@ def load_tfs_weekly():
     print(f"tfs_weekly_data: {len(rows)} rows loaded")
 
 
-def load_shipment_profile(path=None):
-    """Load a Shipment Profile workbook into shipment_profile.
+def _read_shipment_profile(f):
+    """Read a CargoWise Shipment Profile workbook into (columns, rows).
 
-    The path is a parameter so the same loader serves the sample file kept
-    beside this module and the workbook that arrives by email each week - the
-    layout is identical, only the source differs, and two copies of this column
-    mapping would drift apart the first time the report changed.
+    The one reader for every table that holds these extracts, so the column
+    mapping exists once and cannot drift between them.
     """
-    f = path or os.path.join(DATA_DIR, 'Shipment Profile Report for January 2025.xlsx')
     wb = openpyxl.load_workbook(f, read_only=True, data_only=True)
     ws = wb['Shipment Profile']
     rows = []
@@ -380,13 +377,52 @@ def load_shipment_profile(path=None):
         'overseas_agent_name,job_overseas_agent_ar_group_code,job_overseas_agent_ar_group_name,'
         'total_cost,total_accrual,total_expense'
     )
+    return cols, rows
 
+
+def load_shipment_profile(path=None):
+    """Load a Shipment Profile workbook into shipment_profile.
+
+    The path is a parameter so the same loader serves the sample file kept
+    beside this module and the workbook that arrives by email each week - the
+    layout is identical, only the source differs, and two copies of this column
+    mapping would drift apart the first time the report changed.
+    """
+    f = path or os.path.join(DATA_DIR, 'Shipment Profile Report for January 2025.xlsx')
+    cols, rows = _read_shipment_profile(f)
     with connection.cursor() as cur:
         cur.execute("TRUNCATE shipment_profile RESTART IDENTITY")
         execute_values(cur,
             f"INSERT INTO shipment_profile ({cols}) VALUES %s",
             rows, page_size=500)
     print(f"shipment_profile: {len(rows)} rows loaded")
+
+
+def load_shipment_profile_history(path, year):
+    """Load one full year's Shipment Profile into shipment_profile_history.
+
+    shipment_profile holds only the current year's extract, from the weekly
+    email. Comparing a month with the same month last year needs earlier years
+    on the same basis: the raw yearly extracts, untrimmed. customer_spend_
+    operational holds the same years, but trim_to_source_year drops rows whose
+    job was opened in another year, so it undercounts against the raw extract.
+
+    Replaces that year's rows, so re-running with the same file is harmless.
+    """
+    cols, rows = _read_shipment_profile(path)
+    with connection.cursor() as cur:
+        cur.execute("select to_regclass('public.shipment_profile_history')")
+        if cur.fetchone()[0] is None:
+            cur.execute("CREATE TABLE shipment_profile_history AS "
+                        "SELECT * FROM shipment_profile WITH NO DATA")
+            cur.execute("ALTER TABLE shipment_profile_history DROP COLUMN id")
+            cur.execute("ALTER TABLE shipment_profile_history ADD COLUMN source_year INT")
+        cur.execute("DELETE FROM shipment_profile_history WHERE source_year = %s", [year])
+        execute_values(cur,
+            f"INSERT INTO shipment_profile_history ({cols}, source_year) VALUES %s",
+            [r + (year,) for r in rows], page_size=500)
+    print(f"shipment_profile_history {year}: {len(rows)} rows loaded")
+    return len(rows)
 
 
 def load_customer_spend_operational():
