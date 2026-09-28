@@ -103,6 +103,9 @@ EMAIL_MAILBOX = 'ethan.sevenster@moc-pty.com'
 UPDOWN_SP_SITE = 'magnumopusconsultantspty352.sharepoint.com:/sites/DataPrime'
 UPDOWN_SP_FOLDER = 'Clients/ISCM/Up Down Trader Report/Shipment Data'
 UPDOWN_FORWARD_TO = ('Data Excellence', 'data.excellence@intelligentscm.com')
+# Off at Ethan's request (28 Sep 2026): the report is not to be sent to the
+# data account. The email is still loaded and the SharePoint file replaced.
+UPDOWN_FORWARD_ENABLED = False
 # On the forwarded copy's subject. Data Excellence sent the original, so the
 # copy may come straight back; anything carrying this tag is never picked up.
 UPDOWN_FORWARD_TAG = '[Sentinel]'
@@ -715,13 +718,14 @@ def _run_updown_email_sync():
                 steps.append(f'SharePoint/rebuild failed: {e}')
                 logger.exception('[updown] SharePoint publish or rebuild failed')
 
-        try:
-            _updown_forward(msg, att['name'], headers)
-            steps.append(f'forwarded to {UPDOWN_FORWARD_TO[1]}')
-        except Exception as e:
-            failed = True
-            steps.append(f'forward failed: {e}')
-            logger.exception('[updown] forward to Data Excellence failed')
+        if UPDOWN_FORWARD_ENABLED:
+            try:
+                _updown_forward(msg, att['name'], headers)
+                steps.append(f'forwarded to {UPDOWN_FORWARD_TO[1]}')
+            except Exception as e:
+                failed = True
+                steps.append(f'forward failed: {e}')
+                logger.exception('[updown] forward to Data Excellence failed')
 
         update_sync_health('updown_trader', 'error' if failed else 'success',
                            f'Email {msg["receivedDateTime"][:10]}: ' + '; '.join(steps), rows)
