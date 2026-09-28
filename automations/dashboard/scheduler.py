@@ -463,6 +463,111 @@ def _run_turnover_email_sync():
         update_sync_health('turnover', 'error', str(e))
 
 
+def _run_updown_email_sync():
+    """Fetch the latest Up Down Trader email and load it into shipment_profile.
+
+    The report arrives as a Shipment Profile workbook each week. It was being
+    read from a SharePoint folder instead, which meant somebody had to put it
+    there first - and the scheduled job that did the reading imported a module
+    path that does not exist, so it had never run at all.
+
+    The workbook is a full snapshot rather than a delta, so the load replaces
+    the table wholesale. Idempotent on the message id: the same email is not
+    loaded twice.
+    """
+    import base64
+    import io
+    import json
+    import os
+    import tempfile
+
+    import requests
+
+    from .views import _get_graph_token
+
+    STATE_FILE = os.path.join(os.path.dirname(__file__), '..',
+                              'updown_email_last.json')
+    SUBJECT_KEY = 'up down trader report'
+
+    tmp_path = None
+    try:
+        token = _get_graph_token()
+        if not token:
+            raise RuntimeError('Graph token unavailable')
+        headers = {'Authorization': f'Bearer {token}'}
+
+        url = (f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}/messages'
+               f'?$top=200&$orderby=receivedDateTime desc'
+               f'&$select=id,subject,receivedDateTime,hasAttachments')
+        r = requests.get(url, headers=headers, timeout=45)
+        r.raise_for_status()
+
+        msg = next((m for m in r.json().get('value', [])
+                    if m.get('hasAttachments')
+                    and SUBJECT_KEY in (m.get('subject') or '').lower()), None)
+        if not msg:
+            update_sync_health('updown_trader', 'success',
+                               'No Up Down Trader email found', 0)
+            return
+
+        try:
+            last = json.load(open(STATE_FILE))
+            if last.get('message_id') == msg['id']:
+                update_sync_health('updown_trader', 'success',
+                                   f'Already processed: {msg["receivedDateTime"][:10]}',
+                                   last.get('rows', 0))
+                return
+        except Exception:
+            pass
+
+        ar = requests.get(
+            f'https://graph.microsoft.com/v1.0/users/{EMAIL_MAILBOX}'
+            f'/messages/{msg["id"]}/attachments',
+            headers=headers, timeout=180)
+        ar.raise_for_status()
+        att = next((a for a in ar.json().get('value', [])
+                    if (a.get('name') or '').lower().endswith(('.xlsx', '.xls'))), None)
+        if not att:
+            update_sync_health('updown_trader', 'error',
+                               'Up Down Trader email had no Excel attachment', 0)
+            return
+
+        # Written to disk rather than held in memory: the workbook runs to
+        # twenty megabytes and openpyxl's read-only mode streams from a file.
+        fd, tmp_path = tempfile.mkstemp(suffix='.xlsx')
+        with os.fdopen(fd, 'wb') as fh:
+            fh.write(base64.b64decode(att['contentBytes']))
+
+        from data.load_data import (ensure_shipment_profile_table,
+                                    load_shipment_profile)
+        ensure_shipment_profile_table()
+        load_shipment_profile(tmp_path)
+
+        from django.db import connection
+        with connection.cursor() as cur:
+            cur.execute('select count(*) from shipment_profile')
+            rows = cur.fetchone()[0]
+
+        with open(STATE_FILE, 'w') as fh:
+            json.dump({'message_id': msg['id'], 'subject': msg.get('subject'),
+                       'received': msg['receivedDateTime'], 'file': att['name'],
+                       'rows': rows}, fh)
+
+        update_sync_health('updown_trader', 'success',
+                           f'Email {msg["receivedDateTime"][:10]}: {rows} rows', rows)
+        logger.info('[updown] loaded %s rows from %s', rows, att['name'])
+
+    except Exception as e:
+        logger.exception('[updown] email sync failed')
+        update_sync_health('updown_trader', 'error', str(e))
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+
+
 def _run_wip_email_sync():
     """Fetch latest WIP email and insert into wip_accrual."""
     import os, json, io, base64, requests
@@ -1030,6 +1135,7 @@ def _run_condor_dor_email_sync():
 
 def run_turnover_email_sync_job():  _run_turnover_email_sync()
 def run_wip_email_sync_job():       _run_wip_email_sync()
+def run_updown_email_sync_job():    _run_updown_email_sync()
 def run_import_ops_email_sync_job(): _run_import_ops_email_sync()
 def run_creditor_email_sync_job():  _run_creditor_email_sync()
 def run_condor_dor_email_sync_job(): _run_condor_dor_email_sync()
@@ -1530,7 +1636,10 @@ def run_updown_trader_sync_job():
     from django.db import connection
 
     try:
-        from data.up_down_trader.load_data import (
+        # data.load_data, not data.up_down_trader.load_data - that package does
+        # not exist, so this job raised ModuleNotFoundError on every run and had
+        # never loaded anything.
+        from data.load_data import (
             ensure_tables, upsert_customer_spend, upsert_customer_spend_operational,
             _extract_year, dedupe_operational, trim_to_source_year, rebuild_summary_view
         )
@@ -1727,6 +1836,8 @@ def start_scheduler():
         ('dor', run_dor_email_sync_job, 'Ingest weekly DOR email attachment'),
         ('turnover', run_turnover_email_sync_job, 'Ingest turnover email attachment'),
         ('wip_accrual', run_wip_email_sync_job, 'Ingest WIP & Accrual email attachment'),
+        ('updown_trader', run_updown_email_sync_job,
+         'Ingest Up Down Trader shipment profile email attachment'),
         ('import_ops', run_import_ops_email_sync_job, 'Ingest Import Ops email attachment'),
         ('creditor', run_creditor_email_sync_job, 'Ingest Creditor email attachments'),
         ('condor_dor', run_condor_dor_email_sync_job, 'Ingest Condor+DOR email attachments'),

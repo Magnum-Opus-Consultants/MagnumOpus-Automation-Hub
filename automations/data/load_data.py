@@ -46,8 +46,28 @@ def _get_year_columns_from_db():
     return years
 
 
+def ensure_shipment_profile_table():
+    """Create shipment_profile only when it is missing.
+
+    ensure_tables() drops and recreates it, which is fine for a one-off rebuild
+    and wrong for anything on a schedule: a run that fails after the drop leaves
+    no table and no data. This creates the same table without touching it when
+    it already exists.
+    """
+    with connection.cursor() as cur:
+        cur.execute("select to_regclass('public.shipment_profile')")
+        if cur.fetchone()[0] is not None:
+            return False
+    ensure_tables()
+    return True
+
+
 def ensure_tables():
-    """Create tables if they don't exist."""
+    """Create tables if they don't exist.
+
+    Note: shipment_profile is dropped and recreated here. Callers that must not
+    lose it should use ensure_shipment_profile_table().
+    """
     with connection.cursor() as cur:
         cur.execute("""
         CREATE TABLE IF NOT EXISTS tfs_weekly_data (
@@ -184,9 +204,15 @@ def load_tfs_weekly():
     print(f"tfs_weekly_data: {len(rows)} rows loaded")
 
 
-def load_shipment_profile():
-    """Load Shipment Profile sheet into shipment_profile."""
-    f = os.path.join(DATA_DIR, 'Shipment Profile Report for January 2025.xlsx')
+def load_shipment_profile(path=None):
+    """Load a Shipment Profile workbook into shipment_profile.
+
+    The path is a parameter so the same loader serves the sample file kept
+    beside this module and the workbook that arrives by email each week - the
+    layout is identical, only the source differs, and two copies of this column
+    mapping would drift apart the first time the report changed.
+    """
+    f = path or os.path.join(DATA_DIR, 'Shipment Profile Report for January 2025.xlsx')
     wb = openpyxl.load_workbook(f, read_only=True, data_only=True)
     ws = wb['Shipment Profile']
     rows = []
