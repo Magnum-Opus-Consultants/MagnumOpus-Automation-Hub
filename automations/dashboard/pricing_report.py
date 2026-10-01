@@ -399,8 +399,9 @@ def load(path, user=None, make_active=True, sheet=SHEET):
 
 # Income comes from the turnover data the platform loads from the weekly
 # turnover emails, not from the pricing workbook, so a pricing update always
-# carries the latest income. The report has always shown a rolling twelve
-# months of it, per client and branch.
+# carries the latest income. It covers every month the quotes do, so charts that
+# set income against quotes have both for each month; twelve months is the
+# fallback when an import has no quotes.
 TURNOVER_MONTHS = 12
 # HEC's turnover stopped in September 2025, and it was never in this report.
 TURNOVER_BRANCHES_EXCLUDED = ('HEC',)
@@ -412,8 +413,9 @@ TURNOVER_SORT_BASE_YEAR = 2024
 def refresh_turnover(imp, months=TURNOVER_MONTHS):
     """Replace an import's turnover block with the latest turnover_data.
 
-    Takes the last `months` months up to the newest month in turnover_data.
-    CON and DOR stay separate branches, as the turnover emails now report them.
+    From the import's earliest quote month (else the last `months` months) up to
+    the newest month in turnover_data. CON and DOR stay separate branches, as the
+    turnover emails now report them.
     Returns (rows, first month, last month); (0, None, None) when there is no
     turnover data, in which case the import's turnover block is left as it is.
     """
@@ -428,6 +430,10 @@ def refresh_turnover(imp, months=TURNOVER_MONTHS):
         last = dt.date(latest.year, latest.month, 1)
         k = last.year * 12 + last.month - 1 - (months - 1)
         first = dt.date(k // 12, k % 12 + 1, 1)
+        earliest_quote = (imp.rows.filter(block=PricingRow.QUOTE, month_start__isnull=False)
+                          .order_by('month_start').values_list('month_start', flat=True).first())
+        if earliest_quote:
+            first = min(first, dt.date(earliest_quote.year, earliest_quote.month, 1))
         cur.execute("""
             select debtor, max(debtor_name), branch, date_trunc('month', date)::date, sum(value)
             from turnover_data
