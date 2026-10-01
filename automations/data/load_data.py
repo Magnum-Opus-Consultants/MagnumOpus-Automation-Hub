@@ -47,13 +47,7 @@ def _get_year_columns_from_db():
 
 
 def ensure_shipment_profile_table():
-    """Create shipment_profile only when it is missing.
-
-    ensure_tables() drops and recreates it, which is fine for a one-off rebuild
-    and wrong for anything on a schedule: a run that fails after the drop leaves
-    no table and no data. This creates the same table without touching it when
-    it already exists.
-    """
+    """Create shipment_profile only when it is missing."""
     with connection.cursor() as cur:
         cur.execute("select to_regclass('public.shipment_profile')")
         if cur.fetchone()[0] is not None:
@@ -65,8 +59,10 @@ def ensure_shipment_profile_table():
 def ensure_tables():
     """Create tables if they don't exist.
 
-    Note: shipment_profile is dropped and recreated here. Callers that must not
-    lose it should use ensure_shipment_profile_table().
+    shipment_profile used to be dropped and recreated here. The monthly
+    Up-Down Trader job calls this, so every run emptied the table the weekly
+    email had just loaded (28 Sep 2026). It is now created only when missing,
+    like the others.
     """
     with connection.cursor() as cur:
         cur.execute("""
@@ -79,8 +75,7 @@ def ensure_tables():
             year_2026 NUMERIC(12,2),
             prev_year_pct_change NUMERIC(8,4)
         );
-        DROP TABLE IF EXISTS shipment_profile;
-        CREATE TABLE shipment_profile (
+        CREATE TABLE IF NOT EXISTS shipment_profile (
             id SERIAL PRIMARY KEY,
             shipment_id TEXT, shipment_direction TEXT, shipment_report_date TEXT,
             trans TEXT, customs_info TEXT, mode TEXT, origin TEXT, origin_ctry TEXT,
