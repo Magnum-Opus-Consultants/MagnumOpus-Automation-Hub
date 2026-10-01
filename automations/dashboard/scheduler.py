@@ -303,6 +303,30 @@ def run_receive_consignments_pull():
         logger.exception('[receive_consignments] pull failed')
 
 
+def run_dispatch_pods_pull():
+    """Refresh the dispatch POD KPI table from CargoWise.
+
+    Same shape as the unbooked-cargo pull: the management command a person
+    would run, skipped quietly where no CargoWise credentials are configured.
+    """
+    from django.conf import settings
+
+    if not getattr(settings, 'CW_USERNAME', '') or not getattr(settings, 'CW_PASSWORD', ''):
+        logger.info('[dispatch_pods] CargoWise credentials not set; skipping')
+        return
+    try:
+        from django.core.management import call_command
+        from .models import DispatchPod
+
+        call_command('pull_dispatch_pods',
+                     branches=getattr(settings, 'POD_PULL_BRANCHES', 'DOR'),
+                     verbosity=0)
+        overdue = DispatchPod.objects.filter(status=DispatchPod.STATUS_OVERDUE).count()
+        logger.info('[dispatch_pods] refreshed; %s POD(s) overdue', overdue)
+    except Exception:
+        logger.exception('[dispatch_pods] pull failed')
+
+
 def run_weekly_reports_job():
     """Each morning, refresh today's recurring report tasks in the tracker.
 
@@ -2070,6 +2094,20 @@ def start_scheduler():
         coalesce=True,              # a missed window runs once, not once per miss
         misfire_grace_time=1800,
         next_run_time=datetime.now() + timedelta(minutes=5),
+    )
+
+    # Dispatch PODs against the 24-hour KPI. Hourly for the same reason as the
+    # unbooked cargo: it is a worklist, and a POD shown overdue an hour after it
+    # was uploaded sends somebody chasing a document that is already there.
+    scheduler.add_job(
+        run_dispatch_pods_pull,
+        trigger=IntervalTrigger(hours=1),
+        id='dispatch_pods_pull',
+        name='Pull dispatch POD timings from CargoWise',
+        replace_existing=True,
+        coalesce=True,
+        misfire_grace_time=1800,
+        next_run_time=datetime.now() + timedelta(minutes=7),
     )
 
     for _i, (_key, _fn, _desc) in enumerate(_EMAIL_JOBS):

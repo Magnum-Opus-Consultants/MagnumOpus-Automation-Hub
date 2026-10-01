@@ -2501,3 +2501,75 @@ class ReceiveConsignment(models.Model):
 
     def __str__(self):
         return f'{self.receive_consignment_id} ({self.booking_party_name})'
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Dispatch POD KPI (Bruce report)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class DispatchPod(models.Model):
+    """One dispatch load list, and how long its proof of delivery took.
+
+    The KPI is a POD on the load list within 24 hours of the cargo leaving.
+    Both ends come from CargoWise: the clock starts when the load list's
+    transportation unit gates out, and stops at the first POD document event
+    (DDI with a reference starting "POD|") on the load list's log. A POD
+    uploaded against the forwarding console in CargoWise One lands on the same
+    log, which is why the console's eDocs never have to be read directly.
+
+    One row per load list, updated in place on every pull. Rows that fall out
+    of the pull window are kept, so the KPI history outlives the window.
+    """
+    STATUS_ON_TIME = 'On time'
+    STATUS_LATE = 'Late'
+    STATUS_DUE = 'Due'
+    STATUS_OVERDUE = 'Overdue'
+
+    branch = models.CharField(max_length=10, db_index=True)
+    load_list = models.CharField(max_length=40, unique=True)
+    reference = models.CharField(max_length=60, blank=True, default='')
+    consol = models.CharField(max_length=40, blank=True, default='')
+    master_bill = models.CharField(max_length=60, blank=True, default='')
+    carrier_code = models.CharField(max_length=40, blank=True, default='')
+    carrier_name = models.CharField(max_length=200, blank=True, default='')
+    last_discharge_port = models.CharField(max_length=10, blank=True, default='')
+    transport_mode = models.CharField(max_length=10, blank=True, default='')
+    cto_cutoff = models.DateTimeField(null=True, blank=True)
+
+    # A load list can travel on several units - ULDs plus the truck carrying
+    # them. The clock starts when the first of them gates out.
+    dtu_count = models.IntegerField(default=0)
+    dtus = models.CharField(max_length=400, blank=True, default='')
+    vehicles = models.CharField(max_length=400, blank=True, default='')
+    dispatched_at = models.DateTimeField(db_index=True)
+
+    pod_uploaded_at = models.DateTimeField(null=True, blank=True)
+    pod_uploaded_by = models.CharField(max_length=20, blank=True, default='')
+    pod_count = models.IntegerField(default=0)
+
+    # ── Derived at pull ──────────────────────────────────────────────────────
+    # Hours from gate-out to the POD, or for a missing POD, to the pull.
+    hours_to_pod = models.DecimalField(max_digits=8, decimal_places=1, null=True, blank=True)
+    hours_waiting = models.DecimalField(max_digits=8, decimal_places=1, null=True, blank=True)
+    status = models.CharField(max_length=10, db_index=True)
+    status_order = models.IntegerField(default=99)
+    # True or False once the outcome is known; None while a POD is still due.
+    kpi_met = models.BooleanField(null=True, blank=True)
+    # No POD yet. This is the list the team works.
+    needs_action = models.BooleanField(default=False, db_index=True)
+
+    # Warehouse-local, for the join to the Date table and for display: Power BI
+    # shows a timestamptz in UTC, which is not the time anyone in the warehouse
+    # would recognise.
+    dispatched_date = models.DateField(db_index=True)
+    dispatched_local = models.CharField(max_length=16, blank=True, default='')
+    pod_uploaded_local = models.CharField(max_length=16, blank=True, default='')
+
+    pulled_at = models.DateTimeField()
+
+    class Meta:
+        db_table = 'dispatch_pod'
+        ordering = ['status_order', 'dispatched_at']
+
+    def __str__(self):
+        return f'{self.load_list} ({self.status})'
