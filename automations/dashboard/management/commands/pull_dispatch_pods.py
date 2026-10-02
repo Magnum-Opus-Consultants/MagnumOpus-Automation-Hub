@@ -16,14 +16,15 @@ of the cargo leaving. Both ends of that clock are in the TransitWarehouse feed:
     has to be read directly. Now and then a POD is filed against one of the
     dispatch consignments on the load list instead, so those logs count too.
 
-Every dispatched load list is pulled. The team's saved grid views keep to
-those with a last discharge port - the consol load lists going to an airline -
-so the report can do the same on last_discharge_port, but house-level
-dispatches carry PODs too and leaving them out here would hide that. A load
-list that has not gated out yet is not on the clock, so it is left out until
-it has.
+Every dispatched load list is pulled, and in_awa_view marks the ones Bruce
+tracks: those his saved grid view "DOR AWA CUTOFF TODAY" would show, less its
+date - a last discharge port, and a booking party with the word SCM. The
+booking party is not on the load list but on its dispatch consignments, so it
+is read from them. A load list that has not gated out yet is not on the clock,
+so it is left out until it has.
 """
 import datetime as dt
+import re
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -54,13 +55,16 @@ EXPAND = (
     "Addresses($filter=E2_AddressType eq 'CDT';$select=E2_AddressType;"
     "$expand=Address($select=OA_Code;$expand=OrgHeader($select=OH_Code,OH_FullName)))"
 )
-# Dispatch consignments carrying a POD of their own, and the load lists their
-# packages went out on. A consignment is created before its load list, so it
-# is looked for over a longer window.
-DCN_FILTER = (f"Logs/any(e: e/SL_SE_NKEvent eq '{POD_EVENT}' "
-              f"and startswith(e/SL_Reference,'{POD_PREFIX}'))")
-DCN_EXPAND = f"{POD_LOGS},WhsItemPackageStates($select=WPS_WDL_LoadList)"
+# Dispatch consignments: their booking party, any POD filed on them, and the
+# load lists their packages went out on. A consignment is created before its
+# load list, so it is looked for over a longer window.
+DCN_EXPAND = (f"{POD_LOGS},"
+              "Addresses($filter=E2_AddressType eq 'BKD';$select=E2_AddressType;"
+              "$expand=Address($select=OA_Code;$expand=OrgHeader($select=OH_FullName))),"
+              "WhsItemPackageStates($select=WPS_WDL_LoadList)")
 DCN_EXTRA_DAYS = 30
+# "Booking party has ANY of these EXACT words SCM" in the saved grid view.
+VIEW_BOOKING_WORD = re.compile(r'\bSCM\b', re.IGNORECASE)
 
 
 class Command(BaseCommand):
@@ -94,8 +98,7 @@ class Command(BaseCommand):
         since = timezone.now() - dt.timedelta(days=opts['days'])
         filt = f"WDL_SystemCreateTimeUtc ge {since.strftime('%Y-%m-%dT%H:%M:%SZ')}"
         dcn_since = since - dt.timedelta(days=DCN_EXTRA_DAYS)
-        dcn_filt = (f"WDC_SystemCreateTimeUtc ge {dcn_since.strftime('%Y-%m-%dT%H:%M:%SZ')}"
-                    f" and {DCN_FILTER}")
+        dcn_filt = f"WDC_SystemCreateTimeUtc ge {dcn_since.strftime('%Y-%m-%dT%H:%M:%SZ')}"
 
         records = []
         for code in branches:
@@ -113,9 +116,8 @@ class Command(BaseCommand):
                                 '$expand': DCN_EXPAND})
             except CargoWiseError as e:
                 raise CommandError(f'{code}: {e}')
-            attach_consignment_pods(rows, dcns)
-            self.stdout.write(f'  {code}: {len(rows)} load list(s), '
-                              f'{len(dcns)} consignment(s) with a POD of their own')
+            attach_consignments(rows, dcns)
+            self.stdout.write(f'  {code}: {len(rows)} load list(s), {len(dcns)} consignment(s)')
             records.extend((code, r) for r in rows)
 
         now = timezone.now()
@@ -129,7 +131,8 @@ class Command(BaseCommand):
             counts[row.status] = counts.get(row.status, 0) + 1
         summary = ', '.join(f'{counts.get(s, 0)} {s.lower()}' for s in STATUS_ORDER)
         self.stdout.write(f'{len(built)} dispatched ({summary}); '
-                          f'{len(gone)} not dispatched or inactive')
+                          f'{len(gone)} not dispatched or inactive; '
+                          f'{sum(1 for b in built if b.in_awa_view)} in the AWA view')
 
         if opts['dry_run']:
             self.stdout.write(self.style.WARNING('dry run - nothing written'))
@@ -157,13 +160,17 @@ class Command(BaseCommand):
             DispatchPod.objects.filter(load_list__in=gone).delete()
 
 
-def attach_consignment_pods(rows, dcns):
-    """Hang each consignment's POD events on the load lists its packages left on."""
+def attach_consignments(rows, dcns):
+    """Hang each consignment's POD events and booking party on the load lists
+    its packages left on."""
     by_pk = {r.get('WDL_PK'): r for r in rows}
     for c in dcns:
+        parties = [((a.get('Address') or {}).get('OrgHeader') or {}).get('OH_FullName') or ''
+                   for a in c.get('Addresses', [])]
         for pk in {p.get('WPS_WDL_LoadList') for p in c.get('WhsItemPackageStates', [])}:
             if pk in by_pk:
                 by_pk[pk].setdefault('ConsignmentPodLogs', []).extend(c.get('Logs', []))
+                by_pk[pk].setdefault('BookingParties', set()).update(p for p in parties if p)
 
 
 def build(code, r, now, tz):
@@ -208,6 +215,8 @@ def build(code, r, now, tz):
     mab = next((n.get('CE_EntryNum') or '' for n in r.get('ReferenceNumbers', [])), '')
     carrier = next((((a.get('Address') or {}).get('OrgHeader') or {})
                     for a in r.get('Addresses', [])), {})
+    parties = sorted(r.get('BookingParties', ()))
+    port = r.get('WDL_RL_NKLastDischargePort') or ''
     local = dispatched.astimezone(tz)
 
     return DispatchPod(
@@ -218,7 +227,9 @@ def build(code, r, now, tz):
         master_bill=mab[:60],
         carrier_code=(carrier.get('OH_Code') or '')[:40],
         carrier_name=(carrier.get('OH_FullName') or '')[:200],
-        last_discharge_port=(r.get('WDL_RL_NKLastDischargePort') or '')[:10],
+        last_discharge_port=port[:10],
+        booking_party=', '.join(parties)[:400],
+        in_awa_view=bool(port) and any(VIEW_BOOKING_WORD.search(p) for p in parties),
         transport_mode=(r.get('WDL_TransportMode') or '')[:10],
         cto_cutoff=_parse(r.get('WDL_CTOCutOffTime')),
         dtu_count=len(units),

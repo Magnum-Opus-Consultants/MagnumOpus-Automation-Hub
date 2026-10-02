@@ -2535,6 +2535,12 @@ class DispatchPod(models.Model):
     last_discharge_port = models.CharField(max_length=10, blank=True, default='')
     transport_mode = models.CharField(max_length=10, blank=True, default='')
     cto_cutoff = models.DateTimeField(null=True, blank=True)
+    # Booking parties of the load list's dispatch consignments - the load list
+    # has none of its own.
+    booking_party = models.CharField(max_length=400, blank=True, default='')
+    # In Bruce's saved view "DOR AWA CUTOFF TODAY", less its date: a last
+    # discharge port, and a booking party with the word SCM.
+    in_awa_view = models.BooleanField(default=False, db_index=True)
 
     # A load list can travel on several units - ULDs plus the truck carrying
     # them. The clock starts when the first of them gates out.
