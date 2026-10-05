@@ -21,6 +21,7 @@ import {
   TextInput, AreaInput, SelectInput, relativeTime, expiryTone, expiryLabel,
   type Tone,
 } from "@/components/ui";
+import { loadProject, peek, peekProject, put } from "@/lib/page-cache";
 import {
   STATE_DOT, statusTone, PRIORITY_TEXT, PRIORITY_ORDER, NO_LIST,
   fmtHours, DueChip, parseISO, dayDiff, labelOf, toISO, addDays, shortDate,
@@ -178,9 +179,12 @@ function ExternalLink({ href }: { href: string }) {
 }
 
 export default function ProjectPage() {
+  // Keyed by project so each one starts from its own remembered data rather
+  // than showing the last project's while the next one loads.
+  const params = useParams<{ name: string }>();
   return (
     <Suspense fallback={<div className="p-6 text-sm text-ink-2">Loading project…</div>}>
-      <ProjectInner />
+      <ProjectInner key={params?.name ?? ""} />
     </Suspense>
   );
 }
@@ -193,12 +197,18 @@ function ProjectInner() {
   const tabParam = search?.get("tab") ?? "overview";
   const tab = PROJECT_SECTIONS.some((s) => s.key === tabParam) ? tabParam : "overview";
 
-  const [me, setMe] = useState<Me | null>(null);
-  const [detail, setDetail] = useState<Detail | null>(null);
-  const [missing, setMissing] = useState(false);
-  const [payload, setPayload] = useState<Payload | null>(null);
-  const [metrics, setMetrics] = useState<Metrics | null>(null);
-  const [activity, setActivity] = useState<Activity[] | null>(null);
+  // Start from what this tab already loaded for the project (an earlier
+  // visit, or a hover in the sidebar) so it opens at once; load() then
+  // refreshes it in the background.
+  const [me, setMe] = useState<Me | null>(() => peek<Me>("me") ?? null);
+  const [cached] = useState(() => peekProject(name));
+  const [detail, setDetail] = useState<Detail | null>(
+    () => (cached && cached.detail !== "missing" ? (cached.detail as Detail) : null));
+  const [missing, setMissing] = useState(() => cached?.detail === "missing");
+  const [payload, setPayload] = useState<Payload | null>(() => (cached?.tasks as Payload) ?? null);
+  const [metrics, setMetrics] = useState<Metrics | null>(() => (cached?.metrics as Metrics) ?? null);
+  const [activity, setActivity] = useState<Activity[] | null>(
+    () => (cached ? (cached.activity as Activity[]) : null));
   const [editing, setEditing] = useState<Project | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -229,6 +239,7 @@ function ProjectInner() {
     fetch("/api/auth/me")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((m: Me) => {
+        put("me", m);
         setMe(m);
         if (!canAccess(m, "tasks")) window.location.href = "/data-analysis";
       })
@@ -236,19 +247,12 @@ function ProjectInner() {
   }, []);
 
   const load = useCallback(async () => {
-    const enc = encodeURIComponent(name);
-    const json = (r: Response) => (r.ok ? r.json() : null);
-    const [d, t, m, a] = await Promise.all([
-      fetch(`/api/projects/${enc}`).then((r) => (r.status === 404 ? "missing" : json(r))),
-      fetch(`/api/tasks?project=${enc}`).then(json),
-      fetch(`/api/projects/metrics?project=${enc}`).then(json),
-      fetch(`/api/projects/${enc}/activity?limit=150`).then(json),
-    ]);
-    setMissing(d === "missing");
-    setDetail(d && d !== "missing" ? d : null);
-    setPayload(t);
-    setMetrics(m);
-    setActivity(a?.activity ?? []);
+    const b = await loadProject(name);
+    setMissing(b.detail === "missing");
+    setDetail(b.detail && b.detail !== "missing" ? (b.detail as Detail) : null);
+    setPayload(b.tasks as Payload);
+    setMetrics(b.metrics as Metrics);
+    setActivity(b.activity as Activity[]);
   }, [name]);
 
   useEffect(() => {

@@ -7,6 +7,7 @@ import { createPortal } from "react-dom";
 
 import { useTheme } from "@/components/ThemeToggle";
 import { Collapse, Pop } from "@/components/motion";
+import { peek, prefetchProject, put } from "@/lib/page-cache";
 
 /**
  * The Sentinel mark: a shield for "watched", with a rising sweep and a tick
@@ -187,11 +188,21 @@ function Badge({ logo, icon, fallback, color, className = "h-3.5 w-3.5" }: {
 
 const COLOR_CHOICES = ["", "blue", "green", "amber", "red", "purple", "teal", "pink", "slate"];
 
-export function Sidebar({ active, me, onCollapse }: { active: string; me: Me | null; onCollapse?: () => void }) {
+export function Sidebar({ active, me: meProp, onCollapse }: { active: string; me: Me | null; onCollapse?: () => void }) {
+  /* Each page passes `me` once it has loaded it, so a freshly mounted rail
+     used to sit empty until then - every click looked like a reload. Until
+     the page's copy arrives, the last one this tab saw stands in, and the
+     project list starts from the last copy too. */
+  const me = meProp ?? peek<Me>("me") ?? null;
   const isAdmin = !!(me?.is_admin || me?.is_superuser);
   const initials = me?.username?.slice(0, 2).toUpperCase() ?? "··";
-  const [projects, setProjects] = useState<ProjectLink[] | null>(null);
-  const [workspaces, setWorkspaces] = useState<WorkspaceLink[] | null>(null);
+  const [projects, setProjects] = useState<ProjectLink[] | null>(
+    () => peek<ProjectLink[]>("rail.projects") ?? null);
+  const [workspaces, setWorkspaces] = useState<WorkspaceLink[] | null>(
+    () => peek<WorkspaceLink[]>("rail.workspaces") ?? null);
+  useEffect(() => {
+    if (meProp) put("me", meProp);
+  }, [meProp]);
   const [wsMenu, setWsMenu] = useState<{ w: WorkspaceLink; x: number; y: number } | null>(null);
   const [renamingWs, setRenamingWs] = useState<{ name: string; value: string } | null>(null);
   const [newWs, setNewWs] = useState<{ name: string; color: string; error: string } | null>(null);
@@ -253,6 +264,8 @@ export function Sidebar({ active, me, onCollapse }: { active: string; me: Me | n
     fetch("/api/tasks/projects")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((d) => {
+        put("rail.projects", d.projects ?? []);
+        put("rail.workspaces", d.workspaces ?? []);
         setProjects(d.projects ?? []);
         setWorkspaces(d.workspaces ?? []);
       })
@@ -603,6 +616,8 @@ This cannot be undone.`)) return;
     fetch("/api/tasks/projects")
       .then((r) => (r.ok ? r.json() : Promise.reject()))
       .then((d) => {
+        put("rail.projects", d.projects ?? []);
+        put("rail.workspaces", d.workspaces ?? []);
         setProjects(d.projects ?? []);
         setWorkspaces(d.workspaces ?? []);
       })
@@ -782,6 +797,8 @@ This cannot be undone.`)) return;
                                     <>
                                     <Link
                                       href={p.name ? projectHref(p.name) : "/tasks?project="}
+                                      onMouseEnter={() => prefetchProject(p.name)}
+                                      onFocus={() => prefetchProject(p.name)}
                                       title={`${p.open} open of ${p.total} - right-click for options`}
                                       aria-current={rowActive ? "page" : undefined}
                                       onContextMenu={(e) => {

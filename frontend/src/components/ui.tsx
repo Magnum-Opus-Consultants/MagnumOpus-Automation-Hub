@@ -10,6 +10,7 @@ import * as React from "react";
 import { useEffect, useState } from "react";
 import { Sidebar, Icon, type Me } from "@/components/Sidebar";
 import { motion, useReducedMotion } from "@/components/motion";
+import { peek, put } from "@/lib/page-cache";
 
 /* ── Tone system ─────────────────────────────────────────────────────────── */
 export type Tone = "neutral" | "info" | "good" | "warn" | "bad" | "accent";
@@ -37,15 +38,20 @@ export function AppShell({
 }) {
   // No topbar: the sidebar already shows which page is active, and page-level
   // actions belong to PageHead inside the content area.
-  const [collapsed, setCollapsed] = useState(false);
+  // Every page mounts its own shell, so after the first page the rail's state
+  // comes from memory - otherwise a collapsed rail would spring open and shut
+  // again on each click.
+  const [collapsed, setCollapsed] = useState(() => peek<boolean>(RAIL_KEY) ?? false);
   const still = useReducedMotion();
 
   useEffect(() => {
     try {
       // The stored preference is only readable on the client, so it cannot seed
       // useState without risking an SSR/client mismatch.
+      const saved = localStorage.getItem(RAIL_KEY) === "1";
+      put(RAIL_KEY, saved);
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (localStorage.getItem(RAIL_KEY) === "1") setCollapsed(true);
+      if (saved) setCollapsed(true);
     } catch {
       // No storage (private window, blocked site data) — stay expanded.
     }
@@ -53,6 +59,7 @@ export function AppShell({
 
   function setRail(next: boolean) {
     setCollapsed(next);
+    put(RAIL_KEY, next);
     try {
       localStorage.setItem(RAIL_KEY, next ? "1" : "0");
     } catch {
