@@ -16,12 +16,14 @@ of the cargo leaving. Both ends of that clock are in the TransitWarehouse feed:
     has to be read directly. Now and then a POD is filed against one of the
     dispatch consignments on the load list instead, so those logs count too.
 
-Every dispatched load list is pulled, and in_awa_view marks the ones Bruce
-tracks: those his saved grid view "DOR AWA CUTOFF TODAY" would show, less its
-date - a last discharge port, and a booking party with the word SCM. The
-booking party is not on the load list but on its dispatch consignments, so it
-is read from them. A load list that has not gated out yet is not on the clock,
-so it is left out until it has.
+Every dispatched load list is pulled, for DOR, CCC and CCD. in_awa_view marks
+the DOR ones Bruce tracks: those his saved grid view "DOR AWA CUTOFF TODAY"
+would show, less its date - a last discharge port, and a booking party with
+the word SCM. The booking party is not on the load list but on its dispatch
+consignments, so it is read from them. CCC and CCD work from "CCC / CCD -
+CUTOFF AWA + EXTERNALS TODAY", which filters on the date alone, so every one of
+their load lists is tracked and the flag stays DOR's. A load list that has not
+gated out yet is not on the clock, so it is left out until it has.
 """
 import datetime as dt
 import re
@@ -65,18 +67,23 @@ DCN_EXPAND = (f"{POD_LOGS},"
 DCN_EXTRA_DAYS = 30
 # "Booking party has ANY of these EXACT words SCM" in the saved grid view.
 VIEW_BOOKING_WORD = re.compile(r'\bSCM\b', re.IGNORECASE)
+# Each warehouse's own clock, for dates and display times. CargoWise returns
+# CCC's and CCD's times at UTC-5 in October: US Central.
+BRANCH_TZ = {'DOR': 'America/Los_Angeles', 'CCC': 'America/Chicago', 'CCD': 'America/Chicago'}
+DEFAULT_TZ = 'America/Los_Angeles'
 
 
 class Command(BaseCommand):
     help = 'Pull dispatch load lists and their POD timings from CargoWise.'
 
     def add_arguments(self, parser):
-        parser.add_argument('--branches', default='DOR',
-                            help='Comma-separated branch codes (default DOR).')
+        parser.add_argument('--branches', default='DOR,CCC,CCD',
+                            help='Comma-separated branch codes (default DOR,CCC,CCD).')
         parser.add_argument('--days', type=int, default=45,
                             help='Load lists created in the last N days (default 45).')
-        parser.add_argument('--tz', default='America/Los_Angeles',
-                            help='Warehouse time zone for dates and display times.')
+        parser.add_argument('--tz', default=None,
+                            help="Time zone for dates and display times, for every branch. "
+                                 "Default: each branch's own (BRANCH_TZ).")
         parser.add_argument('--username', default=None)
         parser.add_argument('--password', default=None)
         parser.add_argument('--dry-run', action='store_true',
@@ -85,7 +92,8 @@ class Command(BaseCommand):
     def handle(self, *args, **opts):
         branches = [b.strip().upper() for b in opts['branches'].split(',') if b.strip()]
         try:
-            tz = ZoneInfo(opts['tz'])
+            zones = {code: ZoneInfo(opts['tz'] or BRANCH_TZ.get(code, DEFAULT_TZ))
+                     for code in branches}
         except Exception:
             raise CommandError(f'Unknown time zone {opts["tz"]}')
 
@@ -123,7 +131,7 @@ class Command(BaseCommand):
         now = timezone.now()
         built, gone = [], []
         for code, r in records:
-            row = build(code, r, now, tz)
+            row = build(code, r, now, zones[code])
             (built if row else gone).append(row or r.get('WDL_JobID'))
 
         counts = {}
@@ -229,7 +237,8 @@ def build(code, r, now, tz):
         carrier_name=(carrier.get('OH_FullName') or '')[:200],
         last_discharge_port=port[:10],
         booking_party=', '.join(parties)[:400],
-        in_awa_view=bool(port) and any(VIEW_BOOKING_WORD.search(p) for p in parties),
+        in_awa_view=(code == 'DOR' and bool(port)
+                     and any(VIEW_BOOKING_WORD.search(p) for p in parties)),
         transport_mode=(r.get('WDL_TransportMode') or '')[:10],
         cto_cutoff=_parse(r.get('WDL_CTOCutOffTime')),
         dtu_count=len(units),

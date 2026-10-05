@@ -135,7 +135,7 @@ CW_DEPARTMENT_CODE = os.getenv('CW_DEPARTMENT_CODE', 'BRN')
 RC_PULL_BRANCHES = os.getenv('RC_PULL_BRANCHES', 'DOR,CON')
 RC_PULL_GATE_FROM = os.getenv('RC_PULL_GATE_FROM', '2026-08-03')
 # Branches the dispatch POD KPI pull covers.
-POD_PULL_BRANCHES = os.getenv('POD_PULL_BRANCHES', 'DOR')
+POD_PULL_BRANCHES = os.getenv('POD_PULL_BRANCHES', 'DOR,CCC,CCD')
 
 # ── Up Management Report ────────────────────────────────────────────────────
 # Off. This report goes to upper management, so the weekly send stays disabled
