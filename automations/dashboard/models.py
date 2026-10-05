@@ -584,6 +584,11 @@ class Repository(models.Model):
     remote_url = models.CharField(max_length=500, blank=True, default='')
     provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES, default='github')
     default_branch = models.CharField(max_length=100, blank=True, default='')
+    # The project this code belongs to, by name - the same join key every other
+    # project-scoped record uses. A project can hold several (API, web, app);
+    # a repository belongs to one.
+    project_name = models.CharField(max_length=100, blank=True, default='',
+                                    db_index=True)
 
     server = models.ForeignKey(
         ServerRecord, null=True, blank=True,
@@ -952,6 +957,15 @@ class ProjectMeta(models.Model):
     # The template asks for the sprint against each client, so it lives on the
     # project rather than being inferred from dates.
     sprint = models.CharField(max_length=80, blank=True, default='')
+    # The client's website and where it lives, shown on the project page.
+    # Kept on the project rather than a table of its own: a project has one
+    # live site and one demo copy, and everything else is notes. Its code is
+    # Repository.project_name, not a link here.
+    website_url = models.URLField(max_length=500, blank=True, default='')
+    demo_url = models.URLField(max_length=500, blank=True, default='')
+    hosting = models.CharField(max_length=200, blank=True, default='')
+    tech_stack = models.CharField(max_length=200, blank=True, default='')
+    website_notes = models.TextField(blank=True, default='')
     # Operational rather than delivery work. The tracker holds a "Weekly
     # Reports" project of 401 rows that is five automated report syncs
     # repeated daily - real work, but not client delivery, and counting it
@@ -975,6 +989,290 @@ class ProjectMeta(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class ProjectServer(models.Model):
+    """A virtual server made for a project on the office Proxmox host.
+
+    One row per VM Sentinel created, and only those: every action on a VM
+    goes through its row, so Sentinel can never start, stop or delete a
+    machine it did not make (the Nextclouds share that host). The password is
+    never stored - it is shown once when the server is created.
+    """
+    STATUS_CHOICES = [
+        ('queued', 'Queued'),
+        ('provisioning', 'Setting up'),
+        ('running', 'Running'),
+        ('stopped', 'Stopped'),
+        ('failed', 'Failed'),
+        ('deleting', 'Deleting'),
+        ('deleted', 'Deleted'),
+    ]
+
+    project_name = models.CharField(max_length=100, db_index=True)
+    name = models.CharField(max_length=63, help_text='Hostname and Proxmox VM name')
+    vmid = models.IntegerField(null=True, blank=True)
+    os = models.CharField(max_length=80, blank=True, default='')
+    cores = models.IntegerField(default=2)
+    memory_mb = models.IntegerField(default=4096)
+    disk_gb = models.IntegerField(default=100)
+    ip = models.CharField(max_length=64, blank=True, default='')
+    username = models.CharField(max_length=32, blank=True, default='')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='queued')
+    # What it is doing right now, while it is being set up or taken down.
+    step = models.CharField(max_length=120, blank=True, default='')
+    error = models.TextField(blank=True, default='')
+    created_by = models.ForeignKey(User, null=True, blank=True,
+                                   on_delete=models.SET_NULL,
+                                   related_name='project_servers')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'project_server'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.name} ({self.project_name})'
+
+
+class FeedbackLink(models.Model):
+    """The public link people use to send feedback on one project.
+
+    Inspectors and other users of a client's system are not Sentinel users, so
+    they reach the form through this link. It can be turned off, or replaced
+    with a new one, at any time.
+    """
+    project_name = models.CharField(max_length=100, unique=True)
+    token = models.CharField(max_length=64, unique=True)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'feedback_link'
+
+
+class Feedback(models.Model):
+    """A complaint, change request, suggestion or question about a project.
+
+    Sent through the public form (source "form") or added by staff ("staff").
+    Managers move it through a status, can answer it, and can turn it into a
+    task on the project.
+    """
+    KIND_CHOICES = [
+        ('problem', "Something's wrong"),
+        ('change', 'Change request'),
+        ('idea', 'Suggestion'),
+        ('question', 'Question'),
+    ]
+    STATUS_CHOICES = [
+        ('new', 'New'),
+        ('reviewing', 'Reviewing'),
+        ('planned', 'Planned'),
+        ('done', 'Done'),
+        ('declined', 'Declined'),
+    ]
+    SOURCE_CHOICES = [('form', 'Feedback form'), ('staff', 'Added by staff')]
+
+    project_name = models.CharField(max_length=100, db_index=True)
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES, default='problem')
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True, default='')
+    area = models.CharField(max_length=200, blank=True, default='',
+                            help_text='Which screen or part of the system')
+    submitter_name = models.CharField(max_length=150, blank=True, default='')
+    submitter_email = models.EmailField(blank=True, default='')
+    submitter_role = models.CharField(max_length=100, blank=True, default='')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='new')
+    manager_note = models.TextField(blank=True, default='')
+    source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default='form')
+    created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name='+')
+    task = models.ForeignKey('ProjectTask', null=True, blank=True, on_delete=models.SET_NULL,
+                             related_name='feedback')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'feedback'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.title} ({self.project_name})'
+
+
+def _feedback_upload_path(instance, filename):
+    """A generated name - the sender's filename is never trusted on disk."""
+    return f'{instance.feedback_id or 0}/{uuid.uuid4().hex}{Path(filename).suffix.lower()[:8]}'
+
+
+# Screenshots come from people who are not signed in, so like client uploads
+# they live outside MEDIA_ROOT and are only served by an authenticated view.
+feedback_upload_storage = FileSystemStorage(
+    location=str(settings.BASE_DIR / 'private_media' / 'feedback'))
+
+
+class FeedbackAttachment(models.Model):
+    """A screenshot on a piece of feedback, re-saved by Sentinel on upload."""
+    feedback = models.ForeignKey(Feedback, on_delete=models.CASCADE, related_name='attachments')
+    file = models.FileField(upload_to=_feedback_upload_path, storage=feedback_upload_storage)
+    original_name = models.CharField(max_length=300, blank=True, default='')
+    content_type = models.CharField(max_length=50, default='image/png')
+    width = models.IntegerField(default=0)
+    height = models.IntegerField(default=0)
+    size = models.IntegerField(default=0)
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'feedback_attachment'
+        ordering = ['uploaded_at']
+
+
+class TimeEntry(models.Model):
+    """Time somebody spent on a task, ClickUp-style.
+
+    Either a timer run (started, then stopped) or time added by hand. A task's
+    actual_hours is the sum of its entries, kept on the task so the reports
+    and charts that already read it go on working. One running timer per
+    person: ended_at is empty while it runs.
+    """
+    SOURCE_CHOICES = [('timer', 'Timer'), ('manual', 'Added by hand')]
+
+    task = models.ForeignKey('ProjectTask', on_delete=models.CASCADE, related_name='time_entries')
+    user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                             related_name='time_entries')
+    user_name = models.CharField(max_length=150, blank=True, default='')
+    started_at = models.DateTimeField()
+    ended_at = models.DateTimeField(null=True, blank=True)
+    seconds = models.IntegerField(default=0)
+    note = models.CharField(max_length=300, blank=True, default='')
+    source = models.CharField(max_length=10, choices=SOURCE_CHOICES, default='timer')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'time_entry'
+        ordering = ['-started_at']
+
+
+class ServerAccess(models.Model):
+    """One person's SSH access to a project server.
+
+    Everyone gets their own Linux account and key rather than sharing a login,
+    which is what makes the server's own logs say who did what. Revoking locks
+    the account and removes the key; the row stays, so the history still has
+    a name against it.
+    """
+    server = models.ForeignKey('ProjectServer', on_delete=models.CASCADE, related_name='access')
+    user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                             related_name='server_access')
+    user_name = models.CharField(max_length=150)
+    linux_user = models.CharField(max_length=32)
+    public_key = models.TextField()
+    fingerprint = models.CharField(max_length=100)
+    created_at = models.DateTimeField(auto_now_add=True)
+    revoked_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'server_access'
+        ordering = ['-created_at']
+
+
+class ConsoleSession(models.Model):
+    """Who had a server's console open through Sentinel, and when.
+
+    Commands typed on the console run as whoever logs in at the prompt; this
+    is what ties them back to the person in Sentinel who was at the keyboard.
+    """
+    server = models.ForeignKey('ProjectServer', on_delete=models.CASCADE,
+                               related_name='console_sessions')
+    user = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                             related_name='+')
+    user_name = models.CharField(max_length=150)
+    started_at = models.DateTimeField()
+    ended_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'console_session'
+        ordering = ['-started_at']
+
+
+class CommitDoc(models.Model):
+    """A piece of documentation made from one commit, kept per repository.
+
+    Written when Sentinel sees a new commit on a repository assigned to a
+    project (see commit_docs.py). `source` says how: "commit" is the commit's
+    own message and the files it changed, laid out; a model name means an AI
+    wrote it from the message and the changes, which is only done when it has
+    been switched on with COMMIT_DOCS_AI.
+    """
+    repository = models.ForeignKey('Repository', on_delete=models.CASCADE,
+                                   related_name='commit_docs')
+    sha = models.CharField(max_length=40)
+    committed_at = models.DateTimeField(null=True, blank=True)
+    author = models.CharField(max_length=200, blank=True, default='')
+    url = models.URLField(max_length=500, blank=True, default='')
+    kind = models.CharField(max_length=20, blank=True, default='')
+    subject = models.CharField(max_length=500, blank=True, default='')
+    title = models.CharField(max_length=300, blank=True, default='')
+    body = models.TextField(blank=True, default='', help_text='Markdown')
+    files = models.JSONField(default=list, blank=True)
+    additions = models.IntegerField(default=0)
+    deletions = models.IntegerField(default=0)
+    source = models.CharField(max_length=80, blank=True, default='commit')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'commit_doc'
+        ordering = ['-committed_at']
+        unique_together = [('repository', 'sha')]
+
+    def __str__(self):
+        return f'{self.sha[:7]} {self.title or self.subject}'
+
+
+class ProjectCredential(models.Model):
+    """A login or secret that belongs to a project: a database password, a
+    server login, an admin account, an API key.
+
+    The secret is encrypted with SENTINEL_VAULT_KEY (see vault.py) and is only
+    decrypted when an administrator asks to see it, which is logged. Everything
+    else on the row is plain, so the list can be shown without opening anything.
+    """
+    KIND_CHOICES = [
+        ('database', 'Database'),
+        ('server', 'Server login'),
+        ('website', 'Website admin'),
+        ('api', 'API key'),
+        ('email', 'Email account'),
+        ('other', 'Other'),
+    ]
+
+    project_name = models.CharField(max_length=100, db_index=True)
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES, default='other')
+    label = models.CharField(max_length=200)
+    username = models.CharField(max_length=200, blank=True, default='')
+    secret_encrypted = models.TextField(blank=True, default='')
+    # Where it is used: a host, URL or connection string without the secret.
+    location = models.CharField(max_length=500, blank=True, default='')
+    notes = models.TextField(blank=True, default='')
+    # Set for a server's own login, so it goes when the server goes.
+    server = models.ForeignKey('ProjectServer', null=True, blank=True,
+                               on_delete=models.SET_NULL, related_name='credentials')
+    created_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name='+')
+    updated_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name='+')
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = 'project_credential'
+        ordering = ['kind', 'label']
+
+    def __str__(self):
+        return f'{self.label} ({self.project_name})'
 
 
 class ProjectList(models.Model):
@@ -1440,10 +1738,12 @@ class TaskActivity(models.Model):
             return f'{who} created it'
         if self.kind == 'report':
             return f'{who} sent a report{f" to {self.new_value}" if self.new_value else ""}'
+        # "website url", not "website_url": this line is read by people.
+        what = (self.field or self.kind).replace('_', ' ')
         if self.old_value and self.new_value:
-            return f'{who} changed {self.field or self.kind} from {self.old_value} to {self.new_value}'
+            return f'{who} changed {what} from {self.old_value} to {self.new_value}'
         if self.new_value:
-            return f'{who} set {self.field or self.kind} to {self.new_value}'
+            return f'{who} set {what} to {self.new_value}'
         return f'{who} {self.get_kind_display().lower()}'
 
 

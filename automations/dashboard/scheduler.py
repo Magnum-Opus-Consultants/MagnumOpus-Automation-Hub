@@ -2057,6 +2057,20 @@ def start_scheduler():
         from .site_autobuild import sweep
         sweep()
 
+    # Documentation from commits: every repository linked to a project is
+    # checked for new commits, and each one is written up (commit_docs.py).
+    def _commit_docs_sweep():
+        from .commit_docs import sync_all
+        sync_all()
+
+    scheduler.add_job(
+        _commit_docs_sweep, trigger=IntervalTrigger(minutes=10),
+        id='commit_docs', name='Write documentation from new commits',
+        replace_existing=True,
+        next_run_time=datetime.now() + timedelta(minutes=2),
+        coalesce=True, misfire_grace_time=600,
+    )
+
     scheduler.add_job(
         _autobuild_sweep, trigger=IntervalTrigger(hours=1),
         id='client_site_autobuild', name='Build sites for answered briefs',

@@ -29,28 +29,19 @@ def page_access(*keys):
     return decorator
 
 
-def admin_required(view):
-    """Only superusers may access. Apply AFTER @login_required."""
-    @wraps(view)
-    def _wrapped(request, *args, **kwargs):
-        if not request.user.is_superuser:
-            raise PermissionDenied('Admin only.')
-        return view(request, *args, **kwargs)
-    return _wrapped
 from django.views.decorators.http import require_http_methods
-from django.db.models import Sum, Count
-from django.db.models.functions import ExtractYear
-from django.db import OperationalError, ProgrammingError, connection
+from django.db.models import Count
+from django.db import connection
 from django.http import JsonResponse, HttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.conf import settings as django_settings
 from django.utils import timezone as django_timezone
 from django.core import signing
-from .models import TurnoverData, ProjectTask, UserProfile, USEUContact, TouchpointTemplate
+from .models import ProjectTask, UserProfile, USEUContact, TouchpointTemplate
 from .models import DocCompany, DocSystem, DocDocument, DocFolder, ServerRecord
 from .models import Domain, Repository
 from django.contrib.auth.models import User, Group
-from .google_drive import sync_google_drive_data, get_progress, update_progress, get_last_sync
+from .google_drive import sync_google_drive_data, get_progress, update_progress
 from . import onedrive_sync
 import threading
 import json
@@ -70,7 +61,7 @@ from zoneinfo import ZoneInfo
 
 def login_view(request):
     if request.user.is_authenticated:
-        return redirect('home')
+        return redirect('sync_monitor')
 
     error = None
     if request.method == 'POST':
@@ -79,7 +70,7 @@ def login_view(request):
         user = authenticate(request, username=username, password=password)
         if user is not None:
             login(request, user)
-            return redirect('home')
+            return redirect('sync_monitor')
         else:
             error = 'Invalid username or password'
 
@@ -622,258 +613,6 @@ def _newest_pricing_workbook():
 
 
 @login_required
-def home(request):
-    """Dashboard home page"""
-    # Aggregate total records across all station tables
-    all_tables = {
-        'turnover_data': 'Turnover', 'ppg_pnl': 'PPG', 'dor_pnl': 'DOR',
-        'con_pnl': 'CON', 'atl_pnl': 'ATL', 'ccc_pnl': 'CCC',
-        'ccd_pnl': 'CCD', 'fax_pnl': 'FAX', 'hnl_pnl': 'HNL',
-        'hou_pnl': 'HOU', 'ics_pnl': 'ICS', 'imp_pnl': 'IMP',
-        'jfk_pnl': 'JFK', 'lax_pnl': 'LAX', 'lcl_pnl': 'LCL',
-        'ord_pnl': 'ORD', 'dfw_pnl': 'DFW', 'condor_dor_pnl': 'Condor+DOR',
-        'import_ops': 'Import Ops', 'wip_accrual': 'WIP & Accrual',
-        'creditor_transactions': 'Creditor',
-    }
-    total_records = 0
-    station_count = 0
-    top_stations = []
-    for table, label in all_tables.items():
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(f"SELECT COUNT(*) FROM {table}")
-                count = cursor.fetchone()[0]
-                total_records += count
-                station_count += 1
-                top_stations.append((label, count))
-        except:
-            pass
-
-    top_stations.sort(key=lambda x: -x[1])
-    top_stations = top_stations[:6]
-
-    # Planner task counts
-    task_total = ProjectTask.objects.count()
-    task_done = ProjectTask.objects.filter(status='done').count()
-    task_in_progress = ProjectTask.objects.filter(status='in_progress').count()
-    task_todo = ProjectTask.objects.filter(status='todo').count()
-    projects = ProjectTask.objects.values_list('project_name', flat=True).distinct()
-    project_count = len([p for p in projects if p])
-
-    # Sync health
-    health_data = {}
-    try:
-        import json as _json
-        health_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'sync_health.json')
-        with open(health_path) as f:
-            health_data = _json.load(f)
-    except:
-        pass
-    synced_count = sum(1 for v in health_data.values() if v.get('status') == 'success')
-
-    context = {
-        'total_records': total_records,
-        'station_count': station_count,
-        'top_stations': top_stations,
-        'task_total': task_total,
-        'task_done': task_done,
-        'task_in_progress': task_in_progress,
-        'task_todo': task_todo,
-        'project_count': project_count,
-        'synced_count': synced_count,
-        'health_total': len(health_data),
-    }
-    return render(request, 'home.html', context)
-
-
-@login_required
-@page_access('data_analysis')
-def data_analysis(request):
-    """Data Analysis page with all stations"""
-    try:
-        total_rows = TurnoverData.objects.count()
-        branch_count = TurnoverData.objects.values('branch').distinct().count()
-    except (OperationalError, ProgrammingError):
-        total_rows = 0
-        branch_count = 0
-
-    # PNL station stats
-    station_tables = {
-        'turnover': 'turnover_data',
-        'ppg': 'ppg_pnl', 'dor': 'dor_pnl', 'con': 'con_pnl',
-        'atl': 'atl_pnl', 'ccc': 'ccc_pnl', 'ccd': 'ccd_pnl',
-        'fax': 'fax_pnl', 'hnl': 'hnl_pnl', 'hou': 'hou_pnl',
-        'ics': 'ics_pnl', 'imp': 'imp_pnl', 'jfk': 'jfk_pnl',
-        'lax': 'lax_pnl', 'lcl': 'lcl_pnl', 'ord': 'ord_pnl',
-        'dfw': 'dfw_pnl', 'bravo_tran': 'bravo_tran',
-        'condor_dor': 'condor_dor_pnl',
-        'import_ops': 'import_ops', 'wip_accrual': 'wip_accrual',
-        'creditor': 'creditor_transactions',
-        'tfs': 'tfs_weekly',
-        'updown_trader_cs': 'customer_spend',
-        'updown_trader_cso': 'customer_spend_operational',
-    }
-    station_rows = {}
-    for key, table in station_tables.items():
-        try:
-            with connection.cursor() as cursor:
-                cursor.execute(f"SELECT COUNT(*) FROM {table}")
-                station_rows[f'{key}_rows'] = cursor.fetchone()[0]
-        except:
-            station_rows[f'{key}_rows'] = 0
-
-    # Creditor groups
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(DISTINCT creditor_group) FROM creditor_transactions")
-            creditor_groups = cursor.fetchone()[0]
-    except:
-        creditor_groups = 0
-
-    # Condor depts
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(DISTINCT department) FROM condor_dor_pnl")
-            condor_depts = cursor.fetchone()[0]
-    except:
-        condor_depts = 0
-
-    # Up-Down Trader debtors
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(DISTINCT debtor) FROM customer_spend")
-            updown_debtors = cursor.fetchone()[0]
-    except:
-        updown_debtors = 0
-
-    # Load last sync times
-    sync_files = {
-        'turnover': 'last_sync.json',
-        'atl': 'atl_last_sync.json', 'ccc': 'ccc_last_sync.json',
-        'ccd': 'ccd_last_sync.json', 'con': 'con_last_sync.json',
-        'dor': 'dor_last_sync.json', 'fax': 'fax_last_sync.json',
-        'hnl': 'hnl_last_sync.json', 'hou': 'hou_last_sync.json',
-        'ics': 'ics_last_sync.json', 'imp': 'imp_last_sync.json',
-        'jfk': 'jfk_last_sync.json', 'lax': 'lax_last_sync.json',
-        'lcl': 'lcl_last_sync.json', 'ord': 'ord_last_sync.json',
-        'dfw': 'dfw_last_sync.json', 'ppg': 'ppg_last_sync.json',
-        'condor_dor': 'condor_dor_last_sync.json',
-        'import_ops': 'import_ops_last_sync.json',
-        'wip_accrual': 'wip_accrual_last_sync.json',
-        'tfs': 'tfs_last_sync.json',
-        'updown_trader': 'updown_trader_last_sync.json',
-    }
-    last_syncs = {}
-    base_dir = os.path.dirname(os.path.dirname(__file__))
-    for key, fname in sync_files.items():
-        try:
-            with open(os.path.join(base_dir, fname)) as f:
-                data = json.load(f)
-                ts = data.get('last_sync', '')
-                if ts:
-                    from datetime import datetime as _dt
-                    dt = _dt.fromisoformat(ts)
-                    last_syncs[f'{key}_last_sync'] = dt.strftime('%d %b %Y, %H:%M')
-        except:
-            pass
-
-    context = {
-        'branch_count': branch_count,
-        'creditor_groups': creditor_groups,
-        'condor_depts': condor_depts,
-        'updown_debtors': updown_debtors,
-        **station_rows,
-        **last_syncs,
-    }
-    return render(request, 'data_analysis.html', context)
-
-
-@login_required
-def turnover(request):
-    """Turnover Automation project page"""
-    try:
-        total_records = TurnoverData.objects.count()
-        total_value = TurnoverData.objects.aggregate(total=Sum('value'))['total'] or 0
-        branches = list(TurnoverData.objects.values_list('branch', flat=True).distinct())
-        year_count = TurnoverData.objects.annotate(
-            year=ExtractYear('date')
-        ).values('year').distinct().count()
-    except (OperationalError, ProgrammingError):
-        total_records = 0
-        total_value = 0
-        branches = []
-        year_count = 0
-
-    context = {
-        'total_records': total_records,
-        'total_value': total_value,
-        'branches': branches,
-        'year_count': year_count,
-        'last_sync': get_last_sync(),
-    }
-    return render(request, 'turnover.html', context)
-
-
-@login_required
-def pnl(request):
-    """PNL Automation project page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM pnl_data")
-            total_records = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(DISTINCT division) FROM pnl_data")
-            division_count = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(DISTINCT date) FROM pnl_data")
-            period_count = cursor.fetchone()[0]
-            cursor.execute("SELECT DISTINCT division FROM pnl_data ORDER BY division")
-            divisions = [row[0] for row in cursor.fetchall()]
-    except:
-        total_records = 0
-        division_count = 0
-        period_count = 0
-        divisions = []
-
-    context = {
-        'total_records': total_records,
-        'division_count': division_count,
-        'period_count': period_count,
-        'divisions': divisions,
-    }
-    return render(request, 'pnl.html', context)
-
-
-@login_required
-def ppg(request):
-    """PPG Financial Analysis page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM ppg_pnl")
-            total_records = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(*) FROM ppg_pnl WHERE budget_actual = 'Budget'")
-            budget_count = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(*) FROM ppg_pnl WHERE budget_actual = 'Actual'")
-            actual_count = cursor.fetchone()[0]
-            cursor.execute("SELECT MIN(date), MAX(date) FROM ppg_pnl")
-            min_date, max_date = cursor.fetchone()
-    except:
-        total_records = 0
-        budget_count = 0
-        actual_count = 0
-        min_date = None
-        max_date = None
-
-    context = {
-        'total_records': total_records,
-        'budget_count': budget_count,
-        'actual_count': actual_count,
-        'min_date': min_date,
-        'max_date': max_date,
-        'last_sync': onedrive_sync.get_ppg_last_sync(),
-    }
-    return render(request, 'ppg.html', context)
-
-
-@login_required
 def sync_data(request):
     if request.method == 'POST':
         # Check if OneDrive is authenticated
@@ -897,7 +636,7 @@ def sync_data(request):
         thread.start()
 
         return JsonResponse({'status': 'started'})
-    return redirect('turnover')
+    return redirect('sync_monitor')
 
 
 @login_required
@@ -921,7 +660,7 @@ def onedrive_callback(request):
             messages.success(request, 'OneDrive connected successfully!')
         else:
             messages.error(request, 'Failed to connect to OneDrive')
-    return redirect('turnover')
+    return redirect('sync_monitor')
 
 
 @login_required
@@ -969,45 +708,13 @@ def sync_ppg(request):
         thread.start()
 
         return JsonResponse({'status': 'started'})
-    return redirect('ppg')
+    return redirect('sync_monitor')
 
 
 @login_required
 def sync_ppg_progress(request):
     """Get PPG sync progress"""
     return JsonResponse(ppg_sync_progress)
-
-
-# DOR views and sync
-@login_required
-def dor(request):
-    """DOR Financial Analysis page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM dor_pnl")
-            total_records = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(*) FROM dor_pnl WHERE budget_actual = 'Budget'")
-            budget_count = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(*) FROM dor_pnl WHERE budget_actual = 'Actual'")
-            actual_count = cursor.fetchone()[0]
-            cursor.execute("SELECT MIN(date), MAX(date) FROM dor_pnl")
-            min_date, max_date = cursor.fetchone()
-    except:
-        total_records = 0
-        budget_count = 0
-        actual_count = 0
-        min_date = None
-        max_date = None
-
-    context = {
-        'total_records': total_records,
-        'budget_count': budget_count,
-        'actual_count': actual_count,
-        'min_date': min_date,
-        'max_date': max_date,
-        'last_sync': onedrive_sync.get_dor_last_sync(),
-    }
-    return render(request, 'dor.html', context)
 
 
 # DOR sync progress storage
@@ -1048,7 +755,7 @@ def sync_dor(request):
         thread.start()
 
         return JsonResponse({'status': 'started'})
-    return redirect('dor')
+    return redirect('sync_monitor')
 
 
 @login_required
@@ -1106,66 +813,13 @@ def sync_con(request):
         thread.start()
 
         return JsonResponse({'status': 'started'})
-    return redirect('con')
+    return redirect('sync_monitor')
 
 
 @login_required
 def sync_con_progress(request):
     """Get CON sync progress"""
     return JsonResponse(con_sync_progress)
-
-
-@login_required
-def con(request):
-    """CON Financial Analysis page"""
-    with connection.cursor() as cursor:
-        # Get total records
-        cursor.execute("SELECT COUNT(*) FROM con_pnl")
-        total_records = cursor.fetchone()[0] or 0
-
-        # Get distinct months
-        cursor.execute("SELECT COUNT(DISTINCT date) FROM con_pnl")
-        month_count = cursor.fetchone()[0] or 0
-
-        # Get distinct accounts
-        cursor.execute("SELECT COUNT(DISTINCT account_name) FROM con_pnl")
-        account_count = cursor.fetchone()[0] or 0
-
-    last_sync = onedrive_sync.get_con_last_sync()
-
-    return render(request, 'con.html', {
-        'total_records': total_records,
-        'month_count': month_count,
-        'account_count': account_count,
-        'last_sync': last_sync
-    })
-
-# ATL view
-@login_required
-def atl(request):
-    """ATL Financial Analysis page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM atl_pnl")
-            total_records = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM atl_pnl WHERE budget_actual LIKE '%Budget%'")
-            budget_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM atl_pnl WHERE budget_actual LIKE '%Actual%'")
-            actual_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT account_name) FROM atl_pnl")
-            account_count = cursor.fetchone()[0] or 0
-    except:
-        total_records = budget_count = actual_count = account_count = 0
-
-    last_sync = onedrive_sync.get_atl_last_sync()
-
-    return render(request, 'atl.html', {
-        'total_records': total_records,
-        'budget_count': budget_count,
-        'actual_count': actual_count,
-        'account_count': account_count,
-        'last_sync': last_sync
-    })
 
 
 @login_required
@@ -1200,34 +854,6 @@ def sync_atl(request):
 def sync_atl_progress(request):
     """Get ATL sync progress"""
     return JsonResponse(atl_sync_progress)
-
-
-# HNL views
-@login_required
-def hnl(request):
-    """HNL Financial Analysis page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM hnl_pnl")
-            total_records = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM hnl_pnl WHERE budget_actual LIKE '%Budget%'")
-            budget_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM hnl_pnl WHERE budget_actual LIKE '%Actual%'")
-            actual_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT account_name) FROM hnl_pnl")
-            account_count = cursor.fetchone()[0] or 0
-    except:
-        total_records = budget_count = actual_count = account_count = 0
-
-    last_sync = onedrive_sync.get_hnl_last_sync()
-
-    return render(request, 'hnl.html', {
-        'total_records': total_records,
-        'budget_count': budget_count,
-        'actual_count': actual_count,
-        'account_count': account_count,
-        'last_sync': last_sync
-    })
 
 
 # HNL sync progress tracking
@@ -1274,34 +900,6 @@ def sync_hnl(request):
 def sync_hnl_progress(request):
     """Get HNL sync progress"""
     return JsonResponse(hnl_sync_progress)
-
-
-# CCC views
-@login_required
-def ccc(request):
-    """CCC Financial Analysis page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM ccc_pnl")
-            total_records = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM ccc_pnl WHERE budget_actual LIKE '%Budget%'")
-            budget_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM ccc_pnl WHERE budget_actual LIKE '%Actual%'")
-            actual_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT account_name) FROM ccc_pnl")
-            account_count = cursor.fetchone()[0] or 0
-    except:
-        total_records = budget_count = actual_count = account_count = 0
-
-    last_sync = onedrive_sync.get_ccc_last_sync()
-
-    return render(request, 'ccc.html', {
-        'total_records': total_records,
-        'budget_count': budget_count,
-        'actual_count': actual_count,
-        'account_count': account_count,
-        'last_sync': last_sync
-    })
 
 
 # CCC sync progress tracking
@@ -1464,282 +1062,6 @@ def bravo_tran_deallocate(request):
         return JsonResponse({'ok': True})
     except USEUContact.DoesNotExist:
         return JsonResponse({'ok': False, 'error': 'Not found'}, status=404)
-
-
-@login_required
-def ccd(request):
-    """CCD Financial Analysis page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM ccd_pnl")
-            total_records = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM ccd_pnl WHERE budget_actual LIKE '%Budget%'")
-            budget_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM ccd_pnl WHERE budget_actual LIKE '%Actual%'")
-            actual_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT account_name) FROM ccd_pnl")
-            account_count = cursor.fetchone()[0] or 0
-    except:
-        total_records = budget_count = actual_count = account_count = 0
-    
-    last_sync = onedrive_sync.get_ccd_last_sync()
-
-    return render(request, 'ccd.html', {
-        'total_records': total_records,
-        'budget_count': budget_count,
-        'actual_count': actual_count,
-        'account_count': account_count,
-        'last_sync': last_sync
-    })
-
-
-# FAX view
-@login_required
-def fax(request):
-    """FAX Financial Analysis page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM fax_pnl")
-            total_records = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM fax_pnl WHERE budget_actual LIKE '%Budget%'")
-            budget_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM fax_pnl WHERE budget_actual LIKE '%Actual%'")
-            actual_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT account_name) FROM fax_pnl")
-            account_count = cursor.fetchone()[0] or 0
-    except:
-        total_records = budget_count = actual_count = account_count = 0
-    
-    last_sync = onedrive_sync.get_fax_last_sync()
-
-    return render(request, 'fax.html', {
-        'total_records': total_records,
-        'budget_count': budget_count,
-        'actual_count': actual_count,
-        'account_count': account_count,
-        'last_sync': last_sync
-    })
-
-
-# HEC view
-@login_required
-def hec(request):
-    """HEC Financial Analysis page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM pnl_data WHERE division = 'HEC'")
-            total_records = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM pnl_data WHERE division = 'HEC' AND account_name LIKE '%Budget%'")
-            budget_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM pnl_data WHERE division = 'HEC' AND account_name LIKE '%Actual%'")
-            actual_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT account_name) FROM pnl_data WHERE division = 'HEC'")
-            account_count = cursor.fetchone()[0] or 0
-    except:
-        total_records = budget_count = actual_count = account_count = 0
-    
-    return render(request, 'hec.html', {
-        'total_records': total_records,
-        'budget_count': budget_count,
-        'actual_count': actual_count,
-        'account_count': account_count
-    })
-
-
-# HOU view
-@login_required
-def hou(request):
-    """HOU Financial Analysis page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM hou_pnl")
-            total_records = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM hou_pnl WHERE budget_actual LIKE '%Budget%'")
-            budget_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM hou_pnl WHERE budget_actual LIKE '%Actual%'")
-            actual_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT account_name) FROM hou_pnl")
-            account_count = cursor.fetchone()[0] or 0
-    except:
-        total_records = budget_count = actual_count = account_count = 0
-    
-    last_sync = onedrive_sync.get_hou_last_sync()
-
-    return render(request, 'hou.html', {
-        'total_records': total_records,
-        'budget_count': budget_count,
-        'actual_count': actual_count,
-        'account_count': account_count,
-        'last_sync': last_sync
-    })
-
-
-# ICS view
-@login_required
-def ics(request):
-    """ICS Financial Analysis page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM ics_pnl")
-            total_records = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM ics_pnl WHERE budget_actual LIKE '%Budget%'")
-            budget_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM ics_pnl WHERE budget_actual LIKE '%Actual%'")
-            actual_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT account_name) FROM ics_pnl")
-            account_count = cursor.fetchone()[0] or 0
-    except:
-        total_records = budget_count = actual_count = account_count = 0
-    
-    last_sync = onedrive_sync.get_ics_last_sync()
-
-    return render(request, 'ics.html', {
-        'total_records': total_records,
-        'budget_count': budget_count,
-        'actual_count': actual_count,
-        'account_count': account_count,
-        'last_sync': last_sync
-    })
-
-
-# IMP view
-@login_required
-def imp(request):
-    """IMP Financial Analysis page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM imp_pnl")
-            total_records = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM imp_pnl WHERE budget_actual LIKE '%Budget%'")
-            budget_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM imp_pnl WHERE budget_actual LIKE '%Actual%'")
-            actual_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT account_name) FROM imp_pnl")
-            account_count = cursor.fetchone()[0] or 0
-    except:
-        total_records = budget_count = actual_count = account_count = 0
-    
-    last_sync = onedrive_sync.get_imp_last_sync()
-
-    return render(request, 'imp.html', {
-        'total_records': total_records,
-        'budget_count': budget_count,
-        'actual_count': actual_count,
-        'account_count': account_count,
-        'last_sync': last_sync
-    })
-
-
-# JFK view
-@login_required
-def jfk(request):
-    """JFK Financial Analysis page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM jfk_pnl")
-            total_records = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM jfk_pnl WHERE budget_actual LIKE '%Budget%'")
-            budget_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM jfk_pnl WHERE budget_actual LIKE '%Actual%'")
-            actual_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT account_name) FROM jfk_pnl")
-            account_count = cursor.fetchone()[0] or 0
-    except:
-        total_records = budget_count = actual_count = account_count = 0
-    
-    last_sync = onedrive_sync.get_jfk_last_sync()
-
-    return render(request, 'jfk.html', {
-        'total_records': total_records,
-        'budget_count': budget_count,
-        'actual_count': actual_count,
-        'account_count': account_count,
-        'last_sync': last_sync
-    })
-
-
-# LAX view
-@login_required
-def lax(request):
-    """LAX Financial Analysis page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM lax_pnl")
-            total_records = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM lax_pnl WHERE budget_actual LIKE '%Budget%'")
-            budget_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM lax_pnl WHERE budget_actual LIKE '%Actual%'")
-            actual_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT account_name) FROM lax_pnl")
-            account_count = cursor.fetchone()[0] or 0
-    except:
-        total_records = budget_count = actual_count = account_count = 0
-    
-    last_sync = onedrive_sync.get_lax_last_sync()
-
-    return render(request, 'lax.html', {
-        'total_records': total_records,
-        'budget_count': budget_count,
-        'actual_count': actual_count,
-        'account_count': account_count,
-        'last_sync': last_sync
-    })
-
-
-# LCL view
-@login_required
-def lcl(request):
-    """LCL Financial Analysis page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM lcl_pnl")
-            total_records = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM lcl_pnl WHERE budget_actual LIKE '%Budget%'")
-            budget_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM lcl_pnl WHERE budget_actual LIKE '%Actual%'")
-            actual_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT account_name) FROM lcl_pnl")
-            account_count = cursor.fetchone()[0] or 0
-    except:
-        total_records = budget_count = actual_count = account_count = 0
-    
-    last_sync = onedrive_sync.get_lcl_last_sync()
-
-    return render(request, 'lcl.html', {
-        'total_records': total_records,
-        'budget_count': budget_count,
-        'actual_count': actual_count,
-        'account_count': account_count,
-        'last_sync': last_sync
-    })
-
-
-# ORD view
-@login_required
-def ord(request):
-    """ORD Financial Analysis page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM ord_pnl")
-            total_records = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM ord_pnl WHERE budget_actual LIKE '%Budget%'")
-            budget_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM ord_pnl WHERE budget_actual LIKE '%Actual%'")
-            actual_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT account_name) FROM ord_pnl")
-            account_count = cursor.fetchone()[0] or 0
-    except:
-        total_records = budget_count = actual_count = account_count = 0
-    
-    last_sync = onedrive_sync.get_ord_last_sync()
-
-    return render(request, 'ord.html', {
-        'total_records': total_records,
-        'budget_count': budget_count,
-        'actual_count': actual_count,
-        'account_count': account_count,
-        'last_sync': last_sync
-    })
 
 
 # CCD sync progress tracking
@@ -2174,33 +1496,6 @@ def sync_ord_progress(request):
     return JsonResponse(ord_sync_progress)
 
 
-@login_required
-def dfw(request):
-    """DFW Financial Analysis page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM dfw_pnl")
-            total_records = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM dfw_pnl WHERE budget_actual LIKE '%Budget%'")
-            budget_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(*) FROM dfw_pnl WHERE budget_actual LIKE '%Actual%'")
-            actual_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT account_name) FROM dfw_pnl")
-            account_count = cursor.fetchone()[0] or 0
-    except:
-        total_records = budget_count = actual_count = account_count = 0
-
-    last_sync = onedrive_sync.get_dfw_last_sync()
-
-    return render(request, 'dfw.html', {
-        'total_records': total_records,
-        'budget_count': budget_count,
-        'actual_count': actual_count,
-        'account_count': account_count,
-        'last_sync': last_sync
-    })
-
-
 # DFW sync progress tracking
 dfw_sync_progress = {'status': 'idle', 'message': '', 'current': 0, 'total': 0}
 
@@ -2249,79 +1544,6 @@ def sync_dfw_progress(request):
     return JsonResponse(dfw_sync_progress)
 
 
-@login_required
-def creditor(request):
-    """Creditor Transaction Report page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM creditor_transactions")
-            total_records = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(DISTINCT creditor) FROM creditor_transactions")
-            creditor_count = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(DISTINCT creditor_group) FROM creditor_transactions")
-            group_count = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(DISTINCT branch) FROM creditor_transactions WHERE branch != ''")
-            branch_count = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(DISTINCT period) FROM creditor_transactions")
-            period_count = cursor.fetchone()[0]
-    except:
-        total_records = 0
-        creditor_count = 0
-        group_count = 0
-        branch_count = 0
-        period_count = 0
-
-    context = {
-        'total_records': total_records,
-        'creditor_count': creditor_count,
-        'group_count': group_count,
-        'branch_count': branch_count,
-        'period_count': period_count,
-    }
-    return render(request, 'creditor.html', context)
-
-
-@login_required
-def condor_dor(request):
-    """Condor+DOR PNL page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM condor_dor_pnl")
-            total_records = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(DISTINCT department) FROM condor_dor_pnl")
-            dept_count = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(DISTINCT branch) FROM condor_dor_pnl")
-            branch_count = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(DISTINCT account_name) FROM condor_dor_pnl")
-            account_count = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(DISTINCT date) FROM condor_dor_pnl")
-            period_count = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(*) FROM condor_dor_pnl WHERE budget_actual = 'Budget'")
-            budget_rows = cursor.fetchone()[0]
-            cursor.execute("SELECT COUNT(*) FROM condor_dor_pnl WHERE budget_actual = 'Actual'")
-            actual_rows = cursor.fetchone()[0]
-    except:
-        total_records = 0
-        dept_count = 0
-        branch_count = 0
-        account_count = 0
-        period_count = 0
-        budget_rows = 0
-        actual_rows = 0
-
-    context = {
-        'total_records': total_records,
-        'dept_count': dept_count,
-        'branch_count': branch_count,
-        'account_count': account_count,
-        'period_count': period_count,
-        'budget_rows': budget_rows,
-        'actual_rows': actual_rows,
-    }
-    context['last_sync'] = onedrive_sync.get_condor_dor_last_sync()
-    return render(request, 'condor_dor.html', context)
-
-
 condor_dor_sync_progress = {'status': 'idle', 'message': '', 'current': 0, 'total': 0}
 
 
@@ -2353,7 +1575,7 @@ def sync_condor_dor(request):
         thread = threading.Thread(target=run_sync)
         thread.start()
         return JsonResponse({'status': 'started'})
-    return redirect('condor_dor')
+    return redirect('sync_monitor')
 
 
 @login_required
@@ -2664,107 +1886,8 @@ def save_powerbi_embed(request):
 
 # ── User Management ────────────────────────────────────────────────────────────
 
-@login_required
-@admin_required
-def user_list(request):
-    users = User.objects.select_related('profile').all().order_by('date_joined')
-    # Make sure every user has a profile so template can access flags
-    for u in users:
-        if not hasattr(u, 'profile') or u.profile is None:
-            UserProfile.objects.get_or_create(user=u)
-    return render(request, 'users.html', {'users': users, 'current_user': request.user})
-
-
-@login_required
-@admin_required
-def user_create(request):
-    if request.method != 'POST':
-        return redirect('user_list')
-    username = request.POST.get('username', '').strip()
-    password = request.POST.get('password', '').strip()
-    if not username or not password:
-        messages.error(request, 'Username and password are required.')
-        return redirect('user_list')
-    if User.objects.filter(username=username).exists():
-        messages.error(request, f'Username "{username}" already exists.')
-        return redirect('user_list')
-    user = User.objects.create_user(username=username, password=password)
-    messages.success(request, f'User "{user.username}" created successfully.')
-    return redirect('user_list')
-
-
-@login_required
-@admin_required
-def user_edit(request, user_id):
-    if request.method != 'POST':
-        return redirect('user_list')
-    try:
-        user = User.objects.get(pk=user_id)
-    except User.DoesNotExist:
-        messages.error(request, 'User not found.')
-        return redirect('user_list')
-
-    # Role (admin vs user) — self-change allowed.
-    role = request.POST.get('role', '').strip()
-    if role in ('admin', 'user'):
-        if role == 'admin':
-            user.is_superuser = True
-            user.is_staff = True
-        else:
-            user.is_superuser = False
-            user.is_staff = False
-
-    # Optional password update
-    password = request.POST.get('password', '').strip()
-    if password:
-        user.set_password(password)
-    user.save()
-
-    # Page-access flags on UserProfile (ignored for admins — they see everything)
-    profile, _ = UserProfile.objects.get_or_create(user=user)
-    for key in ('data_analysis', 'emailing', 'planner', 'sync_monitor', 'automations'):
-        setattr(profile, f'can_{key}', request.POST.get(f'can_{key}') == 'on')
-    profile.save()
-
-    messages.success(request, f'Updated settings for "{user.username}".')
-    return redirect('user_list')
-
-
-@login_required
-@admin_required
-def user_delete(request, user_id):
-    if request.method != 'POST':
-        return redirect('user_list')
-    if request.user.pk == user_id:
-        messages.error(request, 'You cannot delete your own account.')
-        return redirect('user_list')
-    try:
-        user = User.objects.get(pk=user_id)
-        username = user.username
-        user.delete()
-        messages.success(request, f'User "{username}" deleted.')
-    except User.DoesNotExist:
-        messages.error(request, 'User not found.')
-    return redirect('user_list')
-
 
 # ── Settings ───────────────────────────────────────────────────────────────────
-
-@login_required
-def settings_view(request):
-    profile, _ = UserProfile.objects.get_or_create(user=request.user)
-    return render(request, 'settings.html', {'dark_mode': profile.dark_mode})
-
-
-@login_required
-def save_settings(request):
-    if request.method != 'POST':
-        return JsonResponse({'status': 'error'}, status=405)
-    data = json.loads(request.body)
-    profile, _ = UserProfile.objects.get_or_create(user=request.user)
-    profile.dark_mode = bool(data.get('dark_mode', False))
-    profile.save()
-    return JsonResponse({'status': 'ok'})
 
 
 # ── US-EU List ─────────────────────────────────────────────────────────────────
@@ -3624,216 +2747,6 @@ def email_templates(request):
     profile, _ = UserProfile.objects.get_or_create(user=request.user)
     return render(request, 'email_templates.html', {
         'templates_json': json.dumps(tpl_list),
-        'dark_mode': profile.dark_mode,
-    })
-
-
-@login_required
-def reporting(request):
-    """Summary of list performance by status, with HubSpot growth over time,
-    touchpoint coverage, deal-lost reasons, and bounce breakdown."""
-    from django.db.models import Count, Q
-    from django.db.models.functions import TruncWeek, TruncMonth, TruncYear
-    from datetime import datetime as _dt, date as _date, timedelta as _td
-
-    # ── Filters from query string ────────────────────────────────────────────
-    date_from_raw = request.GET.get('date_from', '').strip()
-    date_to_raw = request.GET.get('date_to', '').strip()
-    status_filter = request.GET.get('status', '').strip()
-
-    def _parse_iso(s):
-        try:
-            return _dt.strptime(s, '%Y-%m-%d').date()
-        except Exception:
-            return None
-
-    date_from = _parse_iso(date_from_raw)
-    date_to = _parse_iso(date_to_raw)
-
-    contacts = USEUContact.objects.all()
-    if status_filter:
-        if status_filter == 'Moved to HubSpot':
-            contacts = contacts.filter(Q(status='Moved to HubSpot') | Q(status='Move to HubSpot'))
-        else:
-            contacts = contacts.filter(status=status_filter)
-    total_contacts = contacts.count()
-
-    status_counts_qs = contacts.values('status').annotate(count=Count('id'))
-    status_counts = {s['status']: s['count'] for s in status_counts_qs}
-
-    active = status_counts.get('Active', 0)
-    undelivered = status_counts.get('Undeliverable', 0)
-    moved_to_hubspot = status_counts.get('Moved to HubSpot', 0) + status_counts.get('Move to HubSpot', 0)
-    inactive = status_counts.get('Lost', 0)
-
-    def pct(n):
-        return round((n / total_contacts) * 100, 1) if total_contacts else 0.0
-
-    summary = [
-        {'label': 'Total contacts', 'value': total_contacts, 'pct': 100.0 if total_contacts else 0.0, 'pill': 'total'},
-        {'label': 'Active (still reachable)', 'value': active, 'pct': pct(active), 'pill': 'active'},
-        {'label': 'Bad email (bounced)', 'value': undelivered, 'pct': pct(undelivered), 'pill': 'undelivered'},
-        {'label': 'Moved to HubSpot', 'value': moved_to_hubspot, 'pct': pct(moved_to_hubspot), 'pill': 'hubspot'},
-        {'label': 'Not a fit / lost', 'value': inactive, 'pct': pct(inactive), 'pill': 'inactive'},
-    ]
-
-    # HubSpot growth series: rows with a moved_to_hubspot_at timestamp,
-    # grouped by week / month / year. The date filter narrows this window.
-    hs_rows = USEUContact.objects.filter(moved_to_hubspot_at__isnull=False)
-    if date_from:
-        hs_rows = hs_rows.filter(moved_to_hubspot_at__date__gte=date_from)
-    if date_to:
-        hs_rows = hs_rows.filter(moved_to_hubspot_at__date__lte=date_to)
-
-    def build_series(trunc_fn, label_fmt):
-        qs = (hs_rows.annotate(bucket=trunc_fn('moved_to_hubspot_at'))
-              .values('bucket').annotate(c=Count('id')).order_by('bucket'))
-        labels, counts, cum = [], [], []
-        running = 0
-        for row in qs:
-            if not row['bucket']:
-                continue
-            labels.append(label_fmt(row['bucket']))
-            counts.append(row['c'])
-            running += row['c']
-            cum.append(running)
-        return {'labels': labels, 'counts': counts, 'cumulative': cum}
-
-    weekly_series = build_series(TruncWeek, lambda d: d.strftime('Wk of %d %b %Y'))
-    monthly_series = build_series(TruncMonth, lambda d: d.strftime('%b %Y'))
-    yearly_series = build_series(TruncYear, lambda d: str(d.year))
-
-    # ── Growth KPIs (YoY and MoM) based on unfiltered-but-status-ignoring data.
-    # We want growth regardless of the current date/status filter — it's a
-    # stable top-line metric. So recompute from all HubSpot-stamped contacts.
-    growth_base = USEUContact.objects.filter(moved_to_hubspot_at__isnull=False)
-
-    today = django_timezone.now().date()
-    first_this_month = today.replace(day=1)
-    first_prev_month = (first_this_month - _td(days=1)).replace(day=1)
-    first_prev_prev_month = (first_prev_month - _td(days=1)).replace(day=1)
-
-    mtd_this = growth_base.filter(
-        moved_to_hubspot_at__date__gte=first_this_month,
-        moved_to_hubspot_at__date__lte=today,
-    ).count()
-    prev_month_full = growth_base.filter(
-        moved_to_hubspot_at__date__gte=first_prev_month,
-        moved_to_hubspot_at__date__lt=first_this_month,
-    ).count()
-    prev_prev_month_full = growth_base.filter(
-        moved_to_hubspot_at__date__gte=first_prev_prev_month,
-        moved_to_hubspot_at__date__lt=first_prev_month,
-    ).count()
-
-    def growth_pct(current, previous):
-        if previous <= 0:
-            return None if current == 0 else 100.0 * current
-        return round(((current - previous) / previous) * 100, 1)
-
-    mom_value = prev_month_full  # last full month
-    mom_prev = prev_prev_month_full  # month before
-    mom_growth = growth_pct(mom_value, mom_prev)
-
-    # YoY: last 12 months (rolling) vs prior 12 months
-    one_year_ago = today - _td(days=365)
-    two_years_ago = today - _td(days=730)
-    ytd_this_y = growth_base.filter(
-        moved_to_hubspot_at__date__gte=one_year_ago,
-        moved_to_hubspot_at__date__lte=today,
-    ).count()
-    ytd_prev_y = growth_base.filter(
-        moved_to_hubspot_at__date__gte=two_years_ago,
-        moved_to_hubspot_at__date__lt=one_year_ago,
-    ).count()
-    yoy_growth = growth_pct(ytd_this_y, ytd_prev_y)
-
-    # Touchpoint coverage: how many contacts have each TP sent
-    tp_labels = [f'TP{n}' for n in range(1, 11)]
-    tp_counts = []
-    for n in range(1, 11):
-        field = f'tp{n}_sent_on'
-        tp_counts.append(
-            contacts.exclude(**{field: ''}).exclude(**{f'{field}__isnull': True}).count()
-        )
-
-    # Deal lost reasons — count non-empty, bucket by reason text
-    lost_with_reason_qs = contacts.exclude(deal_lost_reason='').exclude(deal_lost_reason__isnull=True)
-    lost_with_reason = lost_with_reason_qs.count()
-    lost_without_reason = inactive - contacts.filter(status='Lost').exclude(deal_lost_reason='').exclude(deal_lost_reason__isnull=True).count()
-    lost_without_reason = max(0, lost_without_reason)
-    reason_rows = (lost_with_reason_qs.values('deal_lost_reason')
-                   .annotate(c=Count('id')).order_by('-c'))
-    reason_labels = [r['deal_lost_reason'][:40] for r in reason_rows]
-    reason_counts = [r['c'] for r in reason_rows]
-
-    # Bounce breakdown from EmailSendLog — error_message is "{Type}/{SubType}: ..."
-    # where Type is "Permanent" (hard) or "Transient" (soft). SES convention.
-    hard_bounces = 0
-    soft_bounces = 0
-    undetermined_bounces = 0
-    total_bounces = 0
-    try:
-        from .models import EmailSendLog
-        bounce_logs = EmailSendLog.objects.filter(status='bounced').values_list('error_message', flat=True)
-        for err in bounce_logs:
-            total_bounces += 1
-            low = (err or '').lower()
-            if low.startswith('permanent'):
-                hard_bounces += 1
-            elif low.startswith('transient'):
-                soft_bounces += 1
-            else:
-                undetermined_bounces += 1
-    except Exception:
-        pass
-
-    STATUS_CHOICES = ['Active', 'Inactive', 'Undeliverable', 'Moved to HubSpot', 'Lost']
-
-    profile, _ = UserProfile.objects.get_or_create(user=request.user)
-    return render(request, 'reporting.html', {
-        'summary': summary,
-        'total_contacts': total_contacts,
-        'filter_date_from': date_from_raw,
-        'filter_date_to': date_to_raw,
-        'filter_status': status_filter,
-        'status_choices': STATUS_CHOICES,
-        'mom_growth': mom_growth,
-        'mom_current': mom_value,
-        'mom_previous': mom_prev,
-        'mom_label_current': first_prev_month.strftime('%b %Y'),
-        'mom_label_previous': first_prev_prev_month.strftime('%b %Y'),
-        'yoy_growth': yoy_growth,
-        'yoy_current': ytd_this_y,
-        'yoy_previous': ytd_prev_y,
-        'mtd_this': mtd_this,
-        'mtd_label': first_this_month.strftime('%b %Y'),
-        'pie_full': json.dumps({
-            'labels': ['Active', 'Undelivered', 'Moved to HubSpot', 'Inactive'],
-            'data': [active, undelivered, moved_to_hubspot, inactive],
-        }),
-        'pie_compare': json.dumps({
-            'labels': ['Active', 'Undelivered', 'Moved to HubSpot'],
-            'data': [active, undelivered, moved_to_hubspot],
-        }),
-        'hs_series': json.dumps({
-            'week': weekly_series,
-            'month': monthly_series,
-            'year': yearly_series,
-        }),
-        'tp_coverage': json.dumps({'labels': tp_labels, 'counts': tp_counts}),
-        'lost_reason_chart': json.dumps({'labels': reason_labels, 'counts': reason_counts}),
-        'lost_with_reason': lost_with_reason,
-        'lost_without_reason': lost_without_reason,
-        'reason_rows': [{'reason': r['deal_lost_reason'], 'count': r['c']} for r in reason_rows],
-        'bounce_chart': json.dumps({
-            'labels': ['Hard (Permanent)', 'Soft (Transient)', 'Undetermined'],
-            'counts': [hard_bounces, soft_bounces, undetermined_bounces],
-        }),
-        'hard_bounces': hard_bounces,
-        'soft_bounces': soft_bounces,
-        'undetermined_bounces': undetermined_bounces,
-        'total_bounces': total_bounces,
         'dark_mode': profile.dark_mode,
     })
 
@@ -5035,32 +3948,6 @@ def get_tp_progress(request):
     return JsonResponse(progress)
 
 
-def import_ops(request):
-    """Import Operations page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM import_ops")
-            total_records = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT mode) FROM import_ops WHERE mode != ''")
-            mode_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT origin_country) FROM import_ops WHERE origin_country != ''")
-            origin_country_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT destination_country) FROM import_ops WHERE destination_country != ''")
-            dest_country_count = cursor.fetchone()[0] or 0
-    except:
-        total_records = mode_count = origin_country_count = dest_country_count = 0
-
-    last_sync = onedrive_sync.get_import_ops_last_sync()
-
-    return render(request, 'import_ops.html', {
-        'total_records': total_records,
-        'mode_count': mode_count,
-        'origin_country_count': origin_country_count,
-        'dest_country_count': dest_country_count,
-        'last_sync': last_sync
-    })
-
-
 # Import Ops sync progress tracking
 import_ops_sync_progress = {'status': 'idle', 'message': '', 'current': 0, 'total': 0}
 
@@ -5206,156 +4093,8 @@ def sync_wip_accrual_progress_view(request):
 
 # --- Software: Planner & Gantt ---
 
-@login_required
-@page_access('planner')
-def planner(request):
-    """System planner - Kanban board grouped by project"""
-    if request.method == 'POST':
-        action = request.POST.get('action')
-        if action == 'create':
-            ProjectTask.objects.create(
-                title=request.POST.get('title', '').strip(),
-                description=request.POST.get('description', '').strip(),
-                status=request.POST.get('status', 'todo'),
-                priority=request.POST.get('priority', 'medium'),
-                company=request.POST.get('company', '').strip(),
-                project_name=request.POST.get('project_name', '').strip(),
-                start_date=request.POST.get('start_date') or None,
-                end_date=request.POST.get('end_date') or None,
-                start_time=request.POST.get('start_time') or None,
-                end_time=request.POST.get('end_time') or None,
-            )
-        elif action == 'update':
-            task_id = request.POST.get('task_id')
-            try:
-                task = ProjectTask.objects.get(id=task_id)
-                task.title = request.POST.get('title', task.title).strip()
-                task.description = request.POST.get('description', task.description).strip()
-                task.status = request.POST.get('status', task.status)
-                task.priority = request.POST.get('priority', task.priority)
-                task.company = request.POST.get('company', task.company).strip()
-                task.project_name = request.POST.get('project_name', task.project_name).strip()
-                task.start_date = request.POST.get('start_date') or None
-                task.end_date = request.POST.get('end_date') or None
-                task.start_time = request.POST.get('start_time') or None
-                task.end_time = request.POST.get('end_time') or None
-                task.save()
-            except ProjectTask.DoesNotExist:
-                pass
-        elif action == 'delete':
-            task_id = request.POST.get('task_id')
-            ProjectTask.objects.filter(id=task_id).delete()
-        elif action == 'move':
-            task_id = request.POST.get('task_id')
-            new_status = request.POST.get('status')
-            ProjectTask.objects.filter(id=task_id).update(status=new_status)
-            return JsonResponse({'status': 'ok'})
-        return redirect('planner')
-
-    tasks = ProjectTask.objects.filter(parent=None).order_by('project_name', 'created_at')
-    projects = tasks.values_list('project_name', flat=True).distinct()
-
-    columns = [
-        ('backlog', 'Backlog'),
-        ('todo', 'To Do'),
-        ('in_progress', 'In Progress'),
-        ('review', 'Review'),
-        ('done', 'Done'),
-    ]
-
-    board = {}
-    for status, label in columns:
-        board[status] = {'label': label, 'tasks': list(tasks.filter(status=status))}
-
-    tasks_json = [{
-        'id': t.id,
-        'title': t.title,
-        'description': t.description,
-        'status': t.status,
-        'priority': t.priority,
-        'company': t.company,
-        'company_display': t.get_company_display() if t.company else '',
-        'project_name': t.project_name,
-        'start_date': t.start_date.isoformat() if t.start_date else '',
-        'end_date': t.end_date.isoformat() if t.end_date else '',
-        'start_time': t.start_time.strftime('%H:%M') if t.start_time else '',
-        'end_time': t.end_time.strftime('%H:%M') if t.end_time else '',
-    } for t in tasks]
-
-    return render(request, 'planner.html', {
-        'board': board,
-        'columns': columns,
-        'projects': sorted(set(p for p in projects if p)),
-        'all_tasks': tasks,
-        'tasks_json': tasks_json,
-    })
-
-
-@login_required
-@page_access('planner')
-def gantt(request):
-    """Gantt chart for all project tasks with dates"""
-    tasks = ProjectTask.objects.filter(
-        parent=None, start_date__isnull=False, end_date__isnull=False
-    ).order_by('project_name', 'start_date')
-
-    import json as _json
-    tasks_data = [
-        {
-            'id': t.id,
-            'title': t.title,
-            'project': t.project_name or 'General',
-            'status': t.status,
-            'priority': t.priority,
-            'start': t.start_date.isoformat(),
-            'end': t.end_date.isoformat(),
-        }
-        for t in tasks
-    ]
-
-    return render(request, 'gantt.html', {
-        'tasks_json': _json.dumps(tasks_data),
-        'has_tasks': bool(tasks_data),
-    })
-
 
 # ── TFS Weekly Data ──────────────────────────────────────────────────────────
-
-@login_required
-def tfs(request):
-    """TFS Weekly Data page"""
-    try:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) FROM tfs_weekly")
-            total_records = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT year) FROM tfs_weekly")
-            year_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COUNT(DISTINCT week_number) FROM tfs_weekly")
-            week_count = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT COALESCE(SUM(revenue), 0) FROM tfs_weekly WHERE year = (SELECT MAX(year) FROM tfs_weekly)")
-            ytd_revenue = cursor.fetchone()[0] or 0
-            cursor.execute("SELECT MAX(num_trucks) FROM tfs_weekly")
-            num_trucks = cursor.fetchone()[0] or 32
-            cursor.execute("SELECT AVG(utilization_pct) FROM tfs_weekly WHERE utilization_pct IS NOT NULL")
-            avg_util = cursor.fetchone()[0]
-            avg_util = float(avg_util) * 100 if avg_util else 0
-    except:
-        total_records = year_count = week_count = 0
-        ytd_revenue = 0
-        num_trucks = 32
-        avg_util = 0
-
-    last_sync = onedrive_sync.get_tfs_last_sync()
-
-    return render(request, 'tfs.html', {
-        'total_records': total_records,
-        'year_count': year_count,
-        'week_count': week_count,
-        'ytd_revenue': f"{ytd_revenue:,.2f}",
-        'num_trucks': num_trucks,
-        'avg_util': f"{avg_util:.1f}",
-        'last_sync': last_sync,
-    })
 
 
 tfs_sync_progress = {'status': 'idle', 'message': '', 'current': 0, 'total': 0}

@@ -206,6 +206,7 @@ def _repo_dict(r):
         'server': r.server_id,
         'server_name': r.server.name if r.server else '',
         'notes': r.notes,
+        'project_name': r.project_name,
         'order': r.order,
     }
 
@@ -406,52 +407,27 @@ def _apply_repo_fields(rec, data):
 @csrf_exempt
 @require_http_methods(["POST"])
 def api_task_timer(request, pk):
-    """Start or stop the running timer on a task.
+    """Start or stop the requesting person's timer on a task (time_tracking.py).
 
-    Starting stamps the moment; stopping adds the elapsed time to actual_hours
-    and clears the stamp. The elapsed figure is worked out here rather than
-    sent by the browser, so a wrong clock or a tampered request cannot inflate
-    somebody's logged hours.
-
-    Only one task runs at a time per person, which is what ClickUp does and
-    what people expect: starting a second task stops the first.
+    The elapsed time is worked out on the server, so a wrong clock or a
+    tampered request cannot inflate anybody's logged time.
     """
+    from . import time_tracking
     err = _require_module(request, 'tasks')
     if err:
         return err
     rec = ProjectTask.objects.filter(id=pk).first()
     if not rec:
         return JsonResponse({'detail': 'Not found.'}, status=404)
-
-    action = (_body(request).get('action') or '').strip().lower()
-    now = timezone.now()
-
-    if action == 'start':
-        if rec.timer_started_at:
-            return JsonResponse(_task_dict(rec))       # already running
-        # Stop whatever else is running first.
-        for other in ProjectTask.objects.filter(timer_started_at__isnull=False):
-            _stop_timer(other, now)
-        rec.timer_started_at = now
-        rec.save(update_fields=['timer_started_at', 'updated_at'])
-    elif action == 'stop':
-        _stop_timer(rec, now)
-    else:
-        return JsonResponse({'detail': "action must be 'start' or 'stop'."},
-                            status=400)
-    return JsonResponse(_task_dict(rec))
-
-
-def _stop_timer(rec, now):
-    """Fold a running timer into actual_hours and clear it."""
-    if not rec.timer_started_at:
-        return
-    hours = (now - rec.timer_started_at).total_seconds() / 3600
-    # Under half a minute is a mis-click, not work.
-    if hours >= 0.008:
-        rec.actual_hours = round(float(rec.actual_hours or 0) + hours, 2)
-    rec.timer_started_at = None
-    rec.save(update_fields=['actual_hours', 'timer_started_at', 'updated_at'])
+    try:
+        time_tracking.toggle_timer(request, rec, (_body(request).get('action') or '').strip().lower())
+    except ValueError as e:
+        return JsonResponse({'detail': str(e)}, status=400)
+    rec.refresh_from_db()
+    out = _task_dict(rec)
+    mine = time_tracking.running_for(request.user)
+    out['timer_started_at'] = mine.started_at.isoformat() if mine and mine.task_id == rec.id else None
+    return JsonResponse(out)
 
 
 @csrf_exempt
@@ -514,6 +490,7 @@ def _task_dict(t):
         'list_name': t.list_name,
         'company': t.company,
         'company_display': t.get_company_display() if t.company else '',
+        'stream': t.stream,
         'parent': t.parent_id,
         'start_date': t.start_date.isoformat() if t.start_date else None,
         'end_date': t.end_date.isoformat() if t.end_date else None,
@@ -597,7 +574,7 @@ def _apply_task_fields(rec, data):
                 errors.append(f'{f} must be a time in HH:MM format.')
                 continue
             setattr(rec, f, value)
-    for f in ('estimated_hours', 'actual_hours'):
+    for f in ('estimated_hours',):
         if f in data:
             raw = data.get(f)
             if raw in (None, ''):
@@ -627,6 +604,11 @@ def api_planner_tasks(request):
     if project:
         qs = qs.filter(project_name=project)
     rows = [_task_dict(t) for t in qs]
+    from .time_tracking import running_for
+    mine = running_for(request.user)
+    for r in rows:
+        r['timer_started_at'] = (mine.started_at.isoformat()
+                                 if mine and mine.task_id == r['id'] else None)
     counts = {s: 0 for s in _TASK_STATUSES}
     for r in rows:
         counts[r['status']] = counts.get(r['status'], 0) + 1
@@ -928,6 +910,9 @@ def api_project_update(request):
                 {'detail': f'A project named "{new_name}" already exists.'}, status=409)
         renamed = qs.update(project_name=new_name)
         ProjectMeta.objects.filter(name=name).update(name=new_name)
+        # Its code goes with it, or the repositories end up on a project
+        # that no longer exists.
+        Repository.objects.filter(project_name=name).update(project_name=new_name)
         name = new_name
 
     updates = {}
@@ -990,6 +975,8 @@ def api_project_delete(request):
 
     deleted, _ = qs.delete()
     ProjectMeta.objects.filter(name=name).delete()
+    # The repositories outlive the project; they just stop being on it.
+    Repository.objects.filter(project_name=name).update(project_name='')
     return JsonResponse({'ok': True, 'deleted': deleted, 'name': name})
 
 

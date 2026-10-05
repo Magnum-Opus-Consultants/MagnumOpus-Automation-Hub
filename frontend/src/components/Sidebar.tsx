@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 
 import { useTheme } from "@/components/ThemeToggle";
 import { Collapse, Pop } from "@/components/motion";
@@ -60,6 +62,9 @@ export function Icon({ name, className = "h-5 w-5" }: { name: string; className?
     case "branch": return <svg {...p}><circle cx="7" cy="5" r="2.2" /><circle cx="7" cy="19" r="2.2" /><circle cx="17" cy="9" r="2.2" /><path d="M7 7.2v9.6M9.2 5h3.3a2.5 2.5 0 0 1 2.5 2.5v0" /></svg>;
     case "board": return <svg {...p}><rect x="3" y="4" width="5.5" height="16" rx="1.4" /><rect x="9.75" y="4" width="5.5" height="11" rx="1.4" /><rect x="16.5" y="4" width="4.5" height="7" rx="1.4" /></svg>;
     case "calendar": return <svg {...p}><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M3 10h18M8 3v4M16 3v4" /></svg>;
+    case "flag": return <svg {...p}><path d="M5 21V4" /><path d="M5 4h12l-2.5 4L17 12H5" /></svg>;
+    case "user": return <svg {...p}><circle cx="12" cy="8" r="4" /><path d="M4 21c0-3.9 3.6-6 8-6s8 2.1 8 6" /></svg>;
+    case "subtasks": return <svg {...p}><path d="M6 3v12a3 3 0 0 0 3 3h9" /><path d="M6 9h12" /></svg>;
     case "clock": return <svg {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7.5V12l3 2" /></svg>;
     case "lock": return <svg {...p}><rect x="4" y="10.5" width="16" height="10.5" rx="2" /><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5" /></svg>;
     case "alert": return <svg {...p}><path d="M12 3.5 2.5 20h19z" /><path d="M12 9.5v5M12 17.5h.01" /></svg>;
@@ -68,6 +73,8 @@ export function Icon({ name, className = "h-5 w-5" }: { name: string; className?
     case "expand": return <svg {...p}><path d="M9 6l6 6-6 6" /><path d="M20 4v16" /></svg>;
     case "signout": return <svg {...p}><path d="M15 17l5-5-5-5" /><path d="M20 12H9" /><path d="M12 19H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6" /></svg>;
     case "check": return <svg {...p}><path d="M20 6 9 17l-5-5" /></svg>;
+    case "info": return <svg {...p}><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></svg>;
+    case "x": return <svg {...p}><path d="M18 6 6 18M6 6l12 12" /></svg>;
     case "pause": return <svg {...p}><path d="M10 5v14M14 5v14" /></svg>;
     case "inbox": return <svg {...p}><path d="M4 13h4l2 3h4l2-3h4" /><path d="M4 13 6.5 5h11L20 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z" /></svg>;
     case "sun": return <svg {...p}><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4" /></svg>;
@@ -86,13 +93,10 @@ export function Icon({ name, className = "h-5 w-5" }: { name: string; className?
 // the navigation yet.
 const NAV: { label: string; href: string; module: string | null; admin?: boolean; section: string; icon: string; soon?: boolean; projects?: boolean }[] = [
   { label: "Data Analysis", href: "/data-analysis", module: "data", section: "Operations", icon: "analysis" },
-  { label: "Reporting", href: "/reporting", module: "data", section: "Operations", icon: "clock" },
-  { label: "Project Tracker", href: "/tasks", module: "tasks", section: "Delivery", icon: "board", projects: true },
-  { label: "Client Requests", href: "/client-requests", module: "client_requests", section: "Delivery", icon: "mail" },
+  { label: "Projects", href: "/tasks", module: "tasks", section: "Delivery", icon: "board", projects: true },
   { label: "Repositories", href: "/repos", module: "repos", section: "Delivery", icon: "git" },
+  { label: "Backups", href: "/backups", module: "servers", section: "Delivery", icon: "shield" },
   { label: "Readiness Testing", href: "/readiness-testing", module: "system_testing", section: "Delivery", icon: "check" },
-  { label: "Activity", href: "/activity", module: null, section: "Reference", icon: "clock" },
-  { label: "Handbook", href: "/handbook", module: "handbook", section: "Reference", icon: "docs" },
   { label: "Users & Access", href: "/access", module: null, admin: true, section: "Administration", icon: "users" },
 ];
 
@@ -118,6 +122,25 @@ export function canAccess(me: Me | null, module: string | null): boolean {
   if (me.is_admin || me.is_superuser) return true;
   if (module === null) return true;
   return (me.modules ?? []).includes(module);
+}
+
+/** A project page's sections, in the order the rail and the page tabs list them. */
+export const PROJECT_SECTIONS = [
+  { key: "overview", label: "Overview", icon: "home" },
+  { key: "tasks", label: "Tasks", icon: "tasks" },
+  { key: "feedback", label: "Feedback", icon: "inbox" },
+  { key: "reporting", label: "Reporting", icon: "analysis" },
+  { key: "website", label: "Website", icon: "globe" },
+  { key: "github", label: "GitHub", icon: "git" },
+  { key: "docs", label: "Docs", icon: "docs" },
+  { key: "server", label: "Server", icon: "server" },
+  { key: "credentials", label: "Credentials", icon: "lock" },
+  { key: "activity", label: "Activity", icon: "clock" },
+] as const;
+
+export function projectHref(name: string, section: string = "overview") {
+  const base = `/projects/${encodeURIComponent(name)}`;
+  return section === "overview" ? base : `${base}?tab=${section}`;
 }
 
 type ProjectLink = { name: string; open: number; total: number; lists: string[];
@@ -190,7 +213,8 @@ export function Sidebar({ active, me, onCollapse }: { active: string; me: Me | n
   const [renamingWs, setRenamingWs] = useState<{ name: string; value: string } | null>(null);
   const [newWs, setNewWs] = useState<{ name: string; color: string; error: string } | null>(null);
   const [newWsList, setNewWsList] = useState<{ workspace: string; name: string; error: string } | null>(null);
-  const [newProject, setNewProject] = useState<{ workspace: string; name: string; error: string } | null>(null);
+  // Which workspace the New project dialog is filing into, while it is open.
+  const [newProject, setNewProject] = useState<{ workspace: string } | null>(null);
   const [members, setMembers] = useState<
     { workspace: string; rows: MemberRow[]; users: UserRow[]; roles: [string, string][];
       pick: string; role: string; error: string; note: string } | null>(null);
@@ -203,6 +227,8 @@ export function Sidebar({ active, me, onCollapse }: { active: string; me: Me | n
   const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
   const [activeProject, setActiveProject] = useState<string | null>(null);
   const [activeList, setActiveList] = useState<string | null>(null);
+  // Which section of a project page is open; null when not on one.
+  const [activeSection, setActiveSection] = useState<string | null>(null);
 
   // The rail sits outside the routed page, so it reads the selection from the
   // URL. `popstate` alone misses client-side pushes, so the pathname+search is
@@ -211,13 +237,24 @@ export function Sidebar({ active, me, onCollapse }: { active: string; me: Me | n
   useEffect(() => {
     let last = "";
     const read = () => {
-      const cur = window.location.search;
+      const cur = window.location.pathname + window.location.search;
       if (cur === last) return;
       last = cur;
-      const p = new URLSearchParams(cur);
+      const p = new URLSearchParams(window.location.search);
+      // A project page carries its project in the path, not the query.
+      const page = window.location.pathname.match(/^\/projects\/([^/]+)/);
+      let pageProject: string | null = null;
+      if (page) {
+        try {
+          pageProject = decodeURIComponent(page[1]);
+        } catch {
+          pageProject = page[1];
+        }
+      }
       setActiveWorkspace(p.get("workspace"));
-      setActiveProject(p.get("project"));
+      setActiveProject(pageProject ?? p.get("project"));
       setActiveList(p.get("list"));
+      setActiveSection(page ? (p.get("tab") ?? "overview") : null);
     };
     read();
     const id = window.setInterval(read, 250);
@@ -444,32 +481,6 @@ export function Sidebar({ active, me, onCollapse }: { active: string; me: Me | n
     }
   }
 
-  async function createProject() {
-    if (!newProject) return;
-    const name = newProject.name.trim();
-    if (!name) {
-      setNewProject({ ...newProject, error: "Give the project a name." });
-      return;
-    }
-    setBusy(true);
-    try {
-      const r = await fetch("/api/tasks/projects/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workspace: newProject.workspace, name }),
-      });
-      if (!r.ok) {
-        const d = await r.json().catch(() => ({}));
-        setNewProject({ ...newProject, error: d.detail || "Could not create the project." });
-        return;
-      }
-      setNewProject(null);
-      loadProjects();
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function createWorkspaceList() {
     if (!newWsList) return;
     const name = newWsList.name.trim();
@@ -646,6 +657,7 @@ This cannot be undone.`)) return;
   const sections = SECTION_ORDER
     .map((s) => ({ name: s, items: items.filter((i) => i.section === s) }))
     .filter((s) => s.items.length > 0);
+  const soleWorkspace = workspaces?.length === 1 ? workspaces[0] : null;
 
   return (
     // Pinned to the viewport, not the page: without h-screen + sticky the rail
@@ -706,17 +718,40 @@ This cannot be undone.`)) return;
                     {/* The entry itself is always rendered. Previously this
                         branch emitted only the per-workspace rows, so when the
                         workspace list was empty - no workspaces yet, or the
-                        projects fetch failed and was caught - Project Tracker
+                        projects fetch failed and was caught - Projects
                         disappeared from the rail entirely with no way in. */}
-                    <NavLink item={item} active={active} />
+                    {/* With one workspace its row only repeats the heading, so
+                        the clients sit straight under Projects and the
+                        workspace's menu moves onto Projects itself. With more
+                        than one, the rows are what tells them apart. */}
+                    <div className="group/projects relative"
+                         title={soleWorkspace ? "Right-click for options" : undefined}
+                         onContextMenu={soleWorkspace ? (e) => {
+                           e.preventDefault();
+                           setWsMenu({ w: soleWorkspace, x: e.clientX, y: e.clientY });
+                         } : undefined}>
+                      <NavLink item={item} active={active} />
+                      {canTasks && (
+                        <button
+                          onClick={() => setNewProject({
+                            workspace: soleWorkspace?.name
+                              ?? (workspaces ?? []).find((x) => x.is_default)?.name ?? "" })}
+                          title="New project"
+                          aria-label="New project"
+                          className="absolute right-1 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-ink-3 transition hover:bg-surface hover:text-ink focus-ring"
+                        >
+                          <Icon name="plus" className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
                     {(workspaces ?? []).map((w) => {
                       const wsProjects = (projects ?? []).filter((p) => p.workspace === w.name);
-                      const wsOpen = !collapsedWs.has(w.name);
+                      const wsOpen = !!soleWorkspace || !collapsedWs.has(w.name);
                       const isActive = activeWorkspace === w.name
                         && activeProject == null && activeList == null;
                       return (
                         <div key={w.name}>
-                          {renamingWs?.name === w.name ? (
+                          {soleWorkspace && renamingWs?.name !== w.name ? null : renamingWs?.name === w.name ? (
                             <input
                               autoFocus
                               value={renamingWs.value}
@@ -805,36 +840,83 @@ This cannot be undone.`)) return;
                                       }}
                                       className="ml-8 mr-2 h-6 w-[calc(100%-2.5rem)] rounded bg-surface px-1.5 text-xs text-ink ring-control focus-ring"
                                     />
-                                  ) : (
+                                  ) : (() => {
+                                    const isOpen = activeProject === p.name;
+                                    // On one of its sections the section carries the
+                                    // highlight; the project row just reads as open.
+                                    const rowActive = isOpen && activeSection == null;
+                                    return (
+                                    <>
                                     <Link
-                                      href={`/tasks?project=${encodeURIComponent(p.name)}`}
+                                      href={p.name ? projectHref(p.name) : "/tasks?project="}
                                       title={`${p.open} open of ${p.total} - right-click for options`}
-                                      aria-current={activeProject === p.name ? "page" : undefined}
+                                      aria-current={rowActive ? "page" : undefined}
                                       onContextMenu={(e) => {
                                         e.preventDefault();
                                         setMenu({ p, x: e.clientX, y: e.clientY });
                                       }}
                                       className={`relative flex h-7 items-center gap-1.5 rounded pl-8 pr-2 text-[13px] transition ${
-                                        activeProject === p.name
+                                        rowActive
                                           ? "bg-brand-tint font-semibold text-ink"
-                                          : "text-ink-2 hover:bg-subtle hover:text-ink"
+                                          : isOpen
+                                            ? "font-semibold text-ink hover:bg-subtle"
+                                            : "text-ink-2 hover:bg-subtle hover:text-ink"
                                       }`}
                                     >
                                       <span aria-hidden
                                             className={`absolute left-4 top-1/2 h-3.5 w-[3px] -translate-y-1/2 rounded-r-sm ${
-                                              activeProject === p.name ? "bg-brand" : "bg-transparent"
+                                              rowActive ? "bg-brand" : "bg-transparent"
                                             }`} />
-                                      <Badge logo={p.logo_url} icon={p.icon} fallback="folder"
-                                             color={p.color} />
                                       <span className="truncate">{p.name || "No project"}</span>
                                       {p.open > 0 && (
                                         <span className="ml-auto shrink-0 text-[11px] text-ink-3">{p.open}</span>
                                       )}
                                     </Link>
-                                  )}
+                                    {/* The open project lists its sections under it, so
+                                        everything about one client is reachable from here. */}
+                                    <Collapse open={!!p.name && isOpen}>
+                                      <ul className="mb-1 space-y-px">
+                                        {PROJECT_SECTIONS.map((s) => {
+                                          const on = activeSection === s.key;
+                                          return (
+                                            <li key={s.key}>
+                                              <Link
+                                                href={projectHref(p.name, s.key)}
+                                                aria-current={on ? "page" : undefined}
+                                                className={`relative flex h-7 items-center gap-1.5 rounded pl-12 pr-2 text-[12.5px] transition ${
+                                                  on
+                                                    ? "bg-brand-tint font-semibold text-ink"
+                                                    : "text-ink-2 hover:bg-subtle hover:text-ink"
+                                                }`}
+                                              >
+                                                <span aria-hidden
+                                                      className={`absolute left-8 top-1/2 h-3 w-[3px] -translate-y-1/2 rounded-r-sm ${
+                                                        on ? "bg-brand" : "bg-transparent"
+                                                      }`} />
+                                                <Icon name={s.icon} className="h-3.5 w-3.5 shrink-0 text-ink-3" />
+                                                <span className="truncate">{s.label}</span>
+                                              </Link>
+                                            </li>
+                                          );
+                                        })}
+                                      </ul>
+                                    </Collapse>
+                                    </>
+                                    );
+                                  })()}
                                 </li>
                               ))}
                             </ul>
+                          </Collapse>
+
+                          <Collapse open={wsOpen}>
+                            <button
+                              onClick={() => setNewProject({ workspace: w.name })}
+                              className="mb-1 flex h-7 w-full items-center gap-1.5 rounded pl-8 pr-2 text-left text-[12.5px] text-ink-3 transition hover:bg-subtle hover:text-ink focus-ring"
+                            >
+                              <Icon name="plus" className="h-3.5 w-3.5 shrink-0" />
+                              New project
+                            </button>
                           </Collapse>
                         </div>
                       );
@@ -1067,54 +1149,8 @@ This cannot be undone.`)) return;
       )}
 
       {newProject && (
-        <>
-          <button aria-label="Close" onClick={() => setNewProject(null)}
-                  className="fixed inset-0 z-[70] bg-black/40" />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="New project"
-            className="fixed left-1/2 top-28 z-[71] w-full max-w-sm -translate-x-1/2 rounded-lg bg-surface p-4 shadow-2xl ring-1 ring-stroke"
-          >
-            <h2 className="text-[15px] font-semibold text-ink">New project</h2>
-            <p className="mb-4 mt-0.5 text-xs text-ink-3">
-              A folder inside <span className="font-medium text-ink-2">{newProject.workspace}</span>.
-              It can sit empty until there is something to put in it.
-            </p>
-            <label className="mb-1 block text-xs font-medium text-ink-2" htmlFor="proj-name">
-              Project name
-            </label>
-            <input
-              id="proj-name"
-              autoFocus
-              value={newProject.name}
-              disabled={busy}
-              onChange={(e) => setNewProject({ ...newProject, name: e.target.value, error: "" })}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") void createProject();
-                if (e.key === "Escape") setNewProject(null);
-              }}
-              placeholder="e.g. Documentation"
-              className="h-9 w-full rounded bg-canvas px-2.5 text-[13px] text-ink ring-control placeholder:text-ink-3 focus-ring"
-            />
-            {newProject.error && <p className="mt-3 text-xs text-bad">{newProject.error}</p>}
-            <div className="mt-5 flex items-center justify-end gap-2">
-              <button
-                onClick={() => setNewProject(null)}
-                className="h-8 rounded px-3 text-[13px] font-medium text-ink-2 ring-control transition hover:bg-subtle focus-ring"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => void createProject()}
-                disabled={busy}
-                className="h-8 rounded bg-brand px-3 text-[13px] font-semibold text-white transition hover:bg-brand-hover disabled:opacity-60 focus-ring"
-              >
-                Create project
-              </button>
-            </div>
-          </div>
-        </>
+        <NewProjectDialog workspace={newProject.workspace}
+                          onClose={() => setNewProject(null)} onCreated={loadProjects} />
       )}
 
       {newWsList && (
@@ -1275,7 +1311,7 @@ This cannot be undone.`)) return;
           </button>
           <button
             onClick={() => {
-              setNewProject({ workspace: wsMenu.w.name, name: "", error: "" });
+              setNewProject({ workspace: wsMenu.w.name });
               setWsMenu(null);
             }}
             className="flex h-8 w-full items-center gap-2.5 px-3 text-left text-[13px] text-ink-2 transition hover:bg-subtle hover:text-ink"
@@ -1366,6 +1402,15 @@ This cannot be undone.`)) return;
             Icon &amp; logo
           </button>
           <Link
+            href={menu.p.name ? `${projectHref(menu.p.name, "tasks")}&view=board`
+                              : "/tasks?project="}
+            onClick={() => setMenu(null)}
+            className="flex h-8 w-full items-center gap-2.5 px-3 text-left text-[13px] text-ink-2 transition hover:bg-subtle hover:text-ink"
+          >
+            <Icon name="board" className="h-3.5 w-3.5" />
+            Open board
+          </Link>
+          <Link
             href={`/tasks?project=${encodeURIComponent(menu.p.name)}&addlist=1`}
             onClick={() => setMenu(null)}
             className="flex h-8 w-full items-center gap-2.5 px-3 text-left text-[13px] text-ink-2 transition hover:bg-subtle hover:text-ink"
@@ -1414,6 +1459,257 @@ This cannot be undone.`)) return;
 }
 
 /** Text-only nav row — no icons; active state is a brand label on a subtle fill. */
+/**
+ * Start a project: its name and, optionally, its client - then straight into
+ * it. Shared by the rail and the Projects page. An empty `workspace` files it
+ * under the default one.
+ */
+export function NewProjectDialog({ workspace, onClose, onCreated }: {
+  workspace: string; onClose: () => void; onCreated?: () => void;
+}) {
+  const router = useRouter();
+  const [name, setName] = useState("");
+  const [client, setClient] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  // Whether a server can be offered, and whether one was asked for. Off by
+  // default: a server takes memory and disk from the shared Proxmox host.
+  const [serverOpts, setServerOpts] = useState<
+    { configured: boolean; can_manage: boolean; os: string;
+      size: { cores: number; memory_mb: number; disk_gb: number };
+      github?: { configured: boolean; owner: string } } | null>(null);
+  const [withServer, setWithServer] = useState(false);
+  // Off by default too: a repository is made on the company GitHub account.
+  const [withRepo, setWithRepo] = useState(false);
+  // Once made with a server or repository: what was made, and the login.
+  const [made, setMade] = useState<
+    { project: string; server?: string; user?: string; password?: string; saved?: boolean;
+      repo?: string; problems: string[] } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/project-servers/options")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setServerOpts(d))
+      .catch(() => setServerOpts(null));
+  }, []);
+
+  async function create() {
+    const n = name.trim();
+    if (!n) {
+      setError("Give the project a name.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await fetch("/api/tasks/projects/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ workspace, name: n }),
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        setError(d.detail || "Could not create the project.");
+        return;
+      }
+      if (client.trim()) {
+        await fetch(`/api/projects/${encodeURIComponent(n)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ client: client.trim() }),
+        });
+      }
+      onCreated?.();
+      if (withServer || withRepo) {
+        // The project exists either way; anything that fails is said plainly.
+        const result: NonNullable<typeof made> = { project: n, problems: [] };
+        if (withRepo) {
+          const rr = await fetch(`/api/projects/${encodeURIComponent(n)}/repos`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ create: true, private: true }),
+          });
+          const rd = await rr.json().catch(() => ({}));
+          if (rr.ok) result.repo = rd.repository?.remote_url;
+          else result.problems.push(`The repository was not created: ${rd.detail || "GitHub refused."}`);
+        }
+        if (withServer) {
+          const sr = await fetch(`/api/projects/${encodeURIComponent(n)}/servers`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+          });
+          const sd = await sr.json().catch(() => ({}));
+          if (sr.ok) {
+            Object.assign(result, { server: sd.server?.name, user: sd.server?.username,
+                                    password: sd.password, saved: !!sd.saved_to_credentials });
+          } else {
+            result.problems.push(`The server was not created: ${sd.detail || "Proxmox refused."}`);
+          }
+        }
+        setMade(result);
+        return;
+      }
+      onClose();
+      router.push(projectHref(n));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function openMade() {
+    if (!made) return;
+    onClose();
+    router.push(projectHref(made.project, made.server ? "server" : made.repo ? "github" : "overview"));
+  }
+
+  const keys = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") void create();
+    if (e.key === "Escape") onClose();
+  };
+
+  // Rendered into <body>: inside the rail it was trapped in the rail's
+  // stacking context, and parts of the page drew over it.
+  return createPortal(
+    <>
+      <button aria-label="Close" onClick={onClose}
+              className="fixed inset-0 z-[70] bg-black/40" />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="New project"
+        className="fixed left-1/2 top-28 z-[71] w-[calc(100%-2rem)] max-w-sm -translate-x-1/2 rounded-lg bg-surface p-4 shadow-2xl ring-1 ring-stroke"
+      >
+        {made ? (
+          <>
+            <h2 className="text-[15px] font-semibold text-ink">{made.project} is ready</h2>
+            {made.problems.map((p) => (
+              <p key={p} className="mt-2 rounded bg-bad-bg px-3 py-2 text-xs text-bad">{p}</p>
+            ))}
+            {made.repo && (
+              <p className="mt-2 text-xs text-ink-3">
+                Repository: <a href={made.repo} target="_blank" rel="noreferrer"
+                               className="font-medium text-brand hover:underline">
+                  {made.repo.replace(/^https?:\/\/(www\.)?/, "")}</a>
+              </p>
+            )}
+            {made.server && (
+              <>
+                <p className="mt-1 text-xs text-ink-3">
+                  Its server <span className="font-medium text-ink-2">{made.server}</span> is being
+                  set up on Proxmox. That takes a few minutes; the Server page shows its progress.
+                </p>
+                <div className="mt-3 rounded bg-subtle px-3 py-2 text-[13px]">
+                  <p className="text-ink-2">User <span className="font-mono text-ink">{made.user}</span></p>
+                  <p className="mt-1 flex items-center gap-2 text-ink-2">
+                    Password <span className="select-all font-mono text-ink">{made.password}</span>
+                    <button onClick={() => void navigator.clipboard?.writeText(made.password ?? "")}
+                            className="rounded px-1.5 py-0.5 text-[11px] font-medium text-brand ring-1 ring-stroke hover:bg-surface">
+                      Copy
+                    </button>
+                  </p>
+                </div>
+                <p className={`mt-2 text-xs ${made.saved ? "text-ink-3" : "text-warnx"}`}>
+                  {made.saved
+                    ? "It is also saved, encrypted, in the project's Credentials."
+                    : "Save the password now. Sentinel does not keep it and cannot show it again."}
+                </p>
+              </>
+            )}
+            <div className="mt-5 flex justify-end">
+              <button onClick={openMade}
+                      className="h-8 rounded bg-brand px-3 text-[13px] font-semibold text-white transition hover:bg-brand-hover focus-ring">
+                Open the project
+              </button>
+            </div>
+          </>
+        ) : (
+        <>
+        <h2 className="text-[15px] font-semibold text-ink">New project</h2>
+        <p className="mb-4 mt-0.5 text-xs text-ink-3">
+          It opens straight away so you can add its tasks and website details.
+        </p>
+        <label className="mb-1 block text-xs font-medium text-ink-2" htmlFor="proj-name">
+          Project name
+        </label>
+        <input
+          id="proj-name"
+          autoFocus
+          value={name}
+          disabled={busy}
+          onChange={(e) => { setName(e.target.value); setError(""); }}
+          onKeyDown={keys}
+          placeholder="e.g. NAB Export Inspection"
+          className="h-9 w-full rounded bg-canvas px-2.5 text-[13px] text-ink ring-control placeholder:text-ink-3 focus-ring"
+        />
+        <label className="mb-1 mt-3 block text-xs font-medium text-ink-2" htmlFor="proj-client">
+          Client <span className="font-normal text-ink-3">(optional)</span>
+        </label>
+        <input
+          id="proj-client"
+          value={client}
+          disabled={busy}
+          onChange={(e) => setClient(e.target.value)}
+          onKeyDown={keys}
+          placeholder="e.g. NAB"
+          className="h-9 w-full rounded bg-canvas px-2.5 text-[13px] text-ink ring-control placeholder:text-ink-3 focus-ring"
+        />
+        {serverOpts?.can_manage && (
+          <label className={`mt-4 flex items-start gap-2.5 rounded-md px-2.5 py-2 ring-1 ring-stroke ${
+            serverOpts.configured ? "cursor-pointer hover:bg-subtle/60" : "opacity-60"}`}>
+            <input type="checkbox" checked={withServer} disabled={!serverOpts.configured || busy}
+                   onChange={(e) => setWithServer(e.target.checked)}
+                   className="mt-0.5 h-4 w-4 accent-[var(--color-brand)]" />
+            <span className="text-[13px] text-ink">
+              Also create a server
+              <span className="block text-[11px] text-ink-3">
+                {serverOpts.configured
+                  ? `${serverOpts.os} on Proxmox · ${serverOpts.size.cores} CPU · `
+                    + `${serverOpts.size.memory_mb / 1024} GB RAM · ${serverOpts.size.disk_gb} GB disk`
+                  : "Proxmox is not connected yet - see scripts/proxmox_setup.sh."}
+              </span>
+            </span>
+          </label>
+        )}
+        {serverOpts?.can_manage && (
+          <label className={`mt-2 flex items-start gap-2.5 rounded-md px-2.5 py-2 ring-1 ring-stroke ${
+            serverOpts.github?.configured ? "cursor-pointer hover:bg-subtle/60" : "opacity-60"}`}>
+            <input type="checkbox" checked={withRepo} disabled={!serverOpts.github?.configured || busy}
+                   onChange={(e) => setWithRepo(e.target.checked)}
+                   className="mt-0.5 h-4 w-4 accent-[var(--color-brand)]" />
+            <span className="text-[13px] text-ink">
+              Also create a GitHub repository
+              <span className="block text-[11px] text-ink-3">
+                {serverOpts.github?.configured
+                  ? `Private, on ${serverOpts.github.owner || "the connected account"}`
+                  : "GitHub is not connected yet - add GITHUB_TOKEN to .env."}
+              </span>
+            </span>
+          </label>
+        )}
+        {error && <p className="mt-3 text-xs text-bad">{error}</p>}
+        <div className="mt-5 flex items-center justify-end gap-2">
+          <button
+            onClick={onClose}
+            className="h-8 rounded px-3 text-[13px] font-medium text-ink-2 ring-control transition hover:bg-subtle focus-ring"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => void create()}
+            disabled={busy}
+            className="h-8 rounded bg-brand px-3 text-[13px] font-semibold text-white transition hover:bg-brand-hover disabled:opacity-60 focus-ring"
+          >
+            {busy && (withServer || withRepo) ? "Creating…" : "Create project"}
+          </button>
+        </div>
+        </>
+        )}
+      </div>
+    </>,
+    document.body,
+  );
+}
+
 function NavLink({ item, active }: { item: { label: string; href: string; icon?: string; soon?: boolean }; active: string }) {
   const isActive = item.label === active;
   return (

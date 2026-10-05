@@ -176,19 +176,29 @@ def metrics(days=30, project_name='', workspace=''):
 
     # Counted from the task list already in memory, so these always describe
     # exactly the tasks the totals describe - including the loose ones.
-    by_status, by_dev = {}, {}
+    by_status, by_dev, by_stream = {}, {}, {}
     for t in tasks:
         by_status[t.status] = by_status.get(t.status, 0) + 1
         if t.development_status:
             by_dev[t.development_status] = by_dev.get(t.development_status, 0) + 1
+        # Completed against outstanding per stream, the split the management
+        # report asks for. Unlabelled work is counted, not dropped.
+        s = by_stream.setdefault(t.stream or '', {'done': 0, 'open': 0})
+        s['done' if t.status in DONE_STATES else 'open'] += 1
     proj_by_status = {}
     for p in projects:
         proj_by_status[p.status] = proj_by_status.get(p.status, 0) + 1
 
+    # A scoped report describes only its own projects' activity. Without this
+    # a single project's page listed everybody's changes across the tracker.
+    activity = TaskActivity.objects.filter(created_at__gte=since)
+    if project_name or workspace:
+        activity = activity.filter(project_name__in=names)
+
     # Who did what in the window. Read from the activity log rather than from
     # task timestamps, so it reflects people's actions rather than row edits.
     people = []
-    acts = (TaskActivity.objects.filter(created_at__gte=since)
+    acts = (activity
             .exclude(user=None).values('user__username', 'user__first_name',
                                        'user__last_name')
             .annotate(n=Count('id')).order_by('-n')[:12])
@@ -229,6 +239,7 @@ def metrics(days=30, project_name='', workspace=''):
         },
         'tasks_by_status': by_status,
         'tasks_by_development_type': by_dev,
+        'tasks_by_stream': by_stream,
         'projects': rows,
         'people': people,
         'overdue': [
@@ -246,8 +257,7 @@ def metrics(days=30, project_name='', workspace=''):
         'recent_activity': [
             {'when': a.created_at.isoformat(), 'summary': a.summary,
              'project': a.project_name}
-            for a in TaskActivity.objects.filter(created_at__gte=since)
-            .select_related('user')[:30]
+            for a in activity.select_related('user')[:30]
         ],
     }
 

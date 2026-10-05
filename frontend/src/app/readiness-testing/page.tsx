@@ -3,6 +3,7 @@
 import {
   useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore,
 } from "react";
+import { createPortal } from "react-dom";
 import { canAccess, Icon, type Me } from "@/components/Sidebar";
 import {
   AppShell, PageHead, Section, Button, EmptyState, Modal,
@@ -76,7 +77,6 @@ type Project = {
   created_at: string | null; updated_at: string | null;
   areas: AreaSummary[]; rollup: Rollup;
 };
-type Note = { id: number; text: string; is_done: boolean; order: number };
 type ShareLink = {
   id: number; token: string; label: string; is_active: boolean;
   url: string; path: string; created_at: string | null; created_by: string;
@@ -84,13 +84,13 @@ type ShareLink = {
 };
 
 /* The six dashboard tiles, in the workbook's order and colours. */
-const TILES: { key: keyof Rollup; label: string; colour: string }[] = [
-  { key: "total", label: "Total Items", colour: NAVY },
-  { key: "pass", label: "PASS", colour: GREEN },
-  { key: "requires_action", label: "Requires Action", colour: AMBER },
-  { key: "outstanding", label: "Outstanding", colour: RED },
-  { key: "pending_retest", label: "Pending Retest", colour: SLATE },
-  { key: "readiness_pct", label: "Readiness %", colour: NAVY_DEEP },
+const TILES: { key: keyof Rollup; label: string; colour: string; hint: string }[] = [
+  { key: "total", label: "Total Items", colour: NAVY, hint: "in agreed scope" },
+  { key: "pass", label: "PASS", colour: GREEN, hint: "tested and accepted" },
+  { key: "requires_action", label: "Requires Action", colour: AMBER, hint: "tested, needs a fix" },
+  { key: "outstanding", label: "Outstanding", colour: RED, hint: "not tested yet" },
+  { key: "pending_retest", label: "Pending Retest", colour: SLATE, hint: "fixed, test again" },
+  { key: "readiness_pct", label: "Readiness %", colour: NAVY_DEEP, hint: "PASS out of all items" },
 ];
 
 const EMPTY_ROLLUP: Rollup = {
@@ -142,6 +142,207 @@ const compactPref = {
   },
 };
 
+/* The dropdowns hide the browser's own arrow (it differs per browser and
+   ignores the text colour) and draw this one, in the select's text colour. */
+function Caret({ className = "" }: { className?: string }) {
+  return (
+    <svg aria-hidden viewBox="0 0 12 12"
+         className={`pointer-events-none absolute top-1/2 h-3 w-3 -translate-y-1/2 ${className}`}>
+      <path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" strokeWidth="1.6"
+            strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/* A status picker for the sheet. Each status carries a definition from the
+   Legend, and the whole point of the vocabulary is that people pick the right
+   one - so the open list shows every choice with its colour and what it means,
+   and you never have to leave the row to remember what OUTSTANDING means. The
+   browser's own list can't do that: it can only paint whole rows, which turned
+   it into a stack of colour blocks. The list renders in a portal, so the
+   sheet's scroll container can't clip it. */
+function StatusSelect({ value, options, vocab, onChange }: {
+  value: string; options: Choice[] | undefined; vocab: Vocab | null;
+  onChange: (v: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const [pos, setPos] = useState<{ left: number; top?: number; bottom?: number; width: number } | null>(null);
+  const btn = useRef<HTMLButtonElement>(null);
+  const menu = useRef<HTMLUListElement>(null);
+  const opts = options ?? [];
+  const label = opts.find((o) => o.key === value)?.label ?? "";
+  const s = swatch(vocab, label);
+
+  const show = () => {
+    const r = btn.current?.getBoundingClientRect();
+    if (!r) return;
+    const width = Math.max(r.width, 280);
+    const left = Math.min(r.left, window.innerWidth - width - 8);
+    // Open upwards when the row sits too close to the bottom of the window.
+    const below = window.innerHeight - r.bottom;
+    setPos(below < 300 && r.top > below
+      ? { left, bottom: window.innerHeight - r.top + 4, width }
+      : { left, top: r.bottom + 4, width });
+    setActive(Math.max(0, opts.findIndex((o) => o.key === value)));
+    setOpen(true);
+  };
+  const close = (refocus = false) => {
+    setOpen(false);
+    if (refocus) btn.current?.focus();
+  };
+  const choose = (key: string) => {
+    if (key !== value) onChange(key);
+    close(true);
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    menu.current?.focus();
+    const away = (e: MouseEvent) => {
+      const t = e.target as Node;
+      if (!menu.current?.contains(t) && !btn.current?.contains(t)) close();
+    };
+    // The list is fixed to the window, so a scroll anywhere else would leave
+    // it floating away from its row; closing is simpler than chasing it.
+    const scrolled = (e: Event) => {
+      if (!menu.current?.contains(e.target as Node)) close();
+    };
+    const resized = () => close();
+    document.addEventListener("mousedown", away);
+    window.addEventListener("scroll", scrolled, true);
+    window.addEventListener("resize", resized);
+    return () => {
+      document.removeEventListener("mousedown", away);
+      window.removeEventListener("scroll", scrolled, true);
+      window.removeEventListener("resize", resized);
+    };
+  }, [open]);
+
+  const onMenuKey = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") { e.preventDefault(); setActive((i) => Math.min(opts.length - 1, i + 1)); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setActive((i) => Math.max(0, i - 1)); }
+    else if (e.key === "Home") { e.preventDefault(); setActive(0); }
+    else if (e.key === "End") { e.preventDefault(); setActive(opts.length - 1); }
+    else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (opts[active]) choose(opts[active].key); }
+    else if (e.key === "Escape") { e.preventDefault(); close(true); }
+    else if (e.key === "Tab") close();
+  };
+
+  return (
+    <div className={`relative ${s ? "" : "text-ink-2"}`} style={s ? { color: s.ink } : undefined}>
+      <button
+        ref={btn}
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        title={s?.definition ? `${label} — ${s.definition}` : label}
+        onClick={() => (open ? close() : show())}
+        onKeyDown={(e) => {
+          if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); show(); }
+        }}
+        className={`block w-full cursor-pointer truncate rounded-md py-1 pl-2.5 pr-6 text-left
+                    text-[11px] font-semibold leading-5 ring-1 ring-inset ring-black/5 transition
+                    hover:ring-black/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/50
+                    ${open ? "ring-2 ring-brand/50" : ""} ${s ? "" : "bg-subtle"}`}
+        style={s ? { backgroundColor: s.fill, color: s.ink } : undefined}
+      >
+        {label || "Choose…"}
+      </button>
+      <Caret className={`right-1.5 opacity-70 transition-transform ${open ? "rotate-180" : ""}`} />
+
+      {open && pos && createPortal(
+        <ul
+          ref={menu}
+          role="listbox"
+          tabIndex={-1}
+          aria-activedescendant={opts[active] ? `status-opt-${opts[active].key}` : undefined}
+          onKeyDown={onMenuKey}
+          className="fixed z-[60] max-h-80 overflow-auto rounded-lg bg-surface p-1 shadow-lg
+                     ring-1 ring-stroke focus:outline-none"
+          style={{ left: pos.left, top: pos.top, bottom: pos.bottom, width: pos.width }}
+        >
+          {opts.map((o, i) => {
+            const os = swatch(vocab, o.label);
+            const selected = o.key === value;
+            return (
+              <li
+                key={o.key}
+                id={`status-opt-${o.key}`}
+                role="option"
+                aria-selected={selected}
+                onMouseEnter={() => setActive(i)}
+                onClick={() => choose(o.key)}
+                className={`flex cursor-pointer items-start gap-2.5 rounded-md px-2.5 py-2 ${
+                  i === active ? "bg-subtle" : ""}`}
+              >
+                <span aria-hidden className="mt-[3px] h-3 w-3 shrink-0 rounded-sm ring-1 ring-inset ring-black/10"
+                      style={{ backgroundColor: os?.fill ?? "transparent" }} />
+                <span className="min-w-0 flex-1">
+                  <span className={`block text-[13px] leading-[18px] text-ink ${selected ? "font-semibold" : "font-medium"}`}>
+                    {o.label}
+                  </span>
+                  {os?.definition && (
+                    <span className="mt-0.5 line-clamp-2 block text-[11px] leading-snug text-ink-3">
+                      {os.definition}
+                    </span>
+                  )}
+                </span>
+                {selected && <Icon name="check" className="mt-px h-4 w-4 shrink-0 text-brand" />}
+              </li>
+            );
+          })}
+        </ul>,
+        document.body,
+      )}
+    </div>
+  );
+}
+
+/* The legend, opened from the tab row over whatever view is showing, so the
+   definitions sit next to the sheet they explain instead of on a page of their
+   own. One column per status group, laid out the way the dropdowns list them. */
+function LegendPanel({ vocab, onClose }: { vocab: Vocab; onClose: () => void }) {
+  return (
+    <div className="mb-5 rounded-lg bg-surface p-4 ring-1 ring-stroke">
+      <div className="mb-3 flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-semibold text-ink">Legend</div>
+          <p className="text-[12px] text-ink-3">
+            Shared by every project and written into each exported pack, so the
+            criteria cannot drift between clients.
+          </p>
+        </div>
+        <button onClick={onClose} aria-label="Close legend"
+                className="rounded-md p-1 text-ink-3 hover:bg-subtle hover:text-ink">
+          <Icon name="x" className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="grid gap-x-6 gap-y-5 sm:grid-cols-2 xl:grid-cols-4">
+        {vocab.legend.map((block) => (
+          <div key={block.heading} className="min-w-0">
+            <div className="mb-2 border-b border-stroke pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-3">
+              {block.heading}
+            </div>
+            <ul className="space-y-2.5">
+              {block.entries.map((e) => (
+                <li key={e.label} className="flex items-start gap-2.5">
+                  <span aria-hidden className="mt-[3px] h-3 w-3 shrink-0 rounded-sm ring-1 ring-inset ring-black/10"
+                        style={{ backgroundColor: e.fill }} />
+                  <span className="min-w-0">
+                    <span className="block text-[13px] font-medium leading-[18px] text-ink">{e.label}</span>
+                    <span className="mt-0.5 block text-[12px] leading-snug text-ink-3">{e.definition}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function swatch(vocab: Vocab | null, label: string): LegendEntry | null {
   if (!vocab) return null;
   for (const block of vocab.legend) {
@@ -179,13 +380,204 @@ function MetricStrip({ label, version, rollup }:
                  style={{ backgroundColor: t.colour }}>
               {t.label}
             </div>
-            <div className="bg-surface py-2 text-center text-2xl font-bold"
-                 style={{ color: t.colour }}>
-              {t.key === "readiness_pct" ? `${rollup.readiness_pct}%` : rollup[t.key]}
+            <div className="bg-surface pb-1.5 pt-2 text-center">
+              <div className="text-2xl font-bold leading-none" style={{ color: t.colour }}>
+                {t.key === "readiness_pct" ? `${rollup.readiness_pct}%` : rollup[t.key]}
+              </div>
+              <div className="mt-1 text-[10px] text-ink-3">{t.hint}</div>
             </div>
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** Readiness in one line of English, with a bar - the first thing to read. */
+function ReadinessSummary({ rollup }: { rollup: Rollup }) {
+  const colour = rollup.readiness_pct === 100 ? GREEN : rollup.outstanding > 0 ? RED : AMBER;
+  return (
+    <div className="mb-5 rounded-xl bg-subtle/50 p-4">
+      <div className="flex flex-wrap items-end gap-x-4 gap-y-1">
+        <span className="text-4xl font-bold tabular-nums" style={{ color: colour }}>
+          {rollup.readiness_pct}%
+        </span>
+        <span className="pb-1 text-sm font-medium text-ink">ready</span>
+      </div>
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface ring-1 ring-stroke">
+        <div className="h-full rounded-full" style={{ width: `${rollup.readiness_pct}%`, backgroundColor: colour }} />
+      </div>
+      <p className="mt-2 text-sm text-ink-2">
+        {rollup.total === 0 ? "No items to test yet." : (
+          <>
+            <strong className="text-ink">{rollup.pass}</strong> of {rollup.total} item{rollup.total === 1 ? "" : "s"} passed
+            {rollup.requires_action > 0 && <>, <strong className="text-ink">{rollup.requires_action}</strong> need{rollup.requires_action === 1 ? "s" : ""} a fix</>}
+            {rollup.outstanding > 0 && <>, <strong className="text-ink">{rollup.outstanding}</strong> still to be tested</>}
+            {rollup.pending_retest > 0 && <> - <strong className="text-ink">{rollup.pending_retest}</strong> fixed and waiting to be tested again</>}.
+          </>
+        )}
+      </p>
+      <p className="mt-1 text-[11px] text-ink-3">
+        Readiness counts the agreed-scope items. Change requests and new development are tracked but not counted.
+      </p>
+    </div>
+  );
+}
+
+function Bar({ value, total, colour }: { value: number; total: number; colour: string }) {
+  return (
+    <span className="block h-1.5 w-full overflow-hidden rounded-full bg-subtle">
+      <span className="block h-full rounded-full" style={{ width: `${total ? (value / total) * 100 : 0}%`, backgroundColor: colour }} />
+    </span>
+  );
+}
+
+/** The report: where the round stands, build by build and by kind of work. */
+function ReportView({ areas, vocab, rollup }: { areas: Area[]; vocab: Vocab | null; rollup: Rollup }) {
+  const current = areas.flatMap((a) => {
+    const sheet = a.sheets.find((sh) => sh.version_id === a.current_version_id) ?? a.sheets[a.sheets.length - 1];
+    return sheet ? [{ area: a, sheet }] : [];
+  });
+  const items = current.flatMap(({ area, sheet }) => sheet.items.map((it) => ({ it, app: area.name, build: sheet.label })));
+  const attention = items.filter((x) => x.it.readiness !== "pass");
+  const retested = items.filter((x) => x.it.history.length > 0);
+  const byChoice = (key: "bucket" | "dev_status", choices: Choice[] | undefined) =>
+    (choices ?? []).map((c) => {
+      const rows = items.filter((x) => x.it[key] === c.key);
+      return { label: c.label, total: rows.length,
+               pass: rows.filter((x) => x.it.readiness === "pass").length,
+               action: rows.filter((x) => x.it.readiness === "requires_action").length,
+               open: rows.filter((x) => x.it.readiness === "outstanding").length };
+    }).filter((r) => r.total > 0);
+  const buckets = byChoice("bucket", vocab?.buckets);
+  const devs = byChoice("dev_status", vocab?.dev_statuses);
+  const th = "px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-ink-3";
+  const td = "px-3 py-2 align-top";
+
+  return (
+    <div className="space-y-4">
+      <Section title="Summary">
+        <ReadinessSummary rollup={rollup} />
+        <div className="space-y-3">
+          {areas.map((a) => (
+            <div key={a.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 sm:grid-cols-[12rem_minmax(0,1fr)_auto]">
+              <span className="truncate text-sm font-medium text-ink">{a.name}</span>
+              <span className="col-span-2 row-start-2 sm:col-span-1 sm:row-start-auto">
+                <Bar value={a.rollup.pass} total={a.rollup.total} colour={GREEN} />
+              </span>
+              <span className="text-right text-sm tabular-nums text-ink-2">{a.rollup.readiness_pct}% · {a.rollup.pass}/{a.rollup.total}</span>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      <Section title="Readiness by build">
+        <p className="mb-3 text-xs text-ink-3">Each build released during the round, and how it stood. The last is the one being tested.</p>
+        <div className="space-y-5">
+          {areas.map((a) => (
+            <div key={a.id}>
+              <h4 className="mb-1.5 text-sm font-semibold text-ink">{a.name}</h4>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[520px] text-sm">
+                  <thead><tr className="border-b border-stroke">
+                    <th className={th}>Build</th><th className={`${th} text-right`}>Items</th>
+                    <th className={`${th} text-right`}>Pass</th><th className={`${th} text-right`}>Fix</th>
+                    <th className={`${th} text-right`}>Untested</th><th className={`${th} w-48`}>Readiness</th>
+                  </tr></thead>
+                  <tbody>
+                    {a.sheets.map((sh) => (
+                      <tr key={sh.version_id} className="border-b border-stroke last:border-0">
+                        <td className={td}>
+                          <span className="font-medium text-ink">{sh.label}</span>
+                          {sh.version_id === a.current_version_id && <span className="ml-1.5 text-[11px] text-brand">current</span>}
+                          {sh.note && <span className="block text-[11px] text-ink-3">{sh.note}</span>}
+                        </td>
+                        <td className={`${td} text-right tabular-nums`}>{sh.rollup.total}</td>
+                        <td className={`${td} text-right tabular-nums`} style={{ color: GREEN }}>{sh.rollup.pass}</td>
+                        <td className={`${td} text-right tabular-nums`} style={{ color: AMBER }}>{sh.rollup.requires_action}</td>
+                        <td className={`${td} text-right tabular-nums`} style={{ color: RED }}>{sh.rollup.outstanding}</td>
+                        <td className={td}>
+                          <span className="flex items-center gap-2">
+                            <Bar value={sh.rollup.pass} total={sh.rollup.total} colour={GREEN} />
+                            <span className="w-12 shrink-0 text-right text-xs tabular-nums text-ink">{sh.rollup.readiness_pct}%</span>
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {([["By feedback type", buckets], ["By development status", devs]] as const).map(([title, rows]) => (
+          <Section key={title} title={title}>
+            {rows.length === 0 ? <p className="text-sm text-ink-3">No items yet.</p> : (
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[360px] text-sm">
+                  <thead><tr className="border-b border-stroke">
+                    <th className={th}>{title === "By feedback type" ? "Type" : "Status"}</th>
+                    <th className={`${th} text-right`}>Items</th><th className={`${th} text-right`}>Pass</th>
+                    <th className={`${th} text-right`}>Fix</th><th className={`${th} text-right`}>Untested</th>
+                  </tr></thead>
+                  <tbody>
+                    {rows.map((r) => (
+                      <tr key={r.label} className="border-b border-stroke last:border-0">
+                        <td className={td}><StatusCell vocab={vocab} label={r.label} /></td>
+                        <td className={`${td} text-right tabular-nums font-medium`}>{r.total}</td>
+                        <td className={`${td} text-right tabular-nums`} style={{ color: GREEN }}>{r.pass}</td>
+                        <td className={`${td} text-right tabular-nums`} style={{ color: AMBER }}>{r.action}</td>
+                        <td className={`${td} text-right tabular-nums`} style={{ color: RED }}>{r.open}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Section>
+        ))}
+      </div>
+
+      <Section title={`Needs attention (${attention.length})`}>
+        {attention.length === 0 ? <p className="text-sm text-ink-3">Everything on the current builds has passed.</p> : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead><tr className="border-b border-stroke">
+                <th className={th}>Issue</th><th className={th}>App · build</th>
+                <th className={th}>Readiness</th><th className={th}>Development</th><th className={th}>Reviewer said</th>
+              </tr></thead>
+              <tbody>
+                {attention.map(({ it, app, build }) => (
+                  <tr key={it.iteration_id} className="border-b border-stroke last:border-0">
+                    <td className={`${td} font-medium text-ink`}>{it.issue}</td>
+                    <td className={`${td} whitespace-nowrap text-ink-2`}>{app} · {build}</td>
+                    <td className={td}><StatusCell vocab={vocab} label={it.readiness_display} /></td>
+                    <td className={td}><StatusCell vocab={vocab} label={it.dev_status_display} /></td>
+                    <td className={`${td} text-xs text-ink-2`}>{it.client_feedback || "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Section>
+
+      <Section title={`Re-tested (${retested.length})`}>
+        {retested.length === 0 ? <p className="text-sm text-ink-3">Nothing has needed a second test yet.</p> : (
+          <ul className="divide-y divide-stroke">
+            {retested.map(({ it, app }) => (
+              <li key={it.iteration_id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2 text-sm">
+                <span className="min-w-0 flex-1 font-medium text-ink">{it.issue}</span>
+                <span className="text-xs text-ink-3">{app} · tested {it.history.length + 1} times</span>
+                <StatusCell vocab={vocab} label={it.readiness_display} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
     </div>
   );
 }
@@ -333,7 +725,7 @@ function ItemRow({ item, vocab, compact, busy, onSave, onRetest, onDelete, onDir
   vocab: Vocab | null;
   compact: boolean;
   busy: boolean;
-  onSave: (patch: Partial<Item>) => Promise<void>;
+  onSave: (patch: Partial<Item>) => Promise<boolean>;
   onRetest: () => void;
   onDelete: () => void;
   onDirty: (id: number, dirty: boolean) => void;
@@ -382,6 +774,38 @@ function ItemRow({ item, vocab, compact, busy, onSave, onRetest, onDelete, onDir
 
   const dirty = fields.some((f) => draft[f] !== incoming[f]);
 
+  /* Saved automatically: a dropdown almost at once, typing a moment after it
+     stops. There is no Save button to forget. A row only keeps unsaved edits
+     for that moment, so the poll's wait (onDirty, below) stays short. */
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const lastSent = useRef("");
+  // The last version sent, as state so the row can say whether anything is
+  // still waiting to go - the server may tidy a value (a trailing space), so
+  // "differs from the server" is not the same as "not saved".
+  const [sentKey, setSentKey] = useState("");
+  const pending = dirty && JSON.stringify(draft) !== sentKey;
+  const typing = draft.issue !== incoming.issue || draft.description !== incoming.description
+    || draft.client_feedback !== incoming.client_feedback;
+  useEffect(() => {
+    if (!dirty || !draft.issue.trim()) return;
+    const key = JSON.stringify(draft);
+    if (key === lastSent.current) return;
+    const t = window.setTimeout(async () => {
+      lastSent.current = key;
+      setSentKey(key);
+      setSaveState("saving");
+      const ok = await onSave(draft);
+      setSaveState(ok ? "saved" : "error");
+      if (!ok) { lastSent.current = ""; setSentKey(""); }
+    }, typing ? 900 : 150);
+    return () => window.clearTimeout(t);
+  }, [draft, dirty, typing, onSave]);
+  useEffect(() => {
+    if (saveState !== "saved") return;
+    const t = window.setTimeout(() => setSaveState("idle"), 2000);
+    return () => window.clearTimeout(t);
+  }, [saveState]);
+
   /* Reviewers edit the same rows through a share link, so the page refreshes
      itself - but a refresh mid-edit would throw away what is being typed. The
      row tells the page when it is holding unsaved changes, and the poll waits.
@@ -391,43 +815,10 @@ function ItemRow({ item, vocab, compact, busy, onSave, onRetest, onDelete, onDir
     return () => onDirty(item.iteration_id, false);
   }, [dirty, item.iteration_id, onDirty]);
 
-  const swatchFor = (label: string) => swatch(vocab, label);
-  /* Each status carries a definition from the Legend, and the whole point of
-     the vocabulary is that people pick the right one. So the definition is on
-     the control as a tooltip, and on every option inside the open list too -
-     you should not have to leave the row to remember what OUTSTANDING means. */
   const cell = (value: string, options: Choice[] | undefined,
-                onChange: (v: string) => void) => {
-    const label = options?.find((o) => o.key === value)?.label ?? "";
-    const s = swatchFor(label);
-    return (
-      <select
-        value={value}
-        title={s?.definition ? `${label} — ${s.definition}` : label}
-        onChange={(e) => onChange(e.target.value)}
-        className="w-full cursor-pointer rounded px-2 py-1 text-[11px] font-semibold
-                   ring-1 ring-transparent hover:ring-stroke focus:outline-none focus:ring-brand/40"
-        style={s ? { backgroundColor: s.fill, color: s.ink }
-                 : { backgroundColor: "transparent" }}
-      >
-        {options?.map((o) => {
-          /* An option with no colour of its own must say so explicitly: left
-             unset it inherits the select's fill, which paints the whole open
-             list in the current choice's colour. Each option carries its own
-             swatch, so the list reads as the legend rather than one block. */
-          const os = swatchFor(o.label);
-          return (
-            <option key={o.key} value={o.key}
-                    title={os?.definition ? `${o.label} — ${os.definition}` : o.label}
-                    style={os ? { backgroundColor: os.fill, color: os.ink }
-                              : { backgroundColor: "var(--c-surface)", color: "var(--c-ink)" }}>
-              {o.label}
-            </option>
-          );
-        })}
-      </select>
-    );
-  };
+                onChange: (v: string) => void) => (
+    <StatusSelect value={value} options={options} vocab={vocab} onChange={onChange} />
+  );
 
   return (
     <>
@@ -516,21 +907,22 @@ function ItemRow({ item, vocab, compact, busy, onSave, onRetest, onDelete, onDir
           />
         </td>
         <td className="px-2 py-2 text-right whitespace-nowrap">
-          {dirty && (
-            <button
-              onClick={() => onSave(draft)}
-              /* The server rejects a blank title with a 400. Catching it here
-                 means an emptied title reads as "finish this", not as a failed
-                 save after the fact. */
-              disabled={busy || !draft.issue.trim()}
-              title={!draft.issue.trim() ? "An issue needs a title before it can be saved" : undefined}
-              className="rounded-md bg-brand px-2.5 py-1 text-[11px] font-semibold
-                         text-white hover:opacity-90 disabled:opacity-50"
-            >
-              Save
+          {/* The server rejects a blank title, so an emptied one waits here
+              rather than failing a save after the fact. */}
+          {dirty && !draft.issue.trim() ? (
+            <span className="text-[11px] text-warnx">Needs a title</span>
+          ) : saveState === "saving" || (pending && saveState !== "error") ? (
+            <span className="text-[11px] text-ink-3">Saving…</span>
+          ) : saveState === "error" ? (
+            <button onClick={() => { lastSent.current = ""; void onSave(draft).then((ok) => setSaveState(ok ? "saved" : "error")); }}
+                    disabled={busy}
+                    className="rounded-md px-2 py-1 text-[11px] font-semibold text-bad hover:bg-bad-bg">
+              Not saved - retry
             </button>
-          )}
-          {!dirty && item.readiness !== "pass" && (
+          ) : saveState === "saved" ? (
+            <span className="text-[11px] text-good">✓ Saved</span>
+          ) : null}
+          {!pending && saveState !== "saving" && item.readiness !== "pass" && (
             <button
               onClick={onRetest}
               title="Record another test pass after this has been actioned"
@@ -584,12 +976,14 @@ export default function SystemTestingPage() {
   // are many of them - E-Crop retested against a new build is its own entry.
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [areas, setAreas] = useState<Area[] | null>(null);
-  const [notes, setNotes] = useState<Note[]>([]);
-  // "dashboard" | "legend" | "notes" | an area id as a number
+  // "dashboard" | "report" | an area id as a number
   const [view, setView] = useState<string | number>("dashboard");
   const [filter, setFilter] = useState<string>("All");
   const [sheetVersion, setSheetVersion] = useState<number | null>(null);
   const [search, setSearch] = useState("");
+  const [bucketFilter, setBucketFilter] = useState("All");
+  const [devFilter, setDevFilter] = useState("All");
+  const [testedFilter, setTestedFilter] = useState("All");
   /* Compact trades the full description for a two-line preview, so a sheet of
      thirty items is scannable in one screen instead of one row per screen.
      The full text is a click on the issue away. Read through the store rather
@@ -619,7 +1013,6 @@ export default function SystemTestingPage() {
     item: Item; dev_status: string; tested: string; readiness: string;
     client_feedback: string;
   }>(null);
-  const [noteModal, setNoteModal] = useState<null | { id: number; text: string }>(null);
   const [retestModal, setRetestModal] = useState<null | {
     from: Project; name: string; window_start: string; window_end: string;
     include_items: boolean;
@@ -627,6 +1020,9 @@ export default function SystemTestingPage() {
   const [confirm, setConfirm] = useState<null | { title: string; body: string; run: () => void }>(null);
   const [importing, setImporting] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  // Set once the first load has read ?project=/?view= from the address.
+  const restored = useRef(false);
+  const [showLegend, setShowLegend] = useState(false);
 
   const selected = useMemo(
     () => projects?.find((p) => p.id === selectedId) ?? null,
@@ -646,6 +1042,21 @@ export default function SystemTestingPage() {
     // Only ever move the selection when a caller names a project to land on.
     // Defaulting to the first one would make the index unreachable.
     if (keep !== undefined) setSelectedId(keep);
+    // First load: put the reader back where the address says they were, so a
+    // refresh keeps the project, tab and build on screen.
+    if (!restored.current) {
+      restored.current = true;
+      const q = new URLSearchParams(window.location.search);
+      const pid = Number(q.get("project"));
+      if (keep === undefined && pid && data.projects.some((p: Project) => p.id === pid)) {
+        setSelectedId(pid);
+        const v = q.get("view") ?? "";
+        if (v === "report") setView("report");
+        else if (/^app-\d+$/.test(v)) setView(Number(v.slice(4)));
+        const build = Number(q.get("build"));
+        if (build) setSheetVersion(build);
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -666,13 +1077,15 @@ export default function SystemTestingPage() {
   const loadDetail = useCallback(async (id: number, blank = true) => {
     // Only clear when moving to a different project. Clearing on a background
     // reload is what made the table blink.
-    if (blank) { setAreas(null); setNotes([]); }
+    if (blank) { setAreas(null); }
     const res = await fetch(`/api/system-testing/projects/${id}`);
     if (res.status === 401) return;
     if (!res.ok) { setError(await readError(res, "Could not load that project.")); return; }
     const data = await res.json();
     setAreas(data.areas);
-    setNotes(data.notes);
+    // An app tab from an old link (or a deleted app) falls back to the overview
+    // rather than an empty page.
+    setView((v) => (typeof v === "number" && !data.areas.some((a: Area) => a.id === v) ? "dashboard" : v));
   }, []);
 
   /* Opening a project always lands on its dashboard. Done here rather than in
@@ -684,6 +1097,28 @@ export default function SystemTestingPage() {
     setSearch("");
     setSheetVersion(null);
   }, []);
+
+  /* Keep the address in step with what is on screen - ?project=, ?view= and
+     ?build= - so a refresh, or a copied link, opens the same place. Waits for
+     the first load to read the address before writing over it. */
+  useEffect(() => {
+    if (!restored.current) return;
+    const q = new URLSearchParams(window.location.search);
+    q.delete("project"); q.delete("view"); q.delete("build");
+    if (selectedId) {
+      q.set("project", String(selectedId));
+      if (view === "report") q.set("view", "report");
+      else if (typeof view === "number") {
+        q.set("view", `app-${view}`);
+        if (sheetVersion) q.set("build", String(sheetVersion));
+      }
+    }
+    const qs = q.toString();
+    const next = `${window.location.pathname}${qs ? `?${qs}` : ""}`;
+    if (next !== `${window.location.pathname}${window.location.search}`) {
+      window.history.replaceState(null, "", next);
+    }
+  }, [selectedId, view, sheetVersion]);
 
   useEffect(() => {
     if (!selectedId) return;
@@ -878,14 +1313,23 @@ export default function SystemTestingPage() {
   }
 
   /** Inline row save: writes the verdict onto the item's current pass. */
-  async function saveRow(item: Item, patch: Partial<Item>) {
+  async function saveRow(item: Item, patch: Partial<Item>): Promise<boolean> {
     // Named explicitly so editing a row on an older build corrects that build's
-    // pass rather than the current one.
-    const out = await send(`/api/system-testing/items/${item.id}`,
-      jsonPost({ ...patch, iteration: item.iteration_id }),
-      "Could not save that row.");
-    if (!out) return;
-    await refresh();
+    // pass rather than the current one. Quiet - no page-wide busy state - because
+    // it runs on its own as people type.
+    try {
+      const res = await fetch(`/api/system-testing/items/${item.id}`,
+        jsonPost({ ...patch, iteration: item.iteration_id }));
+      if (!res.ok) {
+        setError(await readError(res, "Could not save that row."));
+        return false;
+      }
+      await refresh();
+      return true;
+    } catch {
+      setError("Could not save that row.");
+      return false;
+    }
   }
 
   /** Record another pass once an item has been actioned. */
@@ -961,27 +1405,6 @@ export default function SystemTestingPage() {
     await refresh();
   }
 
-  async function saveNote() {
-    if (!noteModal || !selectedId) return;
-    const creating = noteModal.id === 0;
-    const url = creating
-      ? "/api/system-testing/notes/create"
-      : `/api/system-testing/notes/${noteModal.id}`;
-    const payload = creating
-      ? { project: selectedId, text: noteModal.text }
-      : { text: noteModal.text };
-    const out = await send(url, jsonPost(payload), "Could not save the note.");
-    if (!out) return;
-    setNoteModal(null);
-    await refresh();
-  }
-
-  async function toggleNote(n: Note) {
-    await send(`/api/system-testing/notes/${n.id}`, jsonPost({ is_done: !n.is_done }),
-      "Could not update the note.");
-    await refresh();
-  }
-
   function removeItem(item: Item) {
     setConfirm({
       title: "Delete this item?",
@@ -1004,19 +1427,6 @@ export default function SystemTestingPage() {
         await send(`/api/system-testing/areas/${a.id}/delete`, { method: "DELETE" },
           "Could not delete the app.");
         setView("dashboard");
-        await refresh();
-      },
-    });
-  }
-
-  function removeNote(n: Note) {
-    setConfirm({
-      title: "Delete this note?",
-      body: "It will be removed from the enhancements list.",
-      run: async () => {
-        setConfirm(null);
-        await send(`/api/system-testing/notes/${n.id}/delete`, { method: "DELETE" },
-          "Could not delete the note.");
         await refresh();
       },
     });
@@ -1085,11 +1495,14 @@ export default function SystemTestingPage() {
     const q = search.trim().toLowerCase();
     return sheet.items.filter((it) => {
       if (filter !== "All" && it.readiness !== filter) return false;
+      if (bucketFilter !== "All" && it.bucket !== bucketFilter) return false;
+      if (devFilter !== "All" && it.dev_status !== devFilter) return false;
+      if (testedFilter !== "All" && it.tested !== testedFilter) return false;
       if (!q) return true;
       return `${it.issue} ${it.description} ${it.client_feedback}`
         .toLowerCase().includes(q);
     });
-  }, [sheet, filter, search]);
+  }, [sheet, filter, search, bucketFilter, devFilter, testedFilter]);
 
   if (!me) return null;
 
@@ -1270,14 +1683,17 @@ export default function SystemTestingPage() {
 
           {selected && (
             <>
-              <div className="mb-3 flex flex-wrap items-center gap-3">
-                <button onClick={() => openProject(null)}
-                        className="flex items-center gap-1 text-[13px] text-ink-3 hover:text-ink">
-                  <Icon name="back" className="h-4 w-4" />
-                  All tested systems
-                </button>
-                <span className="text-ink-3">/</span>
-                <span className="text-[13px] font-medium text-ink">{selected.name}</span>
+              <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-2">
+                <nav className="flex min-w-0 items-center gap-1.5 text-[13px]">
+                  <button onClick={() => openProject(null)}
+                          className="flex shrink-0 items-center gap-1 text-ink-3 hover:text-ink">
+                    <Icon name="back" className="h-4 w-4" />
+                    All tested systems
+                  </button>
+                  <span className="text-ink-3">/</span>
+                  <span className="truncate font-medium text-ink">{selected.name}</span>
+                </nav>
+                <div className="flex flex-wrap gap-2 sm:ml-auto">
                 <Button icon="link" onClick={() => openShare(selected)}>
                   Share with reviewer
                 </Button>
@@ -1290,19 +1706,24 @@ export default function SystemTestingPage() {
                         })}>
                   Retest this system
                 </Button>
+                </div>
               </div>
 
               {/* Sheet tabs - one per sheet the workbook carried, however many
                   apps this project has. */}
-              <div className="mb-5 flex flex-wrap items-center gap-1 border-b border-stroke pb-2">
+              <div className="mb-5 flex items-center gap-1 overflow-x-auto whitespace-nowrap border-b border-stroke pb-2">
                 <TabButton active={view === "dashboard"}
                            onClick={() => setView("dashboard")}>
-                  Dashboard
+                  Overview
+                </TabButton>
+                <TabButton active={view === "report"} onClick={() => setView("report")}>
+                  Report
                 </TabButton>
                 {(areas ?? []).map((a) => (
                   <TabButton key={a.id} active={view === a.id}
                              onClick={() => {
                                setView(a.id); setFilter("All"); setSheetVersion(null);
+                               setBucketFilter("All"); setDevFilter("All"); setTestedFilter("All");
                              }}>
                     {a.name}
                     <span className="ml-1.5 text-[11px] opacity-60">
@@ -1310,22 +1731,26 @@ export default function SystemTestingPage() {
                     </span>
                   </TabButton>
                 ))}
-                <TabButton active={view === "legend"} onClick={() => setView("legend")}>
-                  Legend &amp; Criteria
-                </TabButton>
-                <TabButton active={view === "notes"} onClick={() => setView("notes")}>
-                  Notes
-                  {notes.length > 0 && (
-                    <span className="ml-1.5 text-[11px] opacity-60">{notes.length}</span>
-                  )}
-                </TabButton>
                 <button
                   onClick={() => setAreaModal({ id: 0, name: "", version_label: "" })}
                   className="ml-1 rounded-md px-2 py-1.5 text-[13px] text-ink-3 hover:bg-subtle hover:text-ink"
                 >
                   + Add app
                 </button>
+                <button
+                  onClick={() => setShowLegend(!showLegend)}
+                  aria-expanded={showLegend}
+                  className={`ml-auto flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] font-medium ${
+                    showLegend ? "bg-brand/10 text-brand" : "text-ink-2 hover:bg-subtle hover:text-ink"}`}
+                >
+                  <Icon name="info" className="h-4 w-4" />
+                  Legend
+                </button>
               </div>
+
+              {showLegend && vocab && (
+                <LegendPanel vocab={vocab} onClose={() => setShowLegend(false)} />
+              )}
 
               {/* ── Dashboard ──────────────────────────────────────────── */}
               {view === "dashboard" && (
@@ -1364,6 +1789,8 @@ export default function SystemTestingPage() {
                       <p className="mb-4 text-sm text-ink-3">{selected.summary}</p>
                     )}
 
+                    <ReadinessSummary rollup={rollup} />
+
                     {/* One strip per app. Six apps get six strips. */}
                     {(areas ?? []).map((a) => (
                       <MetricStrip key={a.id} label={a.name}
@@ -1392,19 +1819,14 @@ export default function SystemTestingPage() {
                 </>
               )}
 
+              {view === "report" && <ReportView areas={areas ?? []} vocab={vocab} rollup={rollup} />}
+
               {/* ── One app's sheet ────────────────────────────────────── */}
               {area && (
                 <Section
                   title={area.name}
                   right={
                     <div className="flex flex-wrap items-center gap-2">
-                      <input
-                        value={search} onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Search items"
-                        className="w-44 rounded-lg bg-subtle px-3 py-1.5 text-sm text-ink
-                                   ring-1 ring-stroke placeholder:text-ink-3
-                                   focus:outline-none focus:ring-brand/40"
-                      />
                       <Button icon="edit"
                               onClick={() => setAreaModal({
                                 id: area.id, name: area.name,
@@ -1431,12 +1853,14 @@ export default function SystemTestingPage() {
                     <label htmlFor="build-select" className="text-[12px] text-ink-3">
                       Build Version:
                     </label>
+                    <div className="relative text-ink-3">
                     <select
                       id="build-select"
                       value={sheet?.version_id ?? ""}
                       onChange={(e) => setSheetVersion(Number(e.target.value))}
-                      className="rounded-lg bg-subtle px-3 py-1.5 text-sm font-medium text-ink
-                                 ring-1 ring-stroke focus:outline-none focus:ring-brand/40"
+                      className="h-8 cursor-pointer appearance-none rounded-lg bg-surface pl-3 pr-8 text-sm font-medium
+                                 text-ink ring-1 ring-inset ring-stroke transition hover:bg-subtle
+                                 focus:outline-none focus:ring-2 focus:ring-brand/40"
                     >
                       {area.sheets.map((sh, i) => (
                         <option key={sh.version_id} value={sh.version_id}>
@@ -1447,6 +1871,8 @@ export default function SystemTestingPage() {
                         </option>
                       ))}
                     </select>
+                    <Caret className="right-2.5" />
+                    </div>
                     <span className="text-[12px] text-ink-3">
                       {area.sheets.length} build{area.sheets.length === 1 ? "" : "s"}
                     </span>
@@ -1472,6 +1898,36 @@ export default function SystemTestingPage() {
                                  rollup={sheet?.rollup ?? EMPTY_ROLLUP} />
                   </div>
 
+                  {/* Filters: search and readiness first, then the finer ones. */}
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <input
+                      value={search} onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search issues and comments" aria-label="Search items"
+                      className="w-full rounded-lg bg-subtle px-3 py-1.5 text-sm text-ink ring-1 ring-stroke
+                                 placeholder:text-ink-3 focus:outline-none focus:ring-brand/40 sm:w-64"
+                    />
+                    {([["Feedback type", bucketFilter, setBucketFilter, vocab?.buckets],
+                       ["Development", devFilter, setDevFilter, vocab?.dev_statuses],
+                       ["Tested", testedFilter, setTestedFilter, vocab?.tested]] as const).map(([label, value, set, opts]) => (
+                      <div key={label} className={`relative ${value === "All" ? "text-ink-3" : "text-brand"}`}>
+                        <select value={value} onChange={(e) => set(e.target.value)} aria-label={label}
+                                className={`h-8 cursor-pointer appearance-none rounded-lg pl-3 pr-8 text-sm ring-1 ring-inset transition
+                                            focus:outline-none focus:ring-2 focus:ring-brand/40 ${
+                                  value === "All" ? "bg-surface text-ink-2 ring-stroke hover:bg-subtle"
+                                                  : "bg-brand/10 font-medium text-brand ring-brand/30"}`}>
+                          <option value="All">{label}: all</option>
+                          {(opts ?? []).map((o) => <option key={o.key} value={o.key}>{o.label}</option>)}
+                        </select>
+                        <Caret className="right-2.5" />
+                      </div>
+                    ))}
+                    {(search || filter !== "All" || bucketFilter !== "All" || devFilter !== "All" || testedFilter !== "All") && (
+                      <button onClick={() => { setSearch(""); setFilter("All"); setBucketFilter("All"); setDevFilter("All"); setTestedFilter("All"); }}
+                              className="text-sm text-brand hover:underline">
+                        Clear filters
+                      </button>
+                    )}
+                  </div>
                   <div className="mb-3 flex flex-wrap gap-2">
                     <Pill active={filter === "All"} onClick={() => setFilter("All")}>
                       All ({sheet?.rollup.total ?? 0})
@@ -1509,6 +1965,11 @@ export default function SystemTestingPage() {
                     </div>
                   </div>
 
+                  {visibleItems.length > 0 && visibleItems.length < (sheet?.items.length ?? 0) && (
+                    <p className="mb-2 text-xs text-ink-3">
+                      Showing {visibleItems.length} of {sheet?.items.length} items.
+                    </p>
+                  )}
                   {visibleItems.length === 0 ? (
                     <EmptyState
                       icon="board" title="Nothing here"
@@ -1569,87 +2030,6 @@ export default function SystemTestingPage() {
                 </Section>
               )}
 
-              {/* ── Legend & Criteria ──────────────────────────────────── */}
-              {view === "legend" && vocab && (
-                <Section title="Testing criteria & status definitions">
-                  <p className="mb-4 text-sm text-ink-3">
-                    These definitions are shared by every project and are written into
-                    each exported pack, so the criteria cannot drift between clients.
-                  </p>
-                  {vocab.legend.map((block) => (
-                    <div key={block.heading} className="mb-6 last:mb-0">
-                      <div className="mb-2 rounded px-3 py-1.5 text-sm font-semibold text-white"
-                           style={{ backgroundColor: SLATE }}>
-                        {block.heading}
-                      </div>
-                      <table className="w-full text-sm">
-                        <tbody>
-                          {block.entries.map((e) => (
-                            <tr key={e.label} className="border-b border-stroke last:border-0 align-top">
-                              <td className="w-56 py-2 pr-4">
-                                <span className="inline-block rounded px-2 py-1 text-[12px] font-semibold"
-                                      style={{ backgroundColor: e.fill, color: e.ink }}>
-                                  {e.label}
-                                </span>
-                              </td>
-                              <td className="py-2 text-[13px] leading-relaxed text-ink-2">
-                                {e.definition}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  ))}
-                </Section>
-              )}
-
-              {/* ── Notes ──────────────────────────────────────────────── */}
-              {view === "notes" && (
-                <Section
-                  title="Enhancements parked for later"
-                  right={
-                    <Button variant="primary" icon="plus"
-                            onClick={() => setNoteModal({ id: 0, text: "" })}>
-                      Add note
-                    </Button>
-                  }
-                >
-                  {notes.length === 0 ? (
-                    <EmptyState icon="file" title="No notes yet"
-                                hint="Enhancements raised during testing but not in scope for this round." />
-                  ) : (
-                    <table className="w-full text-sm">
-                      <tbody>
-                        {notes.map((n, i) => (
-                          <tr key={n.id} className="border-b border-stroke last:border-0">
-                            <td className="w-10 py-2 text-ink-3">{i + 1}</td>
-                            <td className="py-2">
-                              <button onClick={() => toggleNote(n)}
-                                      className={`text-left ${n.is_done
-                                        ? "text-ink-3 line-through" : "text-ink-2"}`}>
-                                {n.text}
-                              </button>
-                            </td>
-                            <td className="w-24 py-2 text-right whitespace-nowrap">
-                              <button onClick={() => setNoteModal({ id: n.id, text: n.text })}
-                                      className="rounded p-1.5 text-ink-3 hover:bg-subtle hover:text-ink"
-                                      aria-label="Edit note">
-                                <Icon name="edit" />
-                              </button>
-                              <button onClick={() => removeNote(n)}
-                                      className="rounded p-1.5 text-ink-3 hover:bg-subtle hover:text-bad"
-                                      aria-label="Delete note">
-                                <Icon name="trash" />
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  )}
-                </Section>
-              )}
             </>
           )}
         </>
@@ -1816,22 +2196,6 @@ export default function SystemTestingPage() {
                        value={itemModal.client_feedback}
                        onChange={(v) => setItemModal({ ...itemModal, client_feedback: v })} />
           </div>
-        </Modal>
-      )}
-
-      {noteModal && (
-        <Modal
-          title={noteModal.id === 0 ? "Add note" : "Edit note"}
-          onClose={() => setNoteModal(null)}
-          footer={
-            <>
-              <Button onClick={() => setNoteModal(null)}>Cancel</Button>
-              <Button variant="primary" spinning={busy} onClick={saveNote}>Save</Button>
-            </>
-          }
-        >
-          <AreaInput label="Enhancement" value={noteModal.text} rows={3}
-                     onChange={(v) => setNoteModal({ ...noteModal, text: v })} />
         </Modal>
       )}
 

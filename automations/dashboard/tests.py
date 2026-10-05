@@ -153,3 +153,92 @@ class PickUpdownYearTests(SimpleTestCase):
 
     def test_an_empty_extract_is_left_alone(self):
         self.assertEqual(self.pick([]), (None, 'the extract is empty'))
+
+
+class ProjectServerHelperTests(SimpleTestCase):
+    """The pieces of project-server provisioning that need no Proxmox."""
+
+    def setUp(self):
+        from dashboard import proxmox
+        self.px = proxmox
+
+    def test_hostname_is_dns_safe_and_unique(self):
+        self.assertEqual(self.px.hostname_for('Coffee Shop'), 'coffee-shop')
+        self.assertEqual(self.px.hostname_for('Coffee Shop', {'coffee-shop'}), 'coffee-shop-2')
+        self.assertEqual(self.px.hostname_for('  NAB / Export!! '), 'nab-export')
+        self.assertEqual(self.px.hostname_for('***'), 'project')
+
+    def test_ssh_keys_are_encoded_the_way_proxmox_expects(self):
+        value = self.px.ssh_keys_param('ssh-ed25519 AAAA one@a; ssh-ed25519 BBBB two@b')
+        self.assertEqual(value, 'ssh-ed25519%20AAAA%20one%40a%0Assh-ed25519%20BBBB%20two%40b')
+
+    def test_next_free_ip_skips_used_and_stops_at_the_end(self):
+        pool = '10.0.0.150-10.0.0.152'
+        self.assertEqual(self.px.next_free_ip(pool, set()), '10.0.0.150')
+        self.assertEqual(self.px.next_free_ip(pool, {'10.0.0.150'}), '10.0.0.151')
+        self.assertIsNone(self.px.next_free_ip(pool, {'10.0.0.150', '10.0.0.151', '10.0.0.152'}))
+        self.assertIsNone(self.px.next_free_ip('', set()))
+
+    def _client(self, responses):
+        """A Client whose call() answers from `responses` keyed by (method, path)."""
+        cfg = {**self.px.config(), 'url': 'https://pve', 'token_id': 'u@pve!t',
+               'token_secret': 's', 'node': 'pve', 'vmid_start': 200, 'template': 9000,
+               'storage': 'RiadZ2_pool'}
+        client = self.px.Client(cfg)
+
+        def call(method, path, **data):
+            answer = responses[(method, path)]
+            return answer(**data) if callable(answer) else answer
+        client.call = call
+        return client
+
+    def test_pick_vmid_skips_numbers_proxmox_says_are_taken(self):
+        taken = {200, 201}
+
+        def nextid(vmid):
+            if vmid in taken:
+                raise self.px.ProxmoxError(f'Proxmox said 400: VM {vmid} already exists')
+            return vmid
+        client = self._client({('GET', '/cluster/nextid'): nextid})
+        self.assertEqual(self.px.pick_vmid(client), 202)
+        self.assertEqual(self.px.pick_vmid(client, reserved={202}), 203)
+
+    def test_capacity_refuses_when_memory_is_short(self):
+        gb = 1024 ** 3
+        client = self._client({
+            ('GET', '/nodes/pve/status'): {'memory': {'total': 135 * gb, 'used': 130 * gb}},
+            ('GET', '/nodes/pve/storage/RiadZ2_pool/status'): {'avail': 12000 * gb},
+            ('GET', '/cluster/resources'): [{'vmid': 9000}],
+        })
+        with self.assertRaisesMessage(self.px.ProxmoxError, 'memory free'):
+            self.px.check_capacity(client)
+
+    def test_capacity_needs_the_template(self):
+        gb = 1024 ** 3
+        client = self._client({
+            ('GET', '/nodes/pve/status'): {'memory': {'total': 135 * gb, 'used': 73 * gb}},
+            ('GET', '/nodes/pve/storage/RiadZ2_pool/status'): {'avail': 12000 * gb},
+            ('GET', '/cluster/resources'): [{'vmid': 101}],
+        })
+        with self.assertRaisesMessage(self.px.ProxmoxError, 'no template VM 9000'):
+            self.px.check_capacity(client)
+
+    def test_token_header_and_delete_parameters_in_the_query(self):
+        sent = {}
+
+        class Session:
+            def request(self, method, url, **kw):
+                sent.update(method=method, url=url, **kw)
+
+                class R:
+                    status_code = 200
+
+                    def json(self):
+                        return {'data': 'UPID:x'}
+                return R()
+        cfg = {**self.px.config(), 'url': 'https://pve', 'token_id': 'u@pve!t',
+               'token_secret': 's', 'verify': False}
+        self.px.Client(cfg, session=Session()).call('DELETE', '/nodes/pve/qemu/200', purge=1)
+        self.assertEqual(sent['headers']['Authorization'], 'PVEAPIToken=u@pve!t=s')
+        self.assertEqual(sent['params'], {'purge': 1})
+        self.assertIsNone(sent['data'])

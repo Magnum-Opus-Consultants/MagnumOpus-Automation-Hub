@@ -264,3 +264,35 @@ def list_commits(full_name, since=None, limit=100):
             'login': (c.get('author') or {}).get('login') or '',
         })
     return True, out
+
+
+def get_commit(full_name, sha, patch_chars=1500):
+    """One commit with the files it touched, each patch trimmed to a preview.
+
+    The patch is cut short on purpose: it is read to describe the change, and
+    a generated file or a lockfile can run to megabytes.
+    """
+    ok, body = _request('GET', f'/repos/{full_name}/commits/{sha}')
+    if not ok:
+        return False, body
+    commit = body.get('commit') or {}
+    author = commit.get('author') or {}
+    message = commit.get('message') or ''
+    subject, _, detail = message.partition('\n')
+    return True, {
+        'sha': body.get('sha', sha),
+        'subject': subject.strip(),
+        'body': detail.strip(),
+        'author': author.get('name') or '',
+        'date': author.get('date'),
+        'url': body.get('html_url'),
+        'parents': len(body.get('parents') or []),
+        'stats': body.get('stats') or {},
+        'files': [{
+            'filename': f.get('filename'),
+            'status': f.get('status'),
+            'additions': f.get('additions', 0),
+            'deletions': f.get('deletions', 0),
+            'patch': (f.get('patch') or '')[:patch_chars],
+        } for f in (body.get('files') or [])],
+    }

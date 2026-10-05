@@ -93,11 +93,16 @@ export default function ReposPage() {
   const [confirming, setConfirming] = useState<Repo | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  // Deleting on GitHub cannot be undone, so the name has to be typed first.
+  const [typedName, setTypedName] = useState("");
 
   // Every state update happens after an await, so nothing re-renders
   // synchronously while the mount effect is still running.
   const load = useCallback(async () => {
     try {
+      // Every repository on the GitHub account is listed, not only the ones
+      // made through Sentinel: anything new on GitHub is tracked first.
+      await fetch("/api/github/sync", { method: "POST" }).catch(() => null);
       const r = await fetch("/api/repos");
       if (!r.ok) throw new Error(String(r.status));
       const d: Payload = await r.json();
@@ -360,7 +365,7 @@ export default function ReposPage() {
                 <div onClick={(e) => e.stopPropagation()}
                      className="flex gap-1 opacity-0 transition group-hover:opacity-100">
                   <Button variant="ghost" icon="edit" onClick={() => startEdit(r)} aria-label={`Edit ${r.name}`} />
-                  <Button variant="ghost" icon="trash" onClick={() => { setDeleteError(""); setConfirming(r); }} aria-label={`Remove ${r.name}`} />
+                  <Button variant="ghost" icon="trash" onClick={() => { setDeleteError(""); setTypedName(""); setConfirming(r); }} aria-label={`Remove ${r.name}`} />
                 </div>
               </div>
             </div>
@@ -451,7 +456,9 @@ export default function ReposPage() {
                 <p className="mr-auto text-sm text-bad">{deleteError}</p>
               )}
               <Button onClick={() => setConfirming(null)}>Cancel</Button>
-              <Button variant="danger" onClick={confirmDelete} disabled={deleting}>
+              <Button variant="danger" onClick={confirmDelete}
+                      disabled={deleting || ((confirming.remote_url || "").includes("github.com/")
+                                             && typedName.trim() !== confirming.name)}>
                 {deleting ? "Deleting…" : "Delete repository"}
               </Button>
             </>
@@ -467,6 +474,12 @@ export default function ReposPage() {
                 from GitHub — the code, the history and any issues go with it.
               </p>
               <p className="mt-2 text-sm text-bad">This cannot be undone.</p>
+              <label className="mt-3 block text-sm text-ink-2">
+                Type <span className="font-mono font-semibold text-ink">{confirming.name}</span> to confirm
+                <input value={typedName} onChange={(e) => setTypedName(e.target.value)} autoFocus
+                       aria-label="Repository name"
+                       className="mt-1.5 h-9 w-full rounded-lg bg-surface px-3 font-mono text-sm text-ink ring-control focus-ring" />
+              </label>
             </>
           ) : (
             <p className="text-sm text-ink">

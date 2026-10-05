@@ -9,3 +9,9 @@ __pycache__/
 # Playwright run artefacts
 frontend/test-results/
 frontend/playwright-report/
+
+# Uploads from people outside (client requests, feedback screenshots) - never commit
+automations/private_media/
+
+# Copies of .env hold the same passwords and tokens - never commit
+.env.backup*

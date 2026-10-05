@@ -29,6 +29,108 @@ type Payload = {
   roles: [string, string][];
 };
 
+/* A password nobody has to think up: 14 characters from an alphabet without
+   look-alikes (no 0/O, 1/l/I), so it can be read out over the phone. */
+function generatePassword(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
+  const bytes = new Uint32Array(14);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => chars[b % chars.length]).join("");
+}
+
+/* A new-password box with Show and Generate. autoComplete="new-password"
+   keeps the browser from filling in the admin's own saved password. */
+function PasswordBox({ value, onChange, placeholder = "At least 8 characters" }: {
+  value: string; onChange: (v: string) => void; placeholder?: string;
+}) {
+  const [show, setShow] = useState(false);
+  return (
+    <div className="flex items-stretch gap-1.5">
+      <input type={show ? "text" : "password"} value={value} autoComplete="new-password"
+             placeholder={placeholder} aria-label="New password"
+             onChange={(e) => onChange(e.target.value)}
+             className="min-w-0 flex-1 rounded-lg border-0 bg-surface px-3 py-1.5 font-mono text-sm text-ink outline-none ring-control transition placeholder:font-sans placeholder:text-ink-3 focus:ring-2 focus:ring-brand" />
+      <button type="button" onClick={() => setShow(!show)}
+              className="rounded-lg px-2.5 text-xs font-medium text-ink-2 ring-control hover:bg-subtle">
+        {show ? "Hide" : "Show"}
+      </button>
+      <button type="button" onClick={() => { onChange(generatePassword()); setShow(true); }}
+              className="rounded-lg px-2.5 text-xs font-medium text-brand ring-control hover:bg-brand-tint">
+        Generate
+      </button>
+    </div>
+  );
+}
+
+/* Password tools for an existing account: set one now, or email them a link
+   to choose their own. Both take effect at once - they don't wait for Save. */
+function PasswordPanel({ user }: { user: UserRow }) {
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState<"" | "set" | "send">("");
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  async function call(kind: "set" | "send") {
+    setBusy(kind);
+    setNote(null);
+    try {
+      const r = await fetch(`/api/users/${user.id}/${kind === "set" ? "password" : "send-reset"}`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(kind === "set" ? { password } : {}),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) { setNote({ ok: false, text: d.detail || "That didn't work." }); return; }
+      setNote(kind === "set"
+        ? { ok: true, text: `Password changed. Share it with ${user.username} somewhere safe - not in a group chat.` }
+        : { ok: true, text: `Reset link sent to ${d.email}. It works once and expires in ${d.days} days.` });
+    } catch {
+      setNote({ ok: false, text: "Could not reach Sentinel's server." });
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <div className="mt-5">
+      <p className="mb-2 text-sm font-semibold text-ink">Password</p>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg p-3 ring-1 ring-stroke">
+          <p className="text-[13px] font-medium text-ink">Set a new password</p>
+          <p className="mb-2.5 text-xs text-ink-3">Type one or generate it, then give it to them yourself.</p>
+          <PasswordBox value={password} onChange={(v) => { setPassword(v); setNote(null); setCopied(false); }} />
+          <div className="mt-2.5 flex items-center gap-2">
+            <Button variant="primary" spinning={busy === "set"} disabled={!password || busy !== ""}
+                    onClick={() => void call("set")}>
+              Set password
+            </Button>
+            {password && (
+              <button type="button" onClick={() => { void navigator.clipboard?.writeText(password); setCopied(true); }}
+                      className="text-xs font-medium text-brand hover:underline">
+                {copied ? "Copied" : "Copy"}
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-col rounded-lg p-3 ring-1 ring-stroke">
+          <p className="text-[13px] font-medium text-ink">Email a reset link</p>
+          <p className="mb-2.5 text-xs text-ink-3">
+            {user.email
+              ? <>They choose their own password from an email to <b className="font-medium text-ink-2">{user.email}</b>.</>
+              : "Add an email address above and save before sending a link."}
+          </p>
+          <div className="mt-auto">
+            <Button icon="mail" spinning={busy === "send"} disabled={!user.email || busy !== ""}
+                    onClick={() => void call("send")}>
+              Send reset email
+            </Button>
+          </div>
+        </div>
+      </div>
+      {note && <p className={`mt-2 text-xs ${note.ok ? "text-good" : "text-bad"}`}>{note.text}</p>}
+    </div>
+  );
+}
+
 const FILTERS = ["All", "Administrators", "Members", "Inactive"] as const;
 type Filter = (typeof FILTERS)[number];
 
@@ -605,32 +707,47 @@ export default function AccessPage() {
             <TextInput label="Full name" value={form.full_name} placeholder="Optional"
                        onChange={(v) => setForm({ ...form, full_name: v })} />
             <TextInput label="Email" type="email" value={form.email}
-                       hint="Needed for workspace notifications."
+                       hint="For notifications and password reset emails."
                        onChange={(v) => setForm({ ...form, email: v })} />
-            <TextInput label="Password" type="password" value={form.password}
-                       placeholder={editing === "new" ? "" : "Leave blank to keep the current one"}
-                       onChange={(v) => setForm({ ...form, password: v })} />
-            <CheckboxInput label="Administrator" checked={form.is_admin}
-                           hint="Bypasses module and workspace restrictions."
-                           onChange={(v) => setForm({ ...form, is_admin: v })} />
-            <CheckboxInput label="Active" checked={form.is_active}
-                           hint="Inactive accounts cannot sign in."
-                           onChange={(v) => setForm({ ...form, is_active: v })} />
+            {editing === "new" && (
+              <div>
+                <span className="block text-sm font-medium text-ink">Password</span>
+                <div className="mt-1.5">
+                  <PasswordBox value={form.password} onChange={(v) => setForm({ ...form, password: v })} />
+                </div>
+              </div>
+            )}
+            {/* On an edit, Administrator takes the place the password had. */}
+            <div className={editing === "new" ? "sm:col-span-2" : "sm:pt-7"}>
+              <CheckboxInput label="Administrator" checked={form.is_admin}
+                             hint="Bypasses module and workspace restrictions."
+                             onChange={(v) => setForm({ ...form, is_admin: v })} />
+            </div>
           </div>
 
+          {editing !== "new" && <PasswordPanel user={editing as UserRow} />}
+
           <div className="mt-5">
-            <div className="mb-2 flex items-center justify-between">
+            <div className="mb-2 flex items-center justify-between gap-3">
               <p className="text-sm font-semibold text-ink">Pages they can open</p>
-              <div className="flex gap-1.5">
-                <button onClick={() => setForm({ ...form, modules: modules.map((m) => m.key) })}
-                        className="rounded px-1.5 py-0.5 text-[11px] font-medium text-brand transition hover:bg-brand-tint focus-ring">
-                  All
-                </button>
-                <button onClick={() => setForm({ ...form, modules: [] })}
-                        className="rounded px-1.5 py-0.5 text-[11px] font-medium text-ink-3 transition hover:bg-subtle focus-ring">
-                  None
-                </button>
-              </div>
+              {!form.is_admin && (
+                <div className="flex items-center gap-2.5">
+                  <span className="text-xs text-ink-3">{form.modules.length} of {modules.length}</span>
+                  <div role="group" aria-label="Select pages" className="inline-flex overflow-hidden rounded-md ring-1 ring-stroke">
+                    {([["All", modules.map((m) => m.key)], ["None", []]] as const).map(([label, next], i) => {
+                      const on = label === "All" ? form.modules.length === modules.length : form.modules.length === 0;
+                      return (
+                        <button key={label} type="button" aria-pressed={on}
+                                onClick={() => setForm({ ...form, modules: [...next] })}
+                                className={`px-3 py-1 text-xs font-medium transition ${i ? "border-l border-stroke" : ""} ${
+                                  on ? "bg-brand-tint text-brand" : "bg-surface text-ink-2 hover:bg-subtle hover:text-ink"}`}>
+                          {label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
             {form.is_admin ? (
               <p className="rounded-lg bg-subtle/60 px-3 py-2 text-xs text-ink-2">

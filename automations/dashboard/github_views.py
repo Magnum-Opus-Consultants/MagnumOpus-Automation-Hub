@@ -168,6 +168,49 @@ def api_github_import(request):
 
 
 @csrf_exempt
+@require_http_methods(["POST"])
+def api_github_sync(request):
+    """Track every repository on the connected GitHub account.
+
+    The Repositories page lists what is tracked, so without this a repository
+    made on GitHub directly - not through Sentinel - never appeared. Adding is
+    all this does: nothing is changed on GitHub and nothing is untracked.
+    """
+    err = _require_module(request, MODULE)
+    if err:
+        return err
+    if not gh.is_configured():
+        return JsonResponse({'added': 0, 'configured': False})
+    ok, repos = gh.list_repos()
+    if not ok:
+        return JsonResponse({'detail': repos.get('message')}, status=400)
+
+    def norm(url):
+        url = (url or '').strip().rstrip('/').lower()
+        return url[:-4] if url.endswith('.git') else url
+
+    from django.db import connection, transaction
+    added = []
+    # One sync at a time, across every worker: the page can ask twice at once
+    # (it did, on first open), and two syncs racing each added every repository.
+    with transaction.atomic():
+        if connection.vendor == 'postgresql':
+            with connection.cursor() as cur:
+                cur.execute('SELECT pg_advisory_xact_lock(%s)', [770001])
+        tracked = {norm(u) for u in Repository.objects.values_list('remote_url', flat=True)}
+        for r in repos:
+            if norm(r['url']) in tracked:
+                continue
+            Repository.objects.create(
+                name=r['name'], description=r.get('description') or '', remote_url=r['url'],
+                provider='github', default_branch=r.get('default_branch') or 'main',
+                order=Repository.objects.count())
+            tracked.add(norm(r['url']))
+            added.append(r['name'])
+    return JsonResponse({'added': len(added), 'names': added, 'configured': True})
+
+
+@csrf_exempt
 @require_http_methods(["POST", "DELETE"])
 def api_github_delete(request, pk):
     """Delete a tracked repository on GitHub, and stop tracking it here.

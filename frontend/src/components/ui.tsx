@@ -112,7 +112,7 @@ export function PageHead({ title, subtitle, actions }: { title: string; subtitle
         <h1 className="text-lg font-semibold tracking-tight text-ink">{title}</h1>
         {subtitle && <p className="text-sm text-ink-2">{subtitle}</p>}
       </div>
-      {actions && <div className="flex items-center gap-1.5">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-1.5">{actions}</div>}
     </div>
   );
 }
@@ -239,10 +239,10 @@ export function TextInput({ label, value, onChange, hint, type = "text", placeho
   );
 }
 
-export function AreaInput({ label, value, onChange, hint, rows = 4 }: { label: string; value: string; onChange: (v: string) => void; hint?: string; rows?: number }) {
+export function AreaInput({ label, value, onChange, hint, rows = 4, placeholder }: { label: string; value: string; onChange: (v: string) => void; hint?: string; rows?: number; placeholder?: string }) {
   return (
     <Label label={label} hint={hint}>
-      <textarea value={value} rows={rows} onChange={(e) => onChange(e.target.value)} className={FIELD} />
+      <textarea value={value} rows={rows} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} className={FIELD} />
     </Label>
   );
 }

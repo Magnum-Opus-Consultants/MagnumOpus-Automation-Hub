@@ -249,7 +249,7 @@ export default function ManagementPage() {
       ) : !data ? (
         <Section>
           <EmptyState icon="alert" title="Could not build the report"
-                      hint="Check that you have Project Tracker access." />
+                      hint="Check that you have access to Projects." />
         </Section>
       ) : (
         <>
