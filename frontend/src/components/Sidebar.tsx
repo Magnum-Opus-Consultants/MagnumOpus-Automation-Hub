@@ -192,23 +192,6 @@ export function Sidebar({ active, me, onCollapse }: { active: string; me: Me | n
   const initials = me?.username?.slice(0, 2).toUpperCase() ?? "··";
   const [projects, setProjects] = useState<ProjectLink[] | null>(null);
   const [workspaces, setWorkspaces] = useState<WorkspaceLink[] | null>(null);
-  // Workspaces are expanded by default, so this holds the collapsed ones.
-  // The rail remounts on every navigation, so this is persisted - otherwise a
-  // workspace you collapsed springs open again on the next click.
-  const [collapsedWs, setCollapsedWs] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    try {
-      const raw = window.localStorage.getItem("sentinel-collapsed-workspaces");
-      // Read after mount, not in a lazy initialiser: this page is prerendered,
-      // so touching localStorage during the first render would make the server
-      // and client markup disagree.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      if (raw) setCollapsedWs(new Set(JSON.parse(raw) as string[]));
-    } catch {
-      // A blocked or corrupt store just means everything starts expanded.
-    }
-  }, []);
   const [wsMenu, setWsMenu] = useState<{ w: WorkspaceLink; x: number; y: number } | null>(null);
   const [renamingWs, setRenamingWs] = useState<{ name: string; value: string } | null>(null);
   const [newWs, setNewWs] = useState<{ name: string; color: string; error: string } | null>(null);
@@ -224,7 +207,6 @@ export function Sidebar({ active, me, onCollapse }: { active: string; me: Me | n
   const [menu, setMenu] = useState<{ p: ProjectLink; x: number; y: number } | null>(null);
   const [renaming, setRenaming] = useState<{ p: ProjectLink; value: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  const [activeWorkspace, setActiveWorkspace] = useState<string | null>(null);
   const [activeProject, setActiveProject] = useState<string | null>(null);
   const [activeList, setActiveList] = useState<string | null>(null);
   // Which section of a project page is open; null when not on one.
@@ -251,7 +233,6 @@ export function Sidebar({ active, me, onCollapse }: { active: string; me: Me | n
           pageProject = page[1];
         }
       }
-      setActiveWorkspace(p.get("workspace"));
       setActiveProject(pageProject ?? p.get("project"));
       setActiveList(p.get("list"));
       setActiveSection(page ? (p.get("tab") ?? "overview") : null);
@@ -280,22 +261,6 @@ export function Sidebar({ active, me, onCollapse }: { active: string; me: Me | n
         setWorkspaces([]);
       });
   }, [canTasks]);
-
-  // A click anywhere else closes the menu, as a context menu should.
-  function toggleCollapsed(name: string) {
-    setCollapsedWs((cur) => {
-      const next = new Set(cur);
-      if (next.has(name)) next.delete(name);
-      else next.add(name);
-      try {
-        window.localStorage.setItem(
-          "sentinel-collapsed-workspaces", JSON.stringify([...next]));
-      } catch {
-        // Not worth failing the click over.
-      }
-      return next;
-    });
-  }
 
   async function saveWorkspace(body: Record<string, unknown>) {
     setBusy(true);
@@ -658,6 +623,11 @@ This cannot be undone.`)) return;
     .map((s) => ({ name: s, items: items.filter((i) => i.section === s) }))
     .filter((s) => s.items.length > 0);
   const soleWorkspace = workspaces?.length === 1 ? workspaces[0] : null;
+  /* The rail lists clients - the projects - in one flat list, however many
+     workspaces they are filed in. Workspaces stay on the Projects page; here
+     they only decide where "New project" puts a new one (the default). */
+  const defaultWorkspace = (workspaces ?? []).find((x) => x.is_default) ?? workspaces?.[0] ?? null;
+  const railWorkspaces = defaultWorkspace ? [{ ...defaultWorkspace, lists: [] as string[] }] : [];
 
   return (
     // Pinned to the viewport, not the page: without h-screen + sticky the rail
@@ -744,14 +714,12 @@ This cannot be undone.`)) return;
                         </button>
                       )}
                     </div>
-                    {(workspaces ?? []).map((w) => {
-                      const wsProjects = (projects ?? []).filter((p) => p.workspace === w.name);
-                      const wsOpen = !!soleWorkspace || !collapsedWs.has(w.name);
-                      const isActive = activeWorkspace === w.name
-                        && activeProject == null && activeList == null;
+                    {railWorkspaces.map((w) => {
+                      const wsProjects = projects ?? [];
+                      const wsOpen = true;
                       return (
                         <div key={w.name}>
-                          {soleWorkspace && renamingWs?.name !== w.name ? null : renamingWs?.name === w.name ? (
+                          {renamingWs?.name === w.name && (
                             <input
                               autoFocus
                               value={renamingWs.value}
@@ -764,41 +732,6 @@ This cannot be undone.`)) return;
                               }}
                               className="mx-2 h-7 w-[calc(100%-1rem)] rounded bg-surface px-1.5 text-[13px] text-ink ring-control focus-ring"
                             />
-                          ) : (
-                            <div className="relative flex items-center">
-                              <button
-                                onClick={() => toggleCollapsed(w.name)}
-                                aria-label={wsOpen ? "Collapse workspace" : "Expand workspace"}
-                                className="absolute left-1 z-10 flex h-5 w-5 items-center justify-center rounded text-ink-3 transition hover:bg-subtle hover:text-ink focus-ring"
-                              >
-                                <Icon name="chevron"
-                                      className={`h-3 w-3 transition-transform ${wsOpen ? "" : "rotate-180"}`} />
-                              </button>
-                              <Link
-                                href={`/tasks?workspace=${encodeURIComponent(w.name)}`}
-                                title={`${w.name} - ${wsProjects.length} projects. Right-click for options.`}
-                                onContextMenu={(e) => {
-                                  e.preventDefault();
-                                  setWsMenu({ w, x: e.clientX, y: e.clientY });
-                                }}
-                                className={`relative flex h-8 flex-1 items-center gap-2.5 rounded pl-7 pr-2 text-[13px] transition ${
-                                  isActive
-                                    ? "bg-brand-tint font-semibold text-ink"
-                                    : "text-ink-2 hover:bg-subtle hover:text-ink"
-                                }`}
-                              >
-                                <span aria-hidden
-                                      className={`absolute left-0 top-1/2 h-4 w-[3px] -translate-y-1/2 rounded-r-sm ${
-                                        isActive ? "bg-brand" : "bg-transparent"
-                                      }`} />
-                                <Badge logo={w.logo_url} icon={w.icon} fallback={item.icon}
-                                       color={w.color} className="h-4 w-4" />
-                                <span className="truncate">{w.name}</span>
-                                <span className="ml-auto shrink-0 text-[11px] text-ink-3">
-                                  {wsProjects.length}
-                                </span>
-                              </Link>
-                            </div>
                           )}
 
                           <Collapse open={wsOpen && (w.lists ?? []).length > 0}>
