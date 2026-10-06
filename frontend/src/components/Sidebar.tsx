@@ -98,6 +98,7 @@ const NAV: { label: string; href: string; module: string | null; admin?: boolean
   { label: "Repositories", href: "/repos", module: "repos", section: "Delivery", icon: "git" },
   { label: "Backups", href: "/backups", module: "servers", section: "Delivery", icon: "shield" },
   { label: "Readiness Testing", href: "/readiness-testing", module: "system_testing", section: "Delivery", icon: "check" },
+  { label: "ClickUp", href: "/clickup", module: "tasks", section: "Delivery", icon: "link" },
   { label: "Users & Access", href: "/access", module: null, admin: true, section: "Administration", icon: "users" },
 ];
 

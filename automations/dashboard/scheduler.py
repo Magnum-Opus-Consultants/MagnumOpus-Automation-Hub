@@ -1976,6 +1976,19 @@ def run_sync_digest_job():
         update_sync_health('sync_digest', 'error', str(e))
 
 
+def run_clickup_retry_job():
+    """Push tracker tasks whose ClickUp mirror is behind."""
+    try:
+        from . import clickup
+        if not clickup.configured():
+            return
+        pushed, failed = clickup.retry_dirty()
+        if pushed or failed:
+            logger.info('ClickUp retry: %s pushed, %s failed', pushed, failed)
+    except Exception:
+        logger.exception('ClickUp retry job failed')
+
+
 def start_scheduler():
     """Start the background scheduler"""
     global scheduler
@@ -1991,6 +2004,17 @@ def start_scheduler():
         trigger=IntervalTrigger(hours=1),
         id='onedrive_sync',
         name='Sync OneDrive turnover data every hour',
+        replace_existing=True
+    )
+
+    # Anything that failed to reach ClickUp when it was saved. A push happens
+    # off the request thread and marks the task dirty if it fails, so this is
+    # what turns a ClickUp outage into a delay rather than a lost update.
+    scheduler.add_job(
+        run_clickup_retry_job,
+        trigger=IntervalTrigger(minutes=5),
+        id='clickup_retry',
+        name='Retry ClickUp pushes that did not land',
         replace_existing=True
     )
 

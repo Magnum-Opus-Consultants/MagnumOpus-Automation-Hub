@@ -12,124 +12,124 @@
     "records": 0
   },
   "ppg": {
-    "last_check": "2026-09-03T16:15:18.796522+02:00",
-    "status": "success",
-    "message": "Already processed: 2026-08-30",
-    "records": 644
+    "last_check": "2026-10-05T19:30:51.144361+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "ccc": {
-    "last_check": "2026-09-03T16:16:48.475879+02:00",
-    "status": "success",
-    "message": "Already processed: 2026-08-30",
-    "records": 423
+    "last_check": "2026-10-05T19:32:21.101427+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "fax": {
-    "last_check": "2026-09-03T16:31:48.261291+02:00",
-    "status": "success",
-    "message": "Already processed: 2026-08-30",
-    "records": 515
+    "last_check": "2026-10-05T20:07:46.594352+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "ccd": {
-    "last_check": "2026-09-03T16:18:18.387783+02:00",
-    "status": "success",
-    "message": "Already processed: 2026-08-30",
-    "records": 301
+    "last_check": "2026-10-05T19:33:50.873677+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "con": {
-    "last_check": "2026-09-03T16:36:18.226255+02:00",
-    "status": "success",
-    "message": "Already processed: 2026-08-30",
-    "records": 608
+    "last_check": "2026-10-05T20:07:47.209751+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "jfk": {
-    "last_check": "2026-09-03T16:21:18.366113+02:00",
-    "status": "success",
-    "message": "Already processed: 2026-08-30",
-    "records": 661
+    "last_check": "2026-10-05T19:36:51.916875+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "dor": {
-    "last_check": "2026-09-03T16:37:48.105804+02:00",
-    "status": "success",
-    "message": "Already processed: 2026-08-30",
-    "records": 457
+    "last_check": "2026-10-05T20:07:47.030011+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "atl": {
-    "last_check": "2026-09-03T16:33:18.131497+02:00",
-    "status": "success",
-    "message": "Already processed: 2026-08-30",
-    "records": 547
+    "last_check": "2026-10-05T20:07:47.466075+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "hnl": {
-    "last_check": "2026-09-03T16:19:48.184783+02:00",
-    "status": "success",
-    "message": "Already processed: 2026-08-30",
-    "records": 736
+    "last_check": "2026-10-05T19:35:21.716299+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "turnover": {
-    "last_check": "2026-09-03T16:39:27.246343+02:00",
-    "status": "success",
-    "message": "Already processed 12 branches",
-    "records": 12229
+    "last_check": "2026-10-05T20:07:49.647449+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "lax": {
-    "last_check": "2026-09-03T16:30:18.300941+02:00",
-    "status": "success",
-    "message": "Already processed: 2026-08-30",
-    "records": 581
+    "last_check": "2026-10-05T20:07:47.765672+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "wip_accrual": {
-    "last_check": "2026-09-03T16:40:59.491556+02:00",
+    "last_check": "2026-10-05T20:07:48.293891+02:00",
     "status": "error",
-    "message": "Refused sync: 13624 new rows vs 27998 existing (>50% shrink)",
-    "records": 27998
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "ics": {
-    "last_check": "2026-09-03T16:25:48.513696+02:00",
-    "status": "success",
-    "message": "Already processed: 2026-08-30",
-    "records": 621
+    "last_check": "2026-10-05T20:07:47.125896+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "ord": {
-    "last_check": "2026-09-03T16:27:18.452925+02:00",
-    "status": "success",
-    "message": "Already processed: 2026-08-30",
-    "records": 593
+    "last_check": "2026-10-05T18:42:50.698899+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "imp": {
-    "last_check": "2026-09-03T16:28:48.286884+02:00",
-    "status": "success",
-    "message": "Already processed: 2026-08-30",
-    "records": 666
+    "last_check": "2026-10-05T18:44:20.710886+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "condor_dor": {
-    "last_check": "2026-09-03T16:45:32.012640+02:00",
-    "status": "success",
-    "message": "1421 rows across 4 files",
-    "records": 1421
+    "last_check": "2026-10-05T20:07:49.175039+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "lcl": {
-    "last_check": "2026-09-03T16:22:49.037972+02:00",
-    "status": "success",
-    "message": "Already processed: 2026-08-30",
-    "records": 534
+    "last_check": "2026-10-05T19:38:21.018228+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "hou": {
-    "last_check": "2026-09-03T16:24:21.322812+02:00",
-    "status": "success",
-    "message": "Already processed: 2026-08-30",
-    "records": 584
+    "last_check": "2026-10-05T20:07:47.101423+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "creditor": {
-    "last_check": "2026-09-03T16:44:02.878339+02:00",
-    "status": "success",
-    "message": "14 groups, 5449 rows",
-    "records": 5449
+    "last_check": "2026-10-05T20:07:48.910098+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "import_ops": {
-    "last_check": "2026-09-03T16:42:25.634970+02:00",
-    "status": "success",
-    "message": "Already up to date (19702 total)",
-    "records": 19702
+    "last_check": "2026-10-05T20:07:49.391617+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   },
   "tp3_auto": {
     "last_check": "2026-04-12T16:16:08.820243+02:00",
@@ -144,9 +144,15 @@
     "records": 0
   },
   "dfw": {
-    "last_check": "2026-09-03T16:34:48.152942+02:00",
-    "status": "success",
-    "message": "Already processed: 2026-08-30",
-    "records": 555
+    "last_check": "2026-10-05T20:07:46.790445+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
+  },
+  "updown_trader": {
+    "last_check": "2026-10-05T20:07:48.604159+02:00",
+    "status": "error",
+    "message": "Graph token unavailable",
+    "records": 0
   }
 }

@@ -6,6 +6,7 @@ from . import client_requests as cr
 from . import workspace_access as wsa
 from . import system_testing as st
 from . import system_testing_share as st_share
+from . import clickup_api
 from . import handbook as hb
 from . import awa_api as awa
 from . import management_api as mgmt
@@ -160,6 +161,11 @@ urlpatterns = [
     path('api/tasks/projects/update', platform_api.api_project_update, name='api_project_update'),
     path('api/tasks/projects/delete', platform_api.api_project_delete, name='api_project_delete'),
     path('api/tasks/projects/move', platform_api.api_project_move, name='api_project_move'),
+    # ClickUp mirror: link a project to a list, watch the sync, push now.
+    path('api/clickup/status', clickup_api.api_clickup_status, name='api_clickup_status'),
+    path('api/clickup/lists', clickup_api.api_clickup_lists, name='api_clickup_lists'),
+    path('api/clickup/link', clickup_api.api_clickup_link, name='api_clickup_link'),
+    path('api/clickup/sync', clickup_api.api_clickup_sync, name='api_clickup_sync'),
     path('api/tasks/lists/create', platform_api.api_list_create, name='api_list_create'),
     path('api/tasks/lists/delete', platform_api.api_list_delete, name='api_list_delete'),
     path('api/tasks/workspaces/members', wsa.api_workspace_members, name='api_workspace_members'),

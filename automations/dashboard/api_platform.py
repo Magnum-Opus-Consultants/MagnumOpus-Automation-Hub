@@ -20,7 +20,12 @@ from django.contrib.auth.models import User
 from .models import (Domain, Repository, ProjectTask, ProjectMeta, ProjectList,
                      Workspace, ServerRecord)
 from .views import _require_module
+import logging
+
 from . import activity
+from . import clickup
+
+logger = logging.getLogger(__name__)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -754,6 +759,9 @@ def api_planner_task_create(request):
         return JsonResponse({'detail': problem}, status=400)
     activity.record(request, 'created', 'task', obj=rec, label=rec.title,
                     project=rec.project_name or '')
+    # Mirrored to ClickUp off the request thread: the save has already
+    # succeeded and must not be undone by a slow or unreachable ClickUp.
+    clickup.push_soon(rec)
     return JsonResponse(_task_dict(rec), status=201)
 
 
@@ -788,6 +796,7 @@ def api_planner_task_update(request, pk):
         verb, detail = 'updated', ''
     activity.record(request, verb, 'task', obj=rec, label=rec.title,
                     detail=detail, project=rec.project_name or '')
+    clickup.push_soon(rec)
     return JsonResponse(_task_dict(rec))
 
 
@@ -803,7 +812,15 @@ def api_planner_task_delete(request, pk):
     # Read the label before deleting: afterwards there is nothing to read it
     # from, and "deleted task" with no name is not worth recording.
     title, project = rec.title, rec.project_name or ''
+    twin = rec.clickup_task_id
     rec.delete()
+    if twin:
+        # Best effort: the tracker row is already gone, so a failure here must
+        # not turn a successful delete into an error.
+        try:
+            clickup.delete_task_id(twin)
+        except clickup.ClickUpError as exc:
+            logger.warning('ClickUp delete failed for %s: %s', twin, exc)
     activity.record(request, 'deleted', 'task', object_id=pk, label=title,
                     project=project)
     return JsonResponse({'ok': True})

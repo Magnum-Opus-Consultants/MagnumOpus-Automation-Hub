@@ -81,6 +81,22 @@ class ProjectTask(models.Model):
         null=True, blank=True,
         help_text='When the running timer was started. Null means not running.')
 
+    # ── ClickUp mirror ───────────────────────────────────────────────────
+    # The tracker is the source of truth and pushes one way. These record what
+    # happened on the far side so a failed push is visible and retryable rather
+    # than silent: a save must never fail because ClickUp was unreachable, so
+    # the task is simply left dirty and picked up again later.
+    clickup_task_id = models.CharField(
+        max_length=40, blank=True, default='', db_index=True,
+        help_text='The task this mirrors in ClickUp. Empty means never pushed.')
+    clickup_synced_at = models.DateTimeField(null=True, blank=True)
+    clickup_dirty = models.BooleanField(
+        default=False, db_index=True,
+        help_text='Changed since the last successful push.')
+    clickup_error = models.TextField(
+        blank=True, default='',
+        help_text='Why the last push failed, cleared when one succeeds.')
+
     # Time tracking. Kept as hours rather than minutes because that is how the
     # work is quoted and reviewed; null means "not estimated / not logged yet",
     # which is different from a genuine 0.
@@ -930,6 +946,14 @@ class ProjectMeta(models.Model):
         ('medium', 'Medium'),
         ('low', 'Low'),
     ]
+
+    # Where this project's tasks go in ClickUp. Empty means the project is not
+    # linked, and nothing about it is pushed - opting in per project is what
+    # stops an unrelated board filling up with tasks nobody expected there.
+    clickup_list_id = models.CharField(max_length=40, blank=True, default='')
+    clickup_list_name = models.CharField(
+        max_length=200, blank=True, default='',
+        help_text='Shown in the UI so the link reads as a place, not an id.')
 
     name = models.CharField(max_length=100, unique=True)
     color = models.CharField(max_length=20, blank=True, default='')
