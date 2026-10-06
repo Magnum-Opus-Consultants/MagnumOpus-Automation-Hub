@@ -1079,7 +1079,7 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
         /* ─────────── Workload ─────────── */
         /* Reads `visible`, so the project filter and search narrow the chart
            the same way they narrow every other view. */
-        <Workload tasks={visible} />
+        <Workload tasks={visible} onOpen={openEditor} />
       ) : view === "Calendar" ? (
         /* ─────────── Calendar ─────────── */
         <div className="overflow-hidden rounded-xl bg-surface ring-panel">
