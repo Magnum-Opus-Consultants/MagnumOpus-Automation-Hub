@@ -136,6 +136,9 @@ RC_PULL_BRANCHES = os.getenv('RC_PULL_BRANCHES', 'DOR')
 RC_PULL_GATE_FROM = os.getenv('RC_PULL_GATE_FROM', '2026-08-03')
 # Branches the dispatch POD KPI pull covers.
 POD_PULL_BRANCHES = os.getenv('POD_PULL_BRANCHES', 'DOR,CCC,CCD')
+# Branches and 'today' time zone for the load lists behind Bruce's grid views.
+LL_PULL_BRANCHES = os.getenv('LL_PULL_BRANCHES', 'DOR')
+LL_VIEW_TZ = os.getenv('LL_VIEW_TZ', 'Africa/Johannesburg')
 
 # ── Up Management Report ────────────────────────────────────────────────────
 # Off. This report goes to upper management, so the weekly send stays disabled
