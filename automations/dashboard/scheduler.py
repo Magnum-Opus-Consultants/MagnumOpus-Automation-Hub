@@ -293,7 +293,7 @@ def run_receive_consignments_pull():
         from .models import ReceiveConsignment
 
         call_command('pull_receive_consignments',
-                     branches=getattr(settings, 'RC_PULL_BRANCHES', 'DOR,CON'),
+                     branches=getattr(settings, 'RC_PULL_BRANCHES', 'DOR'),
                      gate_from=getattr(settings, 'RC_PULL_GATE_FROM', '2026-08-03'),
                      verbosity=0)
         awaiting = ReceiveConsignment.objects.filter(

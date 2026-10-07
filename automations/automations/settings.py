@@ -132,7 +132,7 @@ CW_PASSWORD = os.getenv('CW_PASSWORD', '')
 CW_DEPARTMENT_CODE = os.getenv('CW_DEPARTMENT_CODE', 'BRN')
 # Branches the unbooked-cargo pull covers, and the gate-in floor that the saved
 # grid view "AWA LAX UNBOOKED CARGO CLEANUP" uses.
-RC_PULL_BRANCHES = os.getenv('RC_PULL_BRANCHES', 'DOR,CON')
+RC_PULL_BRANCHES = os.getenv('RC_PULL_BRANCHES', 'DOR')
 RC_PULL_GATE_FROM = os.getenv('RC_PULL_GATE_FROM', '2026-08-03')
 # Branches the dispatch POD KPI pull covers.
 POD_PULL_BRANCHES = os.getenv('POD_PULL_BRANCHES', 'DOR,CCC,CCD')
