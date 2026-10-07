@@ -8,7 +8,8 @@ Reproduces the saved grid view "DOR EXTERNAL CUTOFF TODAY":
   * Booking party has NONE of these EXACT words SCM
   * Last discharge port is blank
 
-with the grid's columns: weight, packages, staged and loaded counts, vehicle.
+with the grid's columns: weight, volume, packages, in warehouse, FLO, DEP,
+load list type and the transport units' references.
 Every active load list with a cut-off from 30 days back to 7 ahead is stored,
 flagged in_external_view (the view above, less its date) and in_awa_view (its
 counterpart, "DOR AWA CUTOFF TODAY"), and cutoff_today marks the ones whose
@@ -40,7 +41,12 @@ VIEW_BOOKING_WORD = re.compile(r'\bSCM\b', re.IGNORECASE)
 SELECT = 'WDL_PK,WDL_JobID,WDL_ReferenceNumber,WDL_CTOCutOffTime,WDL_RL_NKLastDischargePort'
 EXPAND = ("ReferenceNumbers($filter=CE_EntryType eq 'MAB';$select=CE_EntryNum),"
           "WhsItemDispatchLoadListDTUPivots($expand=TransitDispatchTransportationUnit("
-          "$select=WDH_VehicleReference,WDH_UnitType))")
+          "$select=WDH_VehicleReference,WDH_UnitType)),"
+          "WhsItemPackageStates($select=WPS_Status)")
+# Package states the grid counts as in the warehouse: arrived and still here.
+# BKD is booked but not arrived; DEP and FLO have their own columns.
+NOT_IN_WAREHOUSE = {'BKD', 'DEP', 'FLO'}
+UNIT_TYPE_NAMES = {'VEH': 'Vehicle', 'ULD': 'ULD'}
 DCN_EXPAND = ("Addresses($filter=E2_AddressType eq 'BKD';$select=E2_AddressType;"
               "$expand=Address($select=OA_Code;$expand=OrgHeader($select=OH_FullName))),"
               "WhsItemPackageStates($select=WPS_WDL_LoadList)")
@@ -144,6 +150,9 @@ def build(code, r, props, parties, today, tz, now):
              for p in r.get('WhsItemDispatchLoadListDTUPivots', [])]
     port = r.get('WDL_RL_NKLastDischargePort') or ''
     scm = any(VIEW_BOOKING_WORD.search(p) for p in parties)
+    states = [(p.get('WPS_Status') or '').upper() for p in r.get('WhsItemPackageStates', [])]
+    kinds = sorted({UNIT_TYPE_NAMES.get(u.get('WDH_UnitType') or '', u.get('WDH_UnitType') or '')
+                    for u in units} - {''})
     cutoff = _parse(r.get('WDL_CTOCutOffTime'))
     local = cutoff.astimezone(tz) if cutoff else None
     return DispatchLoadList(
@@ -164,6 +173,10 @@ def build(code, r, props, parties, today, tz, now):
         packages=props.get('NumberOfPackagesNoHandlingUnits') or 0,
         staged_packages=props.get('NumberOfStagedPackages') or 0,
         loaded_packages=props.get('NumberOfLoadedPackages') or 0,
+        in_warehouse=sum(1 for s in states if s and s not in NOT_IN_WAREHOUSE),
+        flo_packages=states.count('FLO'),
+        dep_packages=states.count('DEP'),
+        load_list_type=', '.join(kinds) or 'None',
         cto_cutoff=cutoff,
         cto_cutoff_local=local.strftime('%Y-%m-%d %H:%M') if local else '',
         cto_cutoff_date=local.date() if local else None,

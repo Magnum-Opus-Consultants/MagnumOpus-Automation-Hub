@@ -2936,6 +2936,13 @@ class DispatchLoadList(models.Model):
     packages = models.IntegerField(default=0)
     staged_packages = models.IntegerField(default=0)
     loaded_packages = models.IntegerField(default=0)
+    # The grid's package columns, counted from the package states: in the
+    # warehouse (arrived, put away, picked - not merely booked), FLO, departed.
+    in_warehouse = models.IntegerField(default=0)
+    flo_packages = models.IntegerField(default=0)
+    dep_packages = models.IntegerField(default=0)
+    # None, Vehicle or ULD, from the transport units, as the grid shows it.
+    load_list_type = models.CharField(max_length=40, blank=True, default='')
     cto_cutoff = models.DateTimeField(null=True, blank=True)
     cto_cutoff_local = models.CharField(max_length=16, blank=True, default='')
     cto_cutoff_date = models.DateField(null=True, blank=True, db_index=True)
