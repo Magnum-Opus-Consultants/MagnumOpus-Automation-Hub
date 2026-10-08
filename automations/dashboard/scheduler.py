@@ -1989,6 +1989,20 @@ def run_clickup_retry_job():
         logger.exception('ClickUp retry job failed')
 
 
+def run_clickup_pull_job():
+    """Bring across tasks somebody raised in ClickUp rather than in the tracker."""
+    try:
+        from . import clickup
+        if not clickup.configured():
+            return
+        added, removed, failed = clickup.pull_all()
+        if added or removed or failed:
+            logger.info('ClickUp pull: %s added, %s removed, %s project(s) failed',
+                        added, removed, failed)
+    except Exception:
+        logger.exception('ClickUp pull job failed')
+
+
 def start_scheduler():
     """Start the background scheduler"""
     global scheduler
@@ -2010,6 +2024,24 @@ def start_scheduler():
     # Anything that failed to reach ClickUp when it was saved. A push happens
     # off the request thread and marks the task dirty if it fails, so this is
     # what turns a ClickUp outage into a delay rather than a lost update.
+    # ClickUp is the other place work gets filed, so it is read as well as
+    # written.
+    #
+    # Pushing is immediate because our own code is running when a task changes
+    # here. Nothing tells us when one changes over there, so it has to be asked
+    # - and the interval is the delay people notice. Forty-five seconds costs
+    # one request per linked project against a budget of a hundred a minute,
+    # which is affordable well past the number of projects anyone has. Making it
+    # genuinely instant needs ClickUp webhooks, and those need a public URL for
+    # ClickUp to call back to - fine for the server, impossible for a laptop.
+    scheduler.add_job(
+        run_clickup_pull_job,
+        trigger=IntervalTrigger(seconds=45),
+        id='clickup_pull',
+        name='Pull tasks created in ClickUp into the tracker',
+        replace_existing=True
+    )
+
     scheduler.add_job(
         run_clickup_retry_job,
         trigger=IntervalTrigger(minutes=5),

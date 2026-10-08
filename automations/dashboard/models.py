@@ -1,4 +1,5 @@
 import hashlib
+import logging
 import secrets
 import uuid
 from pathlib import Path
@@ -7,7 +8,7 @@ from django.conf import settings
 from django.core.files.storage import FileSystemStorage
 from django.db import models
 from django.contrib.auth.models import User
-from django.db.models.signals import post_save
+from django.db.models.signals import post_delete, post_save
 from django.dispatch import receiver
 
 
@@ -175,6 +176,18 @@ class UserProfile(models.Model):
     can_emailing = models.BooleanField(default=False)
     can_planner = models.BooleanField(default=False)
     can_automations = models.BooleanField(default=False)
+
+    # Who this person is in ClickUp.
+    #
+    # The two systems share no identity: a tracker account is a username, a
+    # ClickUp member is an email address, and nothing guarantees the same person
+    # has both or that they agree. Email is the only honest join, so it is tried
+    # first - but it is blank on every tracker account today, so this field
+    # exists to say outright "this user is that ClickUp member" when the
+    # addresses do not line up or are missing.
+    clickup_user_id = models.CharField(
+        max_length=20, blank=True, default='',
+        help_text='ClickUp member id. Set it when email matching cannot.')
 
     class Meta:
         db_table = 'user_profile'
@@ -2903,3 +2916,53 @@ class DispatchPod(models.Model):
 
     def __str__(self):
         return f'{self.load_list} ({self.status})'
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Keep ClickUp in step with the tracker
+# ══════════════════════════════════════════════════════════════════════════════
+# Hooked to the model rather than to the handful of views that happen to write
+# tasks today. Tasks are also created and re-statused by the public API that
+# external agents use, and by the feedback flow, and anything added later would
+# have to remember to call the push by hand. A signal cannot be forgotten.
+
+# The bookkeeping a successful push writes back. A save touching only these is
+# the push recording itself, and must not start another one.
+_CLICKUP_BOOKKEEPING = {
+    'clickup_task_id', 'clickup_synced_at', 'clickup_dirty', 'clickup_error',
+}
+
+
+@receiver(post_save, sender=ProjectTask)
+def _mirror_task_to_clickup(sender, instance, update_fields=None, **kwargs):
+    if update_fields and set(update_fields) <= _CLICKUP_BOOKKEEPING:
+        return
+    # Imported here, not at module scope: clickup imports this module.
+    from . import clickup
+    # A task just pulled *from* ClickUp must not be pushed straight back.
+    if clickup.push_suppressed():
+        return
+    clickup.push_soon(instance)
+
+
+@receiver(post_delete, sender=ProjectTask)
+def _remove_clickup_twin(sender, instance, **kwargs):
+    """A task deleted here is deleted there, so the boards do not drift.
+
+    Best effort only - the tracker row has already gone, and a ClickUp outage
+    must not turn a successful delete into an error.
+    """
+    twin = getattr(instance, 'clickup_task_id', '')
+    if not twin:
+        return
+    from . import clickup
+    # Removing a task *because* ClickUp deleted it must not call back to delete
+    # what is already gone.
+    if clickup.push_suppressed():
+        return
+    try:
+        clickup.delete_task_id(twin)
+    except Exception:
+        logging.getLogger(__name__).warning(
+            'Could not remove ClickUp task %s after its tracker task was '
+            'deleted; it will have to go by hand.', twin)

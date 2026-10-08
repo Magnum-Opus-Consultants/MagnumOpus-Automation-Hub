@@ -34,6 +34,12 @@ def api_clickup_status(request):
     if err:
         return err
 
+    # Looking at this page is a good moment to check for anything raised in
+    # ClickUp since the last sweep. Started in the background so the page does
+    # not wait on ClickUp to render.
+    if request.GET.get('pull') == '1':
+        clickup.pull_soon()
+
     linked = ProjectMeta.objects.exclude(clickup_list_id='')
     waiting = ProjectTask.objects.filter(clickup_dirty=True).count()
     failing = (ProjectTask.objects.filter(clickup_dirty=True)
@@ -95,6 +101,10 @@ def api_clickup_link(request):
     if list_id:
         queued = ProjectTask.objects.filter(project_name=name).update(
             clickup_dirty=True)
+        # Start straight away rather than leaving the backlog for the next
+        # sweep - a link that appears to do nothing for five minutes is what
+        # makes people look for a manual sync button.
+        clickup.push_project_soon(name)
 
     return JsonResponse({
         'project': name,
@@ -102,6 +112,88 @@ def api_clickup_link(request):
         'list_name': meta.clickup_list_name,
         'queued': queued,
     })
+
+
+@require_http_methods(["GET"])
+def api_clickup_people(request):
+    """Who in the tracker is who in ClickUp, and who cannot be matched."""
+    err = _require_module(request, MODULE)
+    if err:
+        return err
+    from django.contrib.auth.models import User
+
+    try:
+        roster = clickup.members() if clickup.configured() else []
+    except clickup.ClickUpError as exc:
+        return JsonResponse({'detail': str(exc)}, status=502)
+    by_id = {m['id']: m for m in roster}
+
+    people = []
+    for u in User.objects.select_related('profile').order_by('username'):
+        explicit = (getattr(getattr(u, 'profile', None), 'clickup_user_id', '')
+                    or '').strip()
+        matched = clickup.clickup_id_for_user(u) if roster else ''
+        people.append({
+            'id': u.id,
+            'username': u.username,
+            'full_name': u.get_full_name(),
+            'email': u.email,
+            'clickup_id': matched,
+            'clickup_name': by_id.get(matched, {}).get('name', ''),
+            # How the match was made, so an accidental one is obvious.
+            'matched_by': 'manual' if explicit else ('email' if matched else ''),
+        })
+
+    # Named so the UI can say which ClickUp workspace these members come from -
+    # the mapping is global precisely because a member id is issued per
+    # workspace, and saying so is what stops it reading as per project.
+    workspace = ''
+    try:
+        if clickup.configured():
+            teams = clickup._request('GET', '/team').get('teams', [])
+            workspace = teams[0]['name'] if teams else ''
+    except clickup.ClickUpError:
+        workspace = ''
+
+    return JsonResponse({'people': people, 'members': roster,
+                         'workspace': workspace})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_clickup_person_link(request):
+    """Say outright which ClickUp member a tracker user is."""
+    err = _require_module(request, MODULE)
+    if err:
+        return err
+    from django.contrib.auth.models import User
+    from .models import UserProfile
+
+    data = _body(request)
+    u = User.objects.filter(pk=data.get('user')).first()
+    if u is None:
+        return JsonResponse({'detail': 'No such user.'}, status=404)
+
+    profile, _ = UserProfile.objects.get_or_create(user=u)
+    profile.clickup_user_id = (data.get('clickup_id') or '').strip()[:20]
+    profile.save(update_fields=['clickup_user_id'])
+    return JsonResponse({'user': u.username,
+                         'clickup_id': profile.clickup_user_id})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_clickup_pull(request):
+    """Bring across anything raised in ClickUp, now."""
+    err = _require_module(request, MODULE)
+    if err:
+        return err
+    if not clickup.configured():
+        return JsonResponse(
+            {'detail': 'No ClickUp token. Set CLICKUP_API_TOKEN in the .env '
+                       'file and restart the server.'}, status=400)
+    added, removed, failed = clickup.pull_all()
+    return JsonResponse({'added': added, 'removed': removed, 'failed': failed})
 
 
 @csrf_exempt
