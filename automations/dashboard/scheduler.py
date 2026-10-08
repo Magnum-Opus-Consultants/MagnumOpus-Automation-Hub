@@ -293,7 +293,7 @@ def run_receive_consignments_pull():
         from .models import ReceiveConsignment
 
         call_command('pull_receive_consignments',
-                     branches=getattr(settings, 'RC_PULL_BRANCHES', 'DOR,CON'),
+                     branches=getattr(settings, 'RC_PULL_BRANCHES', 'DOR'),
                      gate_from=getattr(settings, 'RC_PULL_GATE_FROM', '2026-08-03'),
                      verbosity=0)
         awaiting = ReceiveConsignment.objects.filter(
@@ -325,6 +325,23 @@ def run_dispatch_pods_pull():
         logger.info('[dispatch_pods] refreshed; %s POD(s) overdue', overdue)
     except Exception:
         logger.exception('[dispatch_pods] pull failed')
+
+
+def run_dispatch_load_lists_pull():
+    """Refresh the load lists behind Bruce's grid views (DOR EXTERNAL CUTOFF TODAY)."""
+    from django.conf import settings
+
+    if not getattr(settings, 'CW_USERNAME', '') or not getattr(settings, 'CW_PASSWORD', ''):
+        logger.info('[dispatch_load_lists] CargoWise credentials not set; skipping')
+        return
+    try:
+        from django.core.management import call_command
+        call_command('pull_dispatch_load_lists',
+                     branches=getattr(settings, 'LL_PULL_BRANCHES', 'DOR'),
+                     tz=getattr(settings, 'LL_VIEW_TZ', 'Africa/Johannesburg'),
+                     verbosity=0)
+    except Exception:
+        logger.exception('[dispatch_load_lists] pull failed')
 
 
 def run_weekly_reports_job():
@@ -2178,6 +2195,18 @@ def start_scheduler():
         coalesce=True,
         misfire_grace_time=1800,
         next_run_time=datetime.now() + timedelta(minutes=7),
+    )
+
+    # The load lists behind Bruce's DOR EXTERNAL CUTOFF TODAY grid view.
+    scheduler.add_job(
+        run_dispatch_load_lists_pull,
+        trigger=IntervalTrigger(hours=1),
+        id='dispatch_load_lists_pull',
+        name='Pull dispatch load lists from CargoWise',
+        replace_existing=True,
+        coalesce=True,
+        misfire_grace_time=1800,
+        next_run_time=datetime.now() + timedelta(minutes=9),
     )
 
     for _i, (_key, _fn, _desc) in enumerate(_EMAIL_JOBS):

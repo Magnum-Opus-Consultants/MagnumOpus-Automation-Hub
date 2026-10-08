@@ -2918,6 +2918,57 @@ class DispatchPod(models.Model):
         return f'{self.load_list} ({self.status})'
 
 
+class DispatchLoadList(models.Model):
+    """A dispatch load list as Bruce's CargoWise grid views list it.
+
+    The grid "DOR EXTERNAL CUTOFF TODAY" shows load lists whose CTO cut-off is
+    today, with no last discharge port and no booking party carrying the word
+    SCM. This holds every active load list with a cut-off around today, with
+    the grid's columns and both view flags, so a report reads the same list
+    without anyone exporting it.
+
+    "Today" is counted in the time zone of the CargoWise profile the grid is
+    read with (DOR / BRN, UTC+02:00), so the list matches that screen.
+    """
+    branch = models.CharField(max_length=10, db_index=True)
+    load_list = models.CharField(max_length=40, unique=True)
+    reference = models.CharField(max_length=60, blank=True, default='')
+    master_bill = models.CharField(max_length=120, blank=True, default='')
+    booking_party = models.CharField(max_length=400, blank=True, default='')
+    last_discharge_port = models.CharField(max_length=10, blank=True, default='')
+    # DOR EXTERNAL: no discharge port, no booking party with the word SCM.
+    in_external_view = models.BooleanField(default=False, db_index=True)
+    # DOR AWA: a discharge port, and a booking party with the word SCM.
+    in_awa_view = models.BooleanField(default=False, db_index=True)
+    unit_types = models.CharField(max_length=100, blank=True, default='')
+    vehicles = models.CharField(max_length=400, blank=True, default='')
+    total_weight = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    weight_unit = models.CharField(max_length=10, blank=True, default='')
+    total_volume = models.DecimalField(max_digits=14, decimal_places=3, null=True, blank=True)
+    volume_unit = models.CharField(max_length=10, blank=True, default='')
+    packages = models.IntegerField(default=0)
+    staged_packages = models.IntegerField(default=0)
+    loaded_packages = models.IntegerField(default=0)
+    # The grid's package columns, counted from the package states: in the
+    # warehouse (arrived, put away, picked - not merely booked), FLO, departed.
+    in_warehouse = models.IntegerField(default=0)
+    flo_packages = models.IntegerField(default=0)
+    dep_packages = models.IntegerField(default=0)
+    # None, Vehicle or ULD, from the transport units, as the grid shows it.
+    load_list_type = models.CharField(max_length=40, blank=True, default='')
+    cto_cutoff = models.DateTimeField(null=True, blank=True)
+    cto_cutoff_local = models.CharField(max_length=16, blank=True, default='')
+    cto_cutoff_date = models.DateField(null=True, blank=True, db_index=True)
+    cutoff_today = models.BooleanField(default=False, db_index=True)
+    pulled_at = models.DateTimeField()
+
+    class Meta:
+        db_table = 'dispatch_load_list'
+        ordering = ['-load_list']
+
+    def __str__(self):
+        return self.load_list
+
 # ══════════════════════════════════════════════════════════════════════════════
 # Keep ClickUp in step with the tracker
 # ══════════════════════════════════════════════════════════════════════════════

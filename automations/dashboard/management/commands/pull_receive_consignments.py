@@ -51,8 +51,8 @@ class Command(BaseCommand):
     help = 'Pull unbooked receive consignments from CargoWise into the database.'
 
     def add_arguments(self, parser):
-        parser.add_argument('--branches', default='DOR,CON',
-                            help='Comma-separated branch codes (default DOR,CON).')
+        parser.add_argument('--branches', default='DOR',
+                            help='Comma-separated branch codes (default DOR).')
         parser.add_argument('--gate-from', default='2026-08-03',
                             help='Gate-in floor, YYYY-MM-DD, matching the saved view.')
         parser.add_argument('--username', default=None)
