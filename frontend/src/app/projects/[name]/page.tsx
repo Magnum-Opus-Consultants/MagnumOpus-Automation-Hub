@@ -305,8 +305,7 @@ function ProjectInner() {
     }
   }
 
-  async function saveDetails() {
-    if (!editing) return;
+  async function saveDetails(editing: Project) {
     const ok = await patch({
       client: editing.client, client_email: editing.client_email,
       client_contact: editing.client_contact, description: editing.description,
@@ -314,8 +313,15 @@ function ProjectInner() {
       start_date: editing.start_date, end_date: editing.end_date,
       quoted_hours: editing.quoted_hours,
     });
-    if (ok) setEditing(null);
+    // Returns rather than closing: the panel saves while it is still open, and
+    // closing it out from under somebody mid-edit would be the opposite of what
+    // auto-save is for.
+    return ok;
   }
+
+  /* The edit panel saves itself as it is filled in - see useAutoSave. */
+  const detailsState = useAutoSave(editing, editing !== null,
+                                   async (e) => (e ? saveDetails(e) : true));
 
   const p = detail?.project;
   const tasks = useMemo(() => (payload?.tasks ?? []) as TaskRow[], [payload]);
@@ -450,13 +456,10 @@ function ProjectInner() {
       {editing && detail && (
         <Modal title={`Edit ${editing.name}`} wide onClose={() => { setEditing(null); setError(""); }}
                footer={
-                 <>
-                   <Button onClick={() => { setEditing(null); setError(""); }}>Cancel</Button>
-                   <Button variant="primary" spinning={saving} disabled={saving}
-                           onClick={() => void saveDetails()}>
-                     Save project
-                   </Button>
-                 </>
+                 <div className="flex w-full items-center justify-between gap-3">
+                   <AutoSaveNote state={detailsState} error={error} />
+                   <Button onClick={() => { setEditing(null); setError(""); }}>Done</Button>
+                 </div>
                }>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <SelectInput label="Status" value={editing.status} options={detail.statuses}
@@ -786,9 +789,13 @@ function Flag({ priority, label }: { priority: string; label: string }) {
 }
 
 /** The inline add row. Enter saves and leaves a fresh row for the next task. */
-function QuickAdd({ people, statuses, priorities, sub = false, onSave, onCancel }: {
+function QuickAdd({ people, statuses, priorities, sub = false,
+                    onCreate, onPatch, onDiscard, onCancel }: {
   people: Person[]; statuses: Choice[]; priorities: Choice[]; sub?: boolean;
-  onSave: (d: Draft) => Promise<string | null>; onCancel: () => void;
+  onCreate: (d: Draft) => Promise<{ id?: number; error?: string }>;
+  onPatch: (id: number, d: Draft) => Promise<string | null>;
+  onDiscard: (id: number) => Promise<void>;
+  onCancel: () => void;
 }) {
   const [title, setTitle] = useState("");
   const [status, setStatus] = useState("todo");
@@ -801,34 +808,108 @@ function QuickAdd({ people, statuses, priorities, sub = false, onSave, onCancel 
   const chosen = people.filter((p) => assignees.includes(p.id));
   const iconBtn = "h-7 min-w-7 justify-center gap-1 px-1.5 text-ink-3 hover:bg-subtle hover:text-ink";
 
-  async function save() {
-    if (!title.trim() || busy) return;
+  /* Files the task as it is typed, then keeps updating that same one. Nothing
+     to press, and nothing filed until there is a title to file it under. The ✕
+     deletes what was filed, because once the task exists, closing the row
+     cannot un-create it. */
+  const [draftId, setDraftId] = useState<number | null>(null);
+  const [state, setState] = useState<"idle" | "saving" | "saved">("idle");
+  const lastSent = useRef("");
+  // Pickers are a decision already made and go almost at once; a title is
+  // still being written and waits for the typing to stop. Same split as the
+  // readiness sheet, so the two read the same way.
+  const sentTitle = useRef("");
+
+  /* One place that does the writing, so the timer and "clicking away" cannot
+     disagree about what was filed. Returns once the write is done. */
+  const commit = useCallback(async () => {
+    const clean = title.trim();
+    if (!clean) return;
+    const draft: Draft = { title: clean, status, assignees, due, priority };
+    const snapshot = JSON.stringify(draft);
+    if (lastSent.current === snapshot) return;
+    // Claimed before awaiting, so a timer firing while this is in flight does
+    // not file the same task twice.
+    lastSent.current = snapshot;
+
     setBusy(true);
+    setState("saving");
     setError("");
-    const problem = await onSave({ title: title.trim(), status, assignees, due, priority });
-    setBusy(false);
-    if (problem) {
-      setError(problem);
-      return;
+    if (draftId == null) {
+      const out = await onCreate(draft);
+      if (out.error) {
+        lastSent.current = "";
+        setError(out.error); setState("idle"); setBusy(false); return;
+      }
+      if (out.id != null) setDraftId(out.id);
+    } else {
+      const problem = await onPatch(draftId, draft);
+      if (problem) {
+        lastSent.current = "";
+        setError(problem); setState("idle"); setBusy(false); return;
+      }
     }
-    setTitle("");
-    setAssignees([]);
-    setDue("");
-    setPriority("");
-    input.current?.focus();
+    sentTitle.current = clean;
+    setState("saved");
+    setBusy(false);
+  }, [title, status, assignees, due, priority, draftId, onCreate, onPatch]);
+
+  useEffect(() => {
+    const clean = title.trim();
+    if (!clean) return;
+    if (lastSent.current === JSON.stringify({ title: clean, status, assignees, due, priority })) return;
+    const typing = clean !== sentTitle.current;
+    const timer = window.setTimeout(() => { void commit(); }, typing ? 900 : 150);
+    return () => window.clearTimeout(timer);
+  }, [title, status, assignees, due, priority, commit]);
+
+  useEffect(() => {
+    if (state !== "saved") return;
+    const t = window.setTimeout(() => setState("idle"), 2000);
+    return () => window.clearTimeout(t);
+  }, [state]);
+
+  /* Clicking away closes the row, because the task is already saved and a row
+     that stays open afterwards is just in the way.
+     
+     It writes first. Clicking away inside the typing pause would otherwise
+     cancel the pending timer and the task would never be filed at all - the
+     one way auto-save could silently lose what somebody typed.
+     
+     Listens for mousedown on the document rather than using onBlur: menu rows
+     in the pickers are not focusable, so a blur handler sees no relatedTarget
+     and reads picking an assignee as leaving the row. */
+  const rowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    function away(e: MouseEvent) {
+      if (!rowRef.current || rowRef.current.contains(e.target as Node)) return;
+      void commit().then(onCancel);
+    }
+    document.addEventListener("mousedown", away);
+    return () => document.removeEventListener("mousedown", away);
+  }, [commit, onCancel]);
+
+  /** Cancel the addition: remove the task this row filed, if it filed one. */
+  async function discard() {
+    const id = draftId;
+    onCancel();
+    if (id != null) await onDiscard(id);
   }
 
   const quick = [["Today", 0], ["Tomorrow", 1], ["Next week", 7], ["In two weeks", 14]] as const;
 
   return (
     <div className={`border-t border-stroke py-1.5 pr-3 ${sub ? "pl-14" : "pl-10"}`}>
-      <div className="flex items-center gap-2 rounded-md bg-surface px-2 py-1 ring-2 ring-brand">
+      {/* Nothing to press and nothing to leave: the task is filed as it is
+          typed. Escape, or the ✕, cancels the addition and removes it. */}
+      <div ref={rowRef}
+           className="flex items-center gap-2 rounded-md bg-surface px-2 py-1 ring-2 ring-brand">
         <StatusPicker value={status} statuses={statuses} onPick={setStatus} />
         <input ref={input} autoFocus value={title}
                onChange={(e) => { setTitle(e.target.value); setError(""); }}
                onKeyDown={(e) => {
-                 if (e.key === "Enter") { e.preventDefault(); void save(); }
-                 if (e.key === "Escape") onCancel();
+                 if (e.key === "Enter") { e.preventDefault(); onCancel(); }
+                 if (e.key === "Escape") void discard();
                }}
                placeholder={sub ? "Subtask Name" : "Task Name"}
                aria-label={sub ? "New subtask name" : "New task name"}
@@ -889,13 +970,25 @@ function QuickAdd({ people, statuses, priorities, sub = false, onSave, onCancel 
           )}
         </Dropdown>
 
-        <button type="button" onClick={onCancel} aria-label="Cancel" title="Cancel (Esc)"
-                className="flex h-7 w-7 items-center justify-center rounded text-ink-3 transition hover:bg-subtle hover:text-ink focus-ring">
-          <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round"><path d="M5 5l10 10M15 5L5 15" /></svg>
+        <span className="flex items-center gap-1 whitespace-nowrap pl-1 text-[11px]">
+          {state === "saving" && <span className="text-ink-3">Saving…</span>}
+          {state === "saved" && (
+            <><Icon name="check" className="h-3 w-3 text-good" />
+              <span className="text-good">Saved</span></>
+          )}
+        </span>
+        {/* Done closes the row; it does not save, because the task is already
+            saved. Worth having all the same: without it the only way out is a
+            ✕ that reads as "throw this away", which is the opposite of what
+            finishing means. */}
+        <button type="button" onClick={onCancel} title="Finished (Enter)"
+                className="flex h-7 items-center rounded-md px-2.5 text-xs font-semibold text-brand transition hover:bg-brand/10 focus-ring">
+          Done
         </button>
-        <button type="button" onClick={() => void save()} disabled={busy || !title.trim()}
-                className="flex h-7 items-center gap-1.5 rounded-md bg-brand px-2.5 text-xs font-semibold text-white transition hover:bg-brand-hover disabled:opacity-50 focus-ring">
-          {busy ? "Saving…" : "Save"} <span aria-hidden className="opacity-80">↵</span>
+        <button type="button" onClick={() => void discard()}
+                aria-label="Cancel the addition" title="Cancel the addition (Esc)"
+                className="flex h-7 w-7 items-center justify-center rounded text-ink-3 transition hover:bg-subtle hover:text-bad focus-ring">
+          <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round"><path d="M5 5l10 10M15 5L5 15" /></svg>
         </button>
       </div>
       {error && <p className="mt-1 pl-2 text-xs text-bad">{error}</p>}
@@ -957,7 +1050,35 @@ function TasksTab({ name, payload, tasks, onChange }: {
       a[0] === "" ? 1 : b[0] === "" ? -1 : a[0].localeCompare(b[0]));
   }, [tasks, filter, q, knownLists]);
 
-  async function create(d: Draft, list: string, parent: number | null) {
+  /* Returns the new task's id, because the row that created it goes on editing
+     it: the first pause in typing files the task, and everything after that
+     updates that same one rather than filing another. */
+  async function patchDraft(id: number, d: Draft): Promise<string | null> {
+    const r = await fetch(`/api/tasks/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: d.title, status: d.status, assignees: d.assignees,
+        priority: d.priority || "medium",
+        end_date: d.due || null,
+      }),
+    });
+    if (!r.ok) {
+      const body = await r.json().catch(() => ({}));
+      return body.detail || "Could not save.";
+    }
+    await onChange();
+    return null;
+  }
+
+  /** Undo an addition: the row filed this task, and now says not to keep it. */
+  async function discardDraft(id: number) {
+    await fetch(`/api/tasks/${id}/delete`, { method: "DELETE" }).catch(() => {});
+    await onChange();
+  }
+
+  async function create(d: Draft, list: string, parent: number | null):
+      Promise<{ id?: number; error?: string }> {
     const r = await fetch("/api/tasks/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -970,10 +1091,11 @@ function TasksTab({ name, payload, tasks, onChange }: {
     });
     if (!r.ok) {
       const body = await r.json().catch(() => ({}));
-      return body.detail || "Could not create the task.";
+      return { error: body.detail || "Could not create the task." };
     }
+    const made = await r.json().catch(() => null);
     await onChange();
-    return null;
+    return { id: made?.id };
   }
 
   async function setStatus(t: TaskRow, status: string) {
@@ -1116,7 +1238,8 @@ function TasksTab({ name, payload, tasks, onChange }: {
                       {adding?.parent === t.id && (
                         <QuickAdd sub people={people} statuses={payload.statuses} priorities={payload.priorities}
                                   onCancel={() => setAdding(null)}
-                                  onSave={(d) => create(d, t.list_name || "", t.id)} />
+                                  onCreate={(d) => create(d, t.list_name || "", t.id)}
+                                  onPatch={patchDraft} onDiscard={discardDraft} />
                       )}
                     </div>
                   );
@@ -1125,7 +1248,8 @@ function TasksTab({ name, payload, tasks, onChange }: {
                 {adding && adding.parent === null && adding.list === list ? (
                   <QuickAdd people={people} statuses={payload.statuses} priorities={payload.priorities}
                             onCancel={() => setAdding(null)}
-                            onSave={(d) => create(d, list, null)} />
+                            onCreate={(d) => create(d, list, null)}
+                            onPatch={patchDraft} onDiscard={discardDraft} />
                 ) : (
                   <button onClick={() => startTask(list)}
                           className="flex w-full items-center gap-2 rounded-b-xl border-t border-stroke py-2 pl-10 pr-3 text-left text-sm text-ink-3 transition hover:bg-subtle/50 hover:text-ink focus-ring">
@@ -1327,6 +1451,70 @@ function SiteFrame({ url, check, thumbnail = false, mobile = false, reload = 0 }
 }
 
 /** A typed address as a full URL: "afma.org.za" -> "https://afma.org.za". */
+/* ── Saving by itself ─────────────────────────────────────────────────────── */
+
+/** Where an auto-saving form stands, for the line that replaces the Save button. */
+type SaveState = "idle" | "saving" | "saved" | "error";
+
+/** The indicator that stands in for a Save button.
+ *
+ * Shows nothing until there is something to report: a standing caption saying
+ * the form saves itself is noise on every form that does. It appears while the
+ * save is in flight, confirms it landed, and disappears again. */
+function AutoSaveNote({ state, error }: { state: SaveState; error?: string }) {
+  if (state === "error") {
+    return <span className="text-xs text-bad">{error || "Could not save."}</span>;
+  }
+  if (state === "saving") {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-ink-3">
+        <Icon name="sync" className="h-3.5 w-3.5 animate-spin" />
+        Saving…
+      </span>
+    );
+  }
+  if (state === "saved") {
+    return (
+      <span className="flex items-center gap-1.5 text-xs text-good">
+        <Icon name="check" className="h-3.5 w-3.5" />
+        Saved
+      </span>
+    );
+  }
+  return null;
+}
+
+/** Run `save` a short while after edits stop, and report how it went.
+ *
+ * Debounced rather than fired on every keystroke: typing a sentence should be
+ * one save, not forty. `ready` guards the first render, so opening a form does
+ * not immediately save what it has only just loaded. */
+function useAutoSave<T>(value: T, ready: boolean, save: (v: T) => Promise<boolean>,
+                        delay = 800) {
+  const [state, setState] = useState<SaveState>("idle");
+  const first = useRef(true);
+  // Held in a ref so a save function rebuilt on every render does not restart
+  // the timer, and written in an effect because refs are not for render.
+  const latest = useRef(save);
+  useEffect(() => { latest.current = save; });
+
+  useEffect(() => {
+    if (!ready) return;
+    // The value as first seen is what was loaded, not an edit.
+    if (first.current) { first.current = false; return; }
+
+    const id = window.setTimeout(async () => {
+      setState("saving");
+      const ok = await latest.current(value);
+      setState(ok ? "saved" : "error");
+      if (ok) window.setTimeout(() => setState((s) => (s === "saved" ? "idle" : s)), 2500);
+    }, delay);
+    return () => window.clearTimeout(id);
+  }, [value, ready, delay]);
+
+  return state;
+}
+
 function asUrl(v: string): string {
   const t = v.trim();
   if (!t) return "";
@@ -1385,12 +1573,12 @@ function WebsiteTab({ p, agreements, sites, saving, error, onSave }: {
   const [reload, setReload] = useState(0);
   const current = available.find(([k]) => k === which) ?? available[0];
 
+  // Saves itself while it is open; closing is a separate act from saving.
+  const formState = useAutoSave(form, form !== null,
+                                async (f) => (f ? onSave(f) : true));
+
   function begin() {
     setForm(Object.fromEntries(WEBSITE_FIELDS.map((f) => [f, p[f]])) as WebsiteForm);
-  }
-
-  async function save() {
-    if (form && await onSave(form)) setForm(null);
   }
 
   return (
@@ -1458,11 +1646,9 @@ function WebsiteTab({ p, agreements, sites, saving, error, onSave }: {
                              onChange={(v) => setForm({ ...form, website_notes: v })} />
                 </div>
               </div>
-              {error && <p className="mt-3 text-xs text-bad">{error}</p>}
-              <div className="mt-4 flex justify-end gap-2">
-                <Button onClick={() => setForm(null)}>Cancel</Button>
-                <Button variant="primary" spinning={saving} disabled={saving}
-                        onClick={() => void save()}>Save website details</Button>
+              <div className="mt-4 flex items-center justify-between gap-3">
+                <AutoSaveNote state={formState} error={error} />
+                <Button onClick={() => setForm(null)}>Done</Button>
               </div>
             </Section>
           ) : (

@@ -318,11 +318,19 @@ export function Pill({ active, children, ...rest }: React.ButtonHTMLAttributes<H
  * short question — is centred instead: it is small enough not to move, and
  * anchoring two lines of text to the ceiling just looks like a mistake.
  */
-export function Modal({ title, onClose, children, footer, wide, compact, xl }: { title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode; wide?: boolean; compact?: boolean; xl?: boolean }) {
+export function Modal({ title, onClose, children, footer, wide, compact, xl, closeOnBackdrop }: { title: string; onClose: () => void; children: React.ReactNode; footer?: React.ReactNode; wide?: boolean; compact?: boolean; xl?: boolean; closeOnBackdrop?: boolean }) {
   return (
     // Marked so a page that polls for background changes can hold off while a
     // dialog is open, rather than refreshing underneath it.
     <div data-modal-open
+         /* Opt-in, not the default: a dialog that saves as you fill it in has
+            nothing to lose by closing, but one asking a question you have not
+            answered yet - "delete this?" - should not take a stray click as an
+            answer. The target check keeps a drag that ends on the backdrop
+            from counting as a click on it. */
+         onMouseDown={closeOnBackdrop
+           ? (e) => { if (e.target === e.currentTarget) onClose(); }
+           : undefined}
          className={`fixed inset-0 z-50 flex justify-center overflow-y-auto bg-black/40 p-4 sm:p-10 ${
       compact ? "items-center" : "items-start"}`}>
       <div className={`w-full rounded-xl bg-surface shadow-2xl ring-panel ${

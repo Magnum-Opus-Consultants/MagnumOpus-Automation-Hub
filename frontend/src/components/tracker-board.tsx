@@ -575,6 +575,119 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
     }
   }
 
+  /* ── The New task dialog, which files the task as you type ───────────────
+   *
+   * Auto-saving something that does not exist yet is different from saving an
+   * edit: there is nothing to write to until the first write creates it. So the
+   * first pause in typing creates the task and remembers its id, and every
+   * change after that updates that same task rather than filing another one.
+   *
+   * Which is why Cancel has to delete. Once the task is real, closing the
+   * dialog cannot un-create it, and "cancel the addition" means removing what
+   * was already added. */
+  const [draftId, setDraftId] = useState<number | null>(null);
+  const [draftState, setDraftState] = useState<"idle" | "saving" | "saved">("idle");
+  const draftSnap = useRef("");
+  // The title as last filed. Picking a status or project is a decision already
+  // made, so it goes almost at once; a title is still being written, so it
+  // waits for the typing to stop. Same split as the readiness sheet.
+  const draftTitle = useRef("");
+
+  const creatingStatus = creating && !creating.parent ? creating.status : null;
+  const creatingProject = creating && !creating.parent ? creating.project : null;
+
+  /* One place that writes, so the timer and "clicking away" cannot disagree
+     about what was filed. Returns once the write is done, which is what lets
+     closing flush first. */
+  const commitDraft = useCallback(async () => {
+    if (creatingStatus === null) return;
+    const title = newTitle.trim();
+    if (!title) return;
+
+    const snapshot = JSON.stringify([title, creatingStatus, creatingProject]);
+    if (draftSnap.current === snapshot) return;
+    // Claimed before awaiting, so a timer firing mid-flight cannot file twice.
+    draftSnap.current = snapshot;
+
+    setDraftState("saving");
+    const projectFor = creatingProject === NO_PROJECT ? "" : (creatingProject ?? "");
+    const body: Record<string, unknown> = {
+      title, status: creatingStatus, project_name: projectFor,
+    };
+    if (!projectFor && workspace) body.workspace = workspace;
+
+    try {
+      if (draftId == null) {
+        body.priority = "medium";
+        const r = await fetch("/api/tasks/create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) { draftSnap.current = ""; setDraftState("idle"); return; }
+        const made = await r.json().catch(() => null);
+        if (made?.id != null) setDraftId(made.id);
+      } else {
+        const r = await fetch(`/api/tasks/${draftId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        if (!r.ok) { draftSnap.current = ""; setDraftState("idle"); return; }
+      }
+      draftTitle.current = title;
+      setDraftState("saved");
+      await load();
+    } catch {
+      draftSnap.current = "";
+      setDraftState("idle");
+    }
+  }, [creatingStatus, creatingProject, newTitle, draftId, workspace, load]);
+
+  useEffect(() => {
+    if (creatingStatus === null) return;
+    const title = newTitle.trim();
+    if (!title) return;
+    if (draftSnap.current === JSON.stringify([title, creatingStatus, creatingProject])) return;
+    const typing = title !== draftTitle.current;
+    const timer = window.setTimeout(() => { void commitDraft(); }, typing ? 900 : 150);
+    return () => window.clearTimeout(timer);
+  }, [newTitle, creatingStatus, creatingProject, commitDraft]);
+
+  /** Close, keeping whatever was filed.
+   *
+   * Writes first: closing inside the typing pause would otherwise cancel the
+   * pending timer and the task would never be filed - the one way this could
+   * silently lose what somebody typed. */
+  /** Clear the dialog's state without writing anything. */
+  function resetDraft() {
+    setCreating(null);
+    setNewTitle("");
+    setDraftId(null);
+    setDraftState("idle");
+    draftSnap.current = "";
+    draftTitle.current = "";
+  }
+
+  async function closeDraft() {
+    await commitDraft();
+    resetDraft();
+  }
+
+  /** Cancel the addition: undo the task this dialog created, if it got that far. */
+  async function cancelDraft() {
+    // Resets rather than closing: closeDraft writes what is outstanding first,
+    // which on a cancel would file the very task being cancelled - and if it
+    // had not been created yet, file one that this function then has no id to
+    // delete, leaving it behind.
+    const id = draftId;
+    resetDraft();
+    if (id != null) {
+      await fetch(`/api/tasks/${id}/delete`, { method: "DELETE" }).catch(() => {});
+      await load();
+    }
+  }
+
   async function quickCreate(status: string, parent: Task | null, title: string,
                              projectName: string, listName = "") {
     const clean = title.trim();
@@ -684,7 +797,7 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
   }, [taskParam, data]);
 
   async function saveEditor() {
-    if (!sel || !form) return;
+    if (!sel || !form) return true;
     if (!form.title.trim()) {
       setError("Title is required.");
       return;
@@ -710,13 +823,60 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
         throw new Error(d.detail || d.errors?.join(" ") || `Save failed (${r.status})`);
       }
       await load();
-      setForm(null);
+      // The editor stays open: it saves as you work, and closing is a separate
+      // act from saving.
+      return true;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Save failed.");
+      return false;
     } finally {
       setSaving(false);
     }
   }
+
+  /* The editor writes itself back a moment after edits stop.
+   *
+   * Two things make this harder than a timer. `sel` is looked up out of the
+   * task list, so a save - which reloads that list - hands back a new object
+   * for the same task; depending on it meant every save triggered another one,
+   * forever. And `form` is rebuilt on edits that change nothing a save would
+   * notice. So the trigger is the form's *contents* against what was last
+   * written, and the task is identified by its id rather than its object. */
+  // The baseline belongs to a task, not to the editor: switching tasks loads
+  // different contents, which against a shared baseline would read as an edit
+  // and save a task the moment it was opened.
+  const baseline = useRef<{ id: number | null; snap: string }>({ id: null, snap: "" });
+  const [editorState, setEditorState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const selId = sel?.id ?? null;
+
+  useEffect(() => {
+    if (!form || selId == null) return;
+    const snapshot = JSON.stringify(form);
+
+    // Opening a task is not an edit: record what was loaded and wait.
+    if (baseline.current.id !== selId) {
+      baseline.current = { id: selId, snap: snapshot };
+      return;
+    }
+    if (baseline.current.snap === snapshot) return;
+
+    const id = window.setTimeout(async () => {
+      setEditorState("saving");
+      const ok = await saveEditor();
+      if (ok) {
+        // Recorded before the reload lands, so the new object identity that
+        // comes back cannot look like another edit.
+        baseline.current = { id: selId, snap: snapshot };
+        setEditorState("saved");
+        window.setTimeout(() => setEditorState((v) => (v === "saved" ? "idle" : v)), 2500);
+      } else {
+        setEditorState("error");
+      }
+    }, 800);
+    return () => window.clearTimeout(id);
+    // saveEditor reads the current form and sel from scope when it runs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, selId]);
 
   /** Ask first. The dialog does the deleting, in `reallyRemove`. */
   function remove(t: Task) {
@@ -965,18 +1125,27 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
         <Modal
           title="New task"
           compact
-          onClose={() => { setCreating(null); setNewTitle(""); }}
+          onClose={() => void closeDraft()}
+          closeOnBackdrop
           footer={
-            <>
-              <Button variant="ghost"
-                      onClick={() => { setCreating(null); setNewTitle(""); }}>Cancel</Button>
-              <Button variant="primary" spinning={saving}
-                      disabled={!newTitle.trim()}
-                      onClick={() => void quickCreate(
-                        creating.status, null, newTitle, creating.project)}>
-                Add task
-              </Button>
-            </>
+            /* Nothing to press: the task is filed as it is typed. Cancel undoes
+               that, Done leaves it. */
+            <div className="flex w-full items-center justify-between gap-3">
+              <span className="flex items-center gap-1.5 text-xs">
+                {draftState === "saving" && (
+                  <><Icon name="sync" className="h-3.5 w-3.5 animate-spin text-ink-3" />
+                    <span className="text-ink-3">Saving…</span></>
+                )}
+                {draftState === "saved" && (
+                  <><Icon name="check" className="h-3.5 w-3.5 text-good" />
+                    <span className="text-good">Saved</span></>
+                )}
+              </span>
+              <span className="flex items-center gap-2">
+                <Button variant="ghost" onClick={() => void cancelDraft()}>Cancel</Button>
+                <Button variant="primary" onClick={() => void closeDraft()}>Done</Button>
+              </span>
+            </div>
           }
         >
           <div className="space-y-4 pb-2">
@@ -988,11 +1157,7 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
                 ref={newRef}
                 value={newTitle}
                 onChange={(e) => setNewTitle(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && newTitle.trim()) {
-                    void quickCreate(creating.status, null, newTitle, creating.project);
-                  }
-                }}
+                onKeyDown={(e) => { if (e.key === "Enter") void closeDraft(); }}
                 placeholder="What needs doing?"
                 className="h-9 w-full rounded-md bg-surface px-2.5 text-sm text-ink
                            ring-control placeholder:text-ink-3 focus-ring"
@@ -1443,11 +1608,9 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
 
             {dayTask.error && <p className="mt-3 text-sm text-bad">{dayTask.error}</p>}
 
-            <div className="mt-5 flex items-center justify-end gap-2">
+            <div className="mt-5 flex items-center justify-between gap-3">
+              <span className="text-xs text-ink-3">{saving ? "Saving…" : ""}</span>
               <Button onClick={() => setDayTask(null)}>Cancel</Button>
-              <Button variant="primary" spinning={saving} onClick={createDayTask} disabled={saving}>
-                Add task
-              </Button>
             </div>
           </div>
           </div>
@@ -1642,9 +1805,17 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
             <footer className="flex items-center gap-2 border-t border-stroke px-4 py-3">
               {error && <span className="mr-auto text-sm text-bad">{error}</span>}
               {!error && <Button icon="trash" variant="danger" onClick={() => remove(sel)}>Delete</Button>}
-              <span className="ml-auto" />
-              <Button onClick={() => { setForm(null); setSelected(null); }}>Cancel</Button>
-              <Button variant="primary" spinning={saving} onClick={saveEditor} disabled={saving}>Save</Button>
+              <span className="ml-auto flex items-center gap-1.5 text-xs">
+                {editorState === "saving" && (
+                  <><Icon name="sync" className="h-3.5 w-3.5 animate-spin text-ink-3" />
+                    <span className="text-ink-3">Saving…</span></>
+                )}
+                {editorState === "saved" && (
+                  <><Icon name="check" className="h-3.5 w-3.5 text-good" />
+                    <span className="text-good">Saved</span></>
+                )}
+              </span>
+              <Button onClick={() => { setForm(null); setSelected(null); }}>Done</Button>
             </footer>
           </aside>
         </>
