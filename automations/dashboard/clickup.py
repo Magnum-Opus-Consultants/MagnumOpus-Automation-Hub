@@ -369,6 +369,13 @@ def push_soon(task):
         return
     task_id = task.pk
 
+    # Nothing to push for a project nobody has linked, and marking it anyway
+    # left it waiting for a push that could never happen: the queue filled with
+    # tasks from unlinked projects and the page read "5 waiting" for ever,
+    # which looks exactly like a sync that has stopped working.
+    if not _list_for(task):
+        return
+
     # Marked dirty *before* the push, not only when one fails. A background
     # thread can die without running its own error handling - the process
     # exits, or gunicorn recycles the worker mid-request - and a task that was
@@ -722,6 +729,11 @@ def retry_dirty(limit=50):
         try:
             if push_task(rec):
                 pushed += 1
+            else:
+                # Nothing to push - the project is not linked. Clearing the flag
+                # drains a queue that would otherwise never empty.
+                ProjectTask.objects.filter(pk=rec.pk).update(
+                    clickup_dirty=False, clickup_error='')
         except ClickUpError as exc:
             failed += 1
             ProjectTask.objects.filter(pk=rec.pk).update(
