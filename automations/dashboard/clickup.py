@@ -23,6 +23,7 @@ import threading
 import time
 
 import requests
+from django.db import close_old_connections, connections
 from django.utils import timezone
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,28 @@ SYNONYMS = {
 
 # ClickUp priorities are 1 urgent .. 4 low.
 PRIORITY_MAP = {'critical': 1, 'high': 2, 'medium': 3, 'low': 4}
+
+
+def in_background(work):
+    """Run `work` on a thread that can actually reach the database.
+
+    Django ties a connection to the thread that opened it and only tidies them
+    up around a request. A background thread therefore starts with whatever it
+    inherited - on the scheduler's long-lived thread that is a connection the
+    server closed hours ago, which is why every pull failed with "connection
+    already closed" and the inbound sync never ran on the server at all.
+
+    close_old_connections() discards anything unusable so Django opens a fresh
+    one; closing at the end stops a short-lived thread leaving a connection
+    behind on every push.
+    """
+    def run():
+        close_old_connections()
+        try:
+            work()
+        finally:
+            connections.close_all()
+    return run
 
 
 class ClickUpError(RuntimeError):
@@ -371,7 +394,7 @@ def push_soon(task):
                 clickup_error='Unexpected error pushing to ClickUp.')
             logger.exception('ClickUp push crashed for task %s', task_id)
 
-    threading.Thread(target=run, daemon=True).start()
+    threading.Thread(target=in_background(run), daemon=True).start()
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -514,6 +537,16 @@ def reverse_status(name, statuses):
 REVERSE_PRIORITY = {1: 'critical', 2: 'high', 3: 'medium', 4: 'low'}
 
 
+def _date_from_ms(value):
+    """ClickUp sends dates as epoch milliseconds, as a string, or not at all."""
+    if value in (None, '', 0, '0'):
+        return None
+    try:
+        return timezone.datetime.fromtimestamp(int(value) / 1000).date()
+    except (TypeError, ValueError, OSError, OverflowError):
+        return None
+
+
 def pull_list(meta):
     """Create tracker tasks for anything in this project's ClickUp list we do
     not already have. Returns how many were added."""
@@ -546,6 +579,10 @@ def pull_list(meta):
                 priority=REVERSE_PRIORITY.get(
                     int((row.get('priority') or {}).get('id', 3) or 3), 'medium'),
                 project_name=meta.name,
+                # Dates were going out but never coming back, so anything given
+                # a due date in ClickUp arrived here with none.
+                start_date=_date_from_ms(row.get('start_date')),
+                end_date=_date_from_ms(row.get('due_date')),
                 clickup_task_id=row['id'],
                 clickup_synced_at=timezone.now(),
                 clickup_dirty=False,
@@ -626,7 +663,7 @@ def pull_soon():
     """
     if not configured():
         return
-    threading.Thread(target=lambda: pull_all(), daemon=True).start()
+    threading.Thread(target=in_background(pull_all), daemon=True).start()
 
 
 def push_project_soon(project_name):
@@ -657,7 +694,7 @@ def push_project_soon(project_name):
             except Exception:
                 logger.exception('ClickUp push crashed for task %s', pk)
 
-    threading.Thread(target=run, daemon=True).start()
+    threading.Thread(target=in_background(run), daemon=True).start()
 
 
 def mark_dirty(task):

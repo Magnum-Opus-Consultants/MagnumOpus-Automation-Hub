@@ -1995,6 +1995,8 @@ def run_sync_digest_job():
 
 def run_clickup_retry_job():
     """Push tracker tasks whose ClickUp mirror is behind."""
+    from django.db import close_old_connections
+    close_old_connections()          # same reason as the pull job above
     try:
         from . import clickup
         if not clickup.configured():
@@ -2007,7 +2009,15 @@ def run_clickup_retry_job():
 
 
 def run_clickup_pull_job():
-    """Bring across tasks somebody raised in ClickUp rather than in the tracker."""
+    """Bring across tasks somebody raised in ClickUp rather than in the tracker.
+
+    close_old_connections first: this runs on the scheduler's long-lived thread,
+    whose database connection the server eventually closes. Django only tidies
+    those up around a request, so without this every run died on a connection
+    closed hours earlier - which is why the inbound sync never once ran here.
+    """
+    from django.db import close_old_connections
+    close_old_connections()
     try:
         from . import clickup
         if not clickup.configured():
