@@ -18,7 +18,8 @@ profile the views are read in, so the list matches that screen.
 
 The booking party is not on the load list but on its dispatch consignments,
 and the totals come from DispatchLoadListPropertiesViews - the same figures
-the grid shows.
+the grid shows. The AWA view also counts the booking party of the receive
+consignments the packages came in on.
 """
 import datetime as dt
 import re
@@ -41,15 +42,18 @@ VIEW_BOOKING_WORD = re.compile(r'\bSCM\b', re.IGNORECASE)
 SELECT = 'WDL_PK,WDL_JobID,WDL_ReferenceNumber,WDL_CTOCutOffTime,WDL_RL_NKLastDischargePort'
 EXPAND = ("ReferenceNumbers($filter=CE_EntryType eq 'MAB';$select=CE_EntryNum),"
           "WhsItemDispatchLoadListDTUPivots($expand=TransitDispatchTransportationUnit("
-          "$select=WDH_VehicleReference,WDH_UnitType)),"
-          "WhsItemPackageStates($select=WPS_Status)")
+          "$select=WDH_VehicleReference,WDH_UnitType))")
+# Package states are read on their own, not expanded on the load list: an
+# expanded collection stops at 50 rows, so a load list of 63 packages counted
+# only 50 of them in the warehouse.
+STATE_SELECT = ('WPS_WDL_LoadList,WPS_Status,WPS_WDC_TransitDispatchConsignment,'
+                'WPS_WRC_TransitReceiveConsignment')
 # Package states the grid counts as in the warehouse: arrived and still here.
 # BKD is booked but not arrived; DEP and FLO have their own columns.
 NOT_IN_WAREHOUSE = {'BKD', 'DEP', 'FLO'}
 UNIT_TYPE_NAMES = {'VEH': 'Vehicle', 'ULD': 'ULD'}
-DCN_EXPAND = ("Addresses($filter=E2_AddressType eq 'BKD';$select=E2_AddressType;"
-              "$expand=Address($select=OA_Code;$expand=OrgHeader($select=OH_FullName))),"
-              "WhsItemPackageStates($select=WPS_WDL_LoadList)")
+BKD_EXPAND = ("Addresses($filter=E2_AddressType eq 'BKD';$select=E2_AddressType;"
+              "$expand=Address($select=OA_Code;$expand=OrgHeader($select=OH_FullName)))")
 
 
 class Command(BaseCommand):
@@ -96,20 +100,42 @@ class Command(BaseCommand):
                                {'$filter': filt, '$select': SELECT, '$expand': EXPAND,
                                 '$orderby': 'WDL_JobID'})
                 dcns = cw.page('WhsItemDispatchConsignments',
-                               {'$filter': dcn_filt, '$select': 'WDC_ConsignmentID',
-                                '$expand': DCN_EXPAND})
-                props = {}
+                               {'$filter': dcn_filt, '$select': 'WDC_PK',
+                                '$expand': BKD_EXPAND})
+                props, states = {}, {}
                 pks = [r['WDL_PK'] for r in rows]
                 for i in range(0, len(pks), PROPS_BATCH):
-                    f = ' or '.join(f'WDL_PK eq {pk}' for pk in pks[i:i + PROPS_BATCH])
+                    batch = pks[i:i + PROPS_BATCH]
+                    f = ' or '.join(f'WDL_PK eq {pk}' for pk in batch)
                     for p in cw.get('DispatchLoadListPropertiesViews', {'$filter': f}).get('value', []):
                         props[p['WDL_PK']] = p
+                    f = ' or '.join(f'WPS_WDL_LoadList eq {pk}' for pk in batch)
+                    for s in cw.page('WhsItemPackageStates', {'$filter': f, '$select': STATE_SELECT}):
+                        states.setdefault(s.get('WPS_WDL_LoadList'), []).append(s)
+                # The AWA view also takes a booking party from the receive side:
+                # cargo booked in by Intelligent SCM can leave on a consignment
+                # booked by someone else (DLL00031940: CEVA out, SCM in). Only
+                # load lists with a discharge port can be in that view.
+                rcn_pks = sorted({s.get('WPS_WRC_TransitReceiveConsignment')
+                                  for r in rows if r.get('WDL_RL_NKLastDischargePort')
+                                  for s in states.get(r['WDL_PK'], [])} - {None})
+                rcns = []
+                for i in range(0, len(rcn_pks), PROPS_BATCH):
+                    f = ' or '.join(f'WRC_PK eq {pk}' for pk in rcn_pks[i:i + PROPS_BATCH])
+                    rcns += cw.page('WhsItemReceiveConsignments',
+                                    {'$filter': f, '$select': 'WRC_PK', '$expand': BKD_EXPAND})
             except CargoWiseError as e:
                 raise CommandError(f'{code}: {e}')
-            parties = booking_parties(dcns)
+            dcn_names = {c['WDC_PK']: party_names(c) for c in dcns}
+            rcn_names = {c['WRC_PK']: party_names(c) for c in rcns}
             for r in rows:
-                built.append(build(code, r, props.get(r['WDL_PK'], {}),
-                                   parties.get(r['WDL_PK'], set()), today, tz, now))
+                own = states.get(r['WDL_PK'], [])
+                parties = set().union(*(dcn_names.get(s.get('WPS_WDC_TransitDispatchConsignment'), set())
+                                        for s in own))
+                received = set().union(*(rcn_names.get(s.get('WPS_WRC_TransitReceiveConsignment'), set())
+                                         for s in own))
+                built.append(build(code, r, props.get(r['WDL_PK'], {}), own,
+                                   parties, received, today, tz, now))
             self.stdout.write(f'  {code}: {len(rows)} load list(s)')
 
         today_ext = [b for b in built if b.cutoff_today and b.in_external_view]
@@ -133,24 +159,19 @@ class Command(BaseCommand):
             .update(cutoff_today=False)
 
 
-def booking_parties(dcns):
-    """Load list PK -> booking parties of the consignments its packages left on."""
-    out = {}
-    for c in dcns:
-        names = {((a.get('Address') or {}).get('OrgHeader') or {}).get('OH_FullName') or ''
-                 for a in c.get('Addresses', [])} - {''}
-        for pk in {p.get('WPS_WDL_LoadList') for p in c.get('WhsItemPackageStates', [])}:
-            if pk:
-                out.setdefault(pk, set()).update(names)
-    return out
+def party_names(consignment):
+    """Booking party names on a dispatch or receive consignment."""
+    return {((a.get('Address') or {}).get('OrgHeader') or {}).get('OH_FullName') or ''
+            for a in consignment.get('Addresses', [])} - {''}
 
 
-def build(code, r, props, parties, today, tz, now):
+def build(code, r, props, package_states, parties, received, today, tz, now):
     units = [p.get('TransitDispatchTransportationUnit') or {}
              for p in r.get('WhsItemDispatchLoadListDTUPivots', [])]
     port = r.get('WDL_RL_NKLastDischargePort') or ''
     scm = any(VIEW_BOOKING_WORD.search(p) for p in parties)
-    states = [(p.get('WPS_Status') or '').upper() for p in r.get('WhsItemPackageStates', [])]
+    scm_received = any(VIEW_BOOKING_WORD.search(p) for p in received)
+    states = [(p.get('WPS_Status') or '').upper() for p in package_states]
     kinds = sorted({UNIT_TYPE_NAMES.get(u.get('WDH_UnitType') or '', u.get('WDH_UnitType') or '')
                     for u in units} - {''})
     cutoff = _parse(r.get('WDL_CTOCutOffTime'))
@@ -163,7 +184,7 @@ def build(code, r, props, parties, today, tz, now):
         booking_party=', '.join(sorted(parties))[:400],
         last_discharge_port=port[:10],
         in_external_view=not port and not scm,
-        in_awa_view=bool(port) and scm,
+        in_awa_view=bool(port) and (scm or scm_received),
         unit_types=', '.join(u.get('WDH_UnitType') or '' for u in units)[:100],
         vehicles=', '.join(u.get('WDH_VehicleReference') or '' for u in units)[:400],
         total_weight=_dec(props.get('TotalWeight')),

@@ -2938,7 +2938,8 @@ class DispatchLoadList(models.Model):
     last_discharge_port = models.CharField(max_length=10, blank=True, default='')
     # DOR EXTERNAL: no discharge port, no booking party with the word SCM.
     in_external_view = models.BooleanField(default=False, db_index=True)
-    # DOR AWA: a discharge port, and a booking party with the word SCM.
+    # DOR AWA: a discharge port, and a booking party with the word SCM on its
+    # dispatch or receive consignments.
     in_awa_view = models.BooleanField(default=False, db_index=True)
     unit_types = models.CharField(max_length=100, blank=True, default='')
     vehicles = models.CharField(max_length=400, blank=True, default='')
