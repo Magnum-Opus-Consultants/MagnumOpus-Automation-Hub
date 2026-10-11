@@ -5,15 +5,91 @@ on:
     branches: [master, main]
   workflow_dispatch:
 
+env:
+  APP_DIR: /var/www/Magnum Opus Consultants/Automation-Platform
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+      - uses: actions/checkout@v4
+
+      # The frontend is built here, not on the server. That box has 2 GB of RAM
+      # and normally sits well into swap, so a Next build on it risks the
+      # out-of-memory killer taking gunicorn or postgres with it. Only the
+      # build output crosses the wire.
+      - uses: actions/setup-node@v4
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script: |
-            cd "/var/www/Magnum Opus Consultants/Automation-Platform" && git stash && git pull && git stash pop || true && systemctl restart moc-gunicorn
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build the frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      - name: Open an SSH connection
+        env:
+          KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          HOST: ${{ secrets.SERVER_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy
+          chmod 600 ~/.ssh/deploy
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      # .next is replaced wholesale: a half-updated build directory serves
+      # chunks from two different builds, which the browser reports as missing
+      # files rather than as a failed deploy.
+      - name: Ship the build
+        env:
+          HOST: ${{ secrets.SERVER_HOST }}
+          USER_NAME: ${{ secrets.SERVER_USER }}
+        run: |
+          rsync -az --delete -e "ssh -i ~/.ssh/deploy -o StrictHostKeyChecking=no" \
+            frontend/.next/ "$USER_NAME@$HOST:$APP_DIR/frontend/.next/"
+          rsync -az -e "ssh -i ~/.ssh/deploy -o StrictHostKeyChecking=no" \
+            frontend/package.json frontend/package-lock.json \
+            "$USER_NAME@$HOST:$APP_DIR/frontend/"
+
+      - name: Update the server and restart it
+        env:
+          HOST: ${{ secrets.SERVER_HOST }}
+          USER_NAME: ${{ secrets.SERVER_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy -o StrictHostKeyChecking=no "$USER_NAME@$HOST" bash -s <<'REMOTE'
+          set -euo pipefail
+          cd "/var/www/Magnum Opus Consultants/Automation-Platform"
+
+          # The server writes its own sync-state JSON next to the code, so the
+          # tree is never clean. Those files are stashed over the pull and put
+          # back afterwards rather than being lost to a hard reset.
+          git stash push --include-untracked --message "deploy $(date -Is)" || true
+          git pull --ff-only
+          git stash pop || true
+
+          ./venv/bin/pip install -q -r automations/requirements.txt
+          cd automations
+          ../venv/bin/python manage.py migrate --noinput
+          ../venv/bin/python manage.py collectstatic --noinput >/dev/null
+
+          # Only reinstall node modules when the lock file actually moved -
+          # npm ci wipes node_modules, and on this box that is minutes.
+          cd ../frontend
+          if ! cmp -s package-lock.json .deployed-lock 2>/dev/null; then
+            npm ci --omit=dev
+            cp package-lock.json .deployed-lock
+          fi
+
+          # automation-platform is the Django app, sentinel-console relays the
+          # Proxmox serial consoles, sentinel-frontend serves the UI.
+          systemctl restart automation-platform sentinel-console sentinel-frontend
+          sleep 3
+          for unit in automation-platform sentinel-console sentinel-frontend; do
+            state=$(systemctl is-active "$unit")
+            echo "$unit: $state"
+            [ "$state" = active ] || exit 1
+          done
+          REMOTE
