@@ -1739,6 +1739,13 @@ function GitHubTab({ name, repos, onChange }: {
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState<number | null>(null);
   const enc = encodeURIComponent(name);
+  // Making one on GitHub, and destroying one there. Kept apart from "Remove",
+  // which only unassigns - the two read alike and one of them is forever.
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
+  const [newPrivate, setNewPrivate] = useState(true);
+  const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState<Repo | null>(null);
 
   async function remove(r: Repo) {
     setBusy(r.id);
@@ -1750,17 +1757,70 @@ function GitHubTab({ name, repos, onChange }: {
     }
   }
 
+  async function create() {
+    setBusy(-1);
+    setError("");
+    try {
+      const r = await fetch(`/api/projects/${enc}/repos`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ create: true, name: newName.trim() || name, private: newPrivate }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setError(d.detail || "GitHub refused to create it.");
+        return;
+      }
+      setCreating(false);
+      setNewName("");
+      await onChange();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  /* Deletes it on GitHub and stops tracking it here. The endpoint insists on
+     confirm:true, so an accidental call cannot destroy anyone's code. */
+  async function destroy(r: Repo) {
+    setBusy(r.id);
+    setError("");
+    try {
+      const res = await fetch(`/api/repos/${r.id}/github-delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: true }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok) setError(d.detail || "GitHub refused to delete it.");
+      setDeleting(null);
+      await onChange();
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div className="space-y-4">
+      {error && (
+        <p className="rounded-lg bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p>
+      )}
       {repos.length === 0 ? (
         <EmptyState icon="git" title="No repository assigned"
-                    hint="Assign the code for this project - a repository already in Sentinel, one from GitHub, or any link."
-                    action={<Button variant="primary" icon="plus" onClick={() => setPicking(true)}>
-                      Assign repository</Button>} />
+                    hint="Assign the code for this project - a repository already in Sentinel, one from GitHub, or any link - or make a new one."
+                    action={<>
+                      <Button variant="primary" icon="plus" onClick={() => setCreating(true)}>
+                        New repository</Button>
+                      <Button icon="plus" onClick={() => setPicking(true)}>
+                        Assign repository</Button>
+                    </>} />
       ) : (
         <Section title={`Repositories (${repos.length})`}
-                 right={<Button variant="primary" icon="plus" onClick={() => setPicking(true)}>
-                   Assign repository</Button>}>
+                 right={<>
+                   <Button variant="primary" icon="plus" onClick={() => setCreating(true)}>
+                     New repository</Button>
+                   <Button icon="plus" onClick={() => setPicking(true)}>
+                     Assign repository</Button>
+                 </>}>
           <ul className="-my-2 divide-y divide-stroke">
             {repos.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center gap-3 py-3">
@@ -1790,6 +1850,13 @@ function GitHubTab({ name, repos, onChange }: {
                           onClick={() => void remove(r)} title="Take it off this project">
                     Remove
                   </Button>
+                  {r.remote_url?.includes("github.com/") && (
+                    <Button variant="ghost" disabled={busy === r.id}
+                            onClick={() => setDeleting(r)}
+                            title="Delete it on GitHub - this cannot be undone">
+                      <Icon name="trash" className="h-4 w-4 text-danger" />
+                    </Button>
+                  )}
                 </div>
               </li>
             ))}
@@ -1800,6 +1867,48 @@ function GitHubTab({ name, repos, onChange }: {
       {picking && (
         <RepoPicker name={name} onClose={() => setPicking(false)}
                     onAssigned={async () => { setPicking(false); await onChange(); }} />
+      )}
+
+      {creating && (
+        <Modal title="New repository" compact onClose={() => setCreating(false)}
+               footer={<>
+                 <Button onClick={() => setCreating(false)}>Cancel</Button>
+                 <Button variant="primary" spinning={busy === -1} disabled={busy === -1}
+                         onClick={() => void create()}>Create</Button>
+               </>}>
+          <p className="mb-3 text-xs text-ink-3">
+            Made on the connected GitHub account and assigned to {name} straight away.
+            It gets a README so it has a branch from the start.
+          </p>
+          <TextInput label="Name" value={newName} onChange={setNewName} placeholder={name} />
+          <p className="mt-1 text-xs text-ink-3">
+            Left blank it uses the project name. Spaces and punctuation become hyphens,
+            and a clash gets a number on the end.
+          </p>
+          <label className="mt-3 flex cursor-pointer select-none items-center gap-2 text-sm text-ink">
+            <input type="checkbox" checked={newPrivate}
+                   onChange={(e) => setNewPrivate(e.target.checked)}
+                   className="h-4 w-4 rounded border-stroke accent-[var(--color-brand)]" />
+            Private
+          </label>
+        </Modal>
+      )}
+
+      {deleting && (
+        <ConfirmDialog
+          title={`Delete ${deleting.name} on GitHub?`}
+          confirmLabel="Delete on GitHub"
+          busy={busy === deleting.id}
+          onClose={() => setDeleting(null)}
+          onConfirm={() => void destroy(deleting)}
+          body={<>
+            This deletes the repository <strong className="text-ink">{deleting.name}</strong> on
+            GitHub and stops tracking it here. The code, its issues and its history go with it,
+            and GitHub cannot undo it.
+            <br /><br />
+            To take it off this project but keep it on GitHub, use <strong className="text-ink">Remove</strong> instead.
+          </>}
+        />
       )}
     </div>
   );
@@ -2662,6 +2771,243 @@ function DocCard({ e }: { e: DocEntry }) {
   );
 }
 
+/* ── A project's own files ────────────────────────────────────────────────── */
+
+type DocFolderRow = { id: number; name: string; folders: number; files: number };
+type DocFileRow = {
+  id: number; name: string; size: number; uploaded_by: string; uploaded_at: string;
+};
+type DocContents = {
+  system: { id: number; name: string };
+  path: { id: number; name: string }[];
+  folders: DocFolderRow[];
+  documents: DocFileRow[];
+};
+
+function fileSize(n: number) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1048576).toFixed(1)} MB`;
+}
+
+/**
+ * Documents kept by hand on the project, as against the ones written from its
+ * commits. The same folders and files the Documentation module holds - a
+ * project is a system inside it - so anything filed here is in one place only.
+ */
+function ProjectFiles({ name }: { name: string }) {
+  const enc = encodeURIComponent(name);
+  const [systemId, setSystemId] = useState<number | null>(null);
+  const [folderId, setFolderId] = useState<number | null>(null);
+  const [contents, setContents] = useState<DocContents | null>(null);
+  const [error, setError] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [naming, setNaming] = useState(false);
+  const [folderName, setFolderName] = useState("");
+  const [removing, setRemoving] =
+    useState<{ kind: "folder" | "file"; id: number; label: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [over, setOver] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Asking for the library is what makes it, so this runs on open.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetch(`/api/projects/${enc}/docs/library`)
+      .then((r) => (r.ok ? r.json() : Promise.reject()))
+      .then((d) => setSystemId(d.system.id))
+      .catch(() => setError("Could not open this project's files."));
+  }, [enc]);
+
+  const load = useCallback(async () => {
+    if (systemId == null) return;
+    const r = await fetch(
+      `/api/docs/contents?system=${systemId}${folderId ? `&folder=${folderId}` : ""}`);
+    setContents(r.ok ? await r.json() : null);
+  }, [systemId, folderId]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void load();
+  }, [load]);
+
+  async function addFolder() {
+    const n = folderName.trim();
+    if (!n || systemId == null) return;
+    setBusy(true);
+    try {
+      await fetch("/api/docs/folders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ system: systemId, parent: folderId, name: n }),
+      });
+      setNaming(false);
+      setFolderName("");
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function upload(files: FileList | null) {
+    if (!files?.length || systemId == null) return;
+    setUploading(true);
+    setError("");
+    try {
+      for (const file of Array.from(files)) {
+        const fd = new FormData();
+        fd.append("system", String(systemId));
+        if (folderId) fd.append("folder", String(folderId));
+        fd.append("file", file);
+        const r = await fetch("/api/docs/documents", { method: "POST", body: fd });
+        if (!r.ok) {
+          const d = await r.json().catch(() => ({}));
+          setError(d.detail || `${file.name} was not uploaded.`);
+        }
+      }
+      await load();
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  /* Deleting a folder takes everything inside it, which is why it asks. */
+  async function remove() {
+    if (!removing) return;
+    setBusy(true);
+    try {
+      const path = removing.kind === "folder"
+        ? `/api/docs/folders/${removing.id}` : `/api/docs/documents/${removing.id}`;
+      await fetch(path, { method: "DELETE" });
+      setRemoving(null);
+      await load();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const empty = contents && contents.folders.length === 0 && contents.documents.length === 0;
+
+  return (
+    <Section
+      title="Files"
+      right={<>
+        <Button icon="plus" onClick={() => { setNaming(true); setFolderName(""); }}
+                disabled={systemId == null}>New folder</Button>
+        <Button variant="primary" icon="upload" spinning={uploading}
+                disabled={systemId == null || uploading}
+                onClick={() => fileInput.current?.click()}>
+          {uploading ? "Uploading…" : "Upload"}
+        </Button>
+      </>}
+    >
+      <input ref={fileInput} type="file" multiple hidden
+             onChange={(e) => { void upload(e.target.files); e.target.value = ""; }} />
+
+      {/* Breadcrumb: the project root, then each folder down to this one. */}
+      <div className="mb-3 flex flex-wrap items-center gap-1 text-sm">
+        <button onClick={() => setFolderId(null)}
+                className={`font-medium ${folderId == null ? "text-ink" : "text-ink-3 hover:text-ink"}`}>
+          {name}
+        </button>
+        {(contents?.path ?? []).map((p) => (
+          <span key={p.id} className="flex items-center gap-1">
+            <span className="text-ink-3">/</span>
+            <button onClick={() => setFolderId(p.id)}
+                    className={`font-medium ${folderId === p.id ? "text-ink" : "text-ink-3 hover:text-ink"}`}>
+              {p.name}
+            </button>
+          </span>
+        ))}
+      </div>
+
+      {error && <p className="mb-3 rounded-lg bg-bad-bg px-3 py-2 text-xs text-bad">{error}</p>}
+
+      <div
+        onDragOver={(e) => { e.preventDefault(); setOver(true); }}
+        onDragLeave={() => setOver(false)}
+        onDrop={(e) => { e.preventDefault(); setOver(false); void upload(e.dataTransfer.files); }}
+        className={`rounded-xl transition ${over ? "ring-2 ring-brand" : ""}`}
+      >
+        {!contents ? (
+          <p className="py-6 text-center text-sm text-ink-3">Loading…</p>
+        ) : empty ? (
+          <p className="py-8 text-center text-sm text-ink-3">
+            Nothing here yet. Drop files in, or use Upload.
+          </p>
+        ) : (
+          <ul className="-my-2 divide-y divide-stroke">
+            {contents.folders.map((f) => (
+              <li key={`f${f.id}`} className="flex items-center gap-3 py-2.5">
+                <button onClick={() => setFolderId(f.id)}
+                        className="flex min-w-0 flex-1 items-center gap-3 text-left">
+                  <Icon name="folder" className="h-4 w-4 shrink-0 text-ink-3" />
+                  <span className="truncate text-sm font-medium text-ink">{f.name}</span>
+                  <span className="shrink-0 text-xs text-ink-3">
+                    {f.folders + f.files === 0
+                      ? "empty"
+                      : [f.folders && `${f.folders} folders`, f.files && `${f.files} files`]
+                          .filter(Boolean).join(" · ")}
+                  </span>
+                </button>
+                <Button variant="ghost"
+                        onClick={() => setRemoving({ kind: "folder", id: f.id, label: f.name })}
+                        title="Delete this folder and everything in it">
+                  <Icon name="trash" className="h-4 w-4 text-danger" />
+                </Button>
+              </li>
+            ))}
+            {contents.documents.map((d) => (
+              <li key={`d${d.id}`} className="flex items-center gap-3 py-2.5">
+                <Icon name="file" className="h-4 w-4 shrink-0 text-ink-3" />
+                <span className="min-w-0 flex-1 truncate text-sm text-ink">{d.name}</span>
+                <span className="shrink-0 text-xs text-ink-3">
+                  {fileSize(d.size)}{d.uploaded_by && ` · ${d.uploaded_by}`} · {d.uploaded_at}
+                </span>
+                <a href={`/api/docs/documents/${d.id}/download`}
+                   className="inline-flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-ink-2 hover:bg-subtle hover:text-ink">
+                  <Icon name="download" className="h-4 w-4" />
+                </a>
+                <Button variant="ghost"
+                        onClick={() => setRemoving({ kind: "file", id: d.id, label: d.name })}
+                        title="Delete this file">
+                  <Icon name="trash" className="h-4 w-4 text-danger" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {naming && (
+        <Modal title="New folder" compact onClose={() => setNaming(false)}
+               footer={<>
+                 <Button onClick={() => setNaming(false)}>Cancel</Button>
+                 <Button variant="primary" spinning={busy} disabled={busy || !folderName.trim()}
+                         onClick={() => void addFolder()}>Create</Button>
+               </>}>
+          <TextInput label="Name" value={folderName} onChange={setFolderName}
+                     placeholder="e.g. Contracts" />
+        </Modal>
+      )}
+
+      {removing && (
+        <ConfirmDialog
+          title={removing.kind === "folder" ? `Delete ${removing.label}?` : `Delete ${removing.label}?`}
+          busy={busy}
+          onClose={() => setRemoving(null)}
+          onConfirm={() => void remove()}
+          body={removing.kind === "folder"
+            ? <>Everything inside <strong className="text-ink">{removing.label}</strong>, including
+               its sub-folders and their files, goes with it. This cannot be undone.</>
+            : <>The file <strong className="text-ink">{removing.label}</strong> is deleted for
+               everyone. This cannot be undone.</>}
+        />
+      )}
+    </Section>
+  );
+}
+
 function DocsTab({ name }: { name: string }) {
   const enc = encodeURIComponent(name);
   const [data, setData] = useState<DocsPayload | null>(null);
@@ -2696,10 +3042,26 @@ function DocsTab({ name }: { name: string }) {
     setData((d) => d && { ...d, checking: true });
   }
 
-  if (!data) return <Section><p className="text-sm text-ink-2">Loading…</p></Section>;
+  /* The project's own files sit above the commit write-ups and do not depend
+     on there being a repository, so they show in every state below. */
+  const files = <ProjectFiles name={name} />;
+
+  if (!data) {
+    return (
+      <div className="space-y-4">
+        {files}
+        <Section><p className="text-sm text-ink-2">Loading…</p></Section>
+      </div>
+    );
+  }
   if (data.repos.length === 0) {
-    return <EmptyState icon="docs" title="No repository on this project"
-                       hint="Assign one under GitHub, and every commit pushed to it is written up here as documentation." />;
+    return (
+      <div className="space-y-4">
+        {files}
+        <EmptyState icon="docs" title="No repository on this project"
+                    hint="Assign one under GitHub, and every commit pushed to it is written up here as documentation." />
+      </div>
+    );
   }
 
   // Grouped by month, newest first - the order the entries arrive in.
@@ -2713,6 +3075,7 @@ function DocsTab({ name }: { name: string }) {
 
   return (
     <div className="space-y-4">
+      {files}
       <div className="flex flex-wrap items-center gap-2">
         <p className="min-w-0 flex-1 text-sm text-ink-2">
           Written from the commits on {data.repos.map((r) => r.name).join(", ")}.

@@ -4,7 +4,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 
 from . import commit_docs, github_api as gh
-from .models import CommitDoc, ProjectMeta
+from .models import CommitDoc, DocCompany, DocSystem, ProjectMeta
 from .views import _require_module
 
 KIND_LABEL = {key: heading for key, heading in commit_docs.repo_docs.KINDS.items()}
@@ -59,3 +59,33 @@ def api_project_docs_sync(request, name):
     if not commit_docs.is_running(name):
         commit_docs.sync_project_in_background(name)
     return JsonResponse({'checking': True}, status=202)
+
+
+@require_http_methods(["GET"])
+def api_project_library(request, name):
+    """The project's own document library: its DocSystem, made on first ask.
+
+    The documents module is Company > System > Folders > Files, and a project
+    is a System inside its client's Company. Looked up by name before it is
+    made, and never moved afterwards: changing a project's client would
+    otherwise file it under a second company and leave its documents behind in
+    the first one.
+    """
+    err = _require_module(request, 'tasks')
+    if err:
+        return err
+    project = ProjectMeta.objects.filter(name=name).first()
+    if project is None:
+        return JsonResponse({'detail': 'Project not found.'}, status=404)
+
+    system = DocSystem.objects.filter(name=project.name).select_related('company').first()
+    if system is None:
+        company, _ = DocCompany.objects.get_or_create(
+            name=(project.client or '').strip() or 'Magnum Opus')
+        system = DocSystem.objects.create(
+            company=company, name=project.name,
+            description=f'Documents for the {project.name} project.')
+    return JsonResponse({
+        'system': {'id': system.id, 'name': system.name},
+        'company': {'id': system.company_id, 'name': system.company.name},
+    })

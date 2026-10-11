@@ -27,9 +27,13 @@ import { Workload } from "@/components/workload";
 import { AssigneePicker } from "@/components/assignee";
 
 const VIEWS = ["Board", "Calendar", "Gantt", "Workload"] as const;
-type View = (typeof VIEWS)[number];
+/* The standalone page opens on a list of projects rather than every task in
+   every project at once. A project's own page is already scoped to one, so it
+   never offers that view - hence two lists rather than one. */
+const PAGE_VIEWS = ["Projects", ...VIEWS] as const;
+type View = (typeof PAGE_VIEWS)[number];
 export const TRACKER_VIEWS = VIEWS;
-export type TrackerView = View;
+export type TrackerView = (typeof VIEWS)[number];
 export const TRACKER_VIEW_ICON: Record<string, string> = {
   Board: "board", Calendar: "calendar", Gantt: "gantt", Workload: "users",
 };
@@ -40,7 +44,7 @@ export const TRACKER_VIEW_ICON: Record<string, string> = {
  * picked by the host's tabs. `onChange` hears about every save after the
  * first load, so the host can keep its own figures current.
  */
-export type EmbeddedScope = { project: string; view: View; onChange?: () => void };
+export type EmbeddedScope = { project: string; view: TrackerView; onChange?: () => void };
 
 function Frame({ embedded, me, children }: {
   embedded: boolean; me: Me | null; children: React.ReactNode;
@@ -50,7 +54,7 @@ function Frame({ embedded, me, children }: {
     : <AppShell active="Projects" me={me} wide>{children}</AppShell>;
 }
 const VIEW_ICON: Record<View, string> = {
-  Board: "board", Calendar: "calendar", Gantt: "gantt", Workload: "users",
+  Projects: "folder", Board: "board", Calendar: "calendar", Gantt: "gantt", Workload: "users",
 };
 const GROUPINGS = ["Bucket", "Priority", "Project"] as const;
 type Grouping = (typeof GROUPINGS)[number];
@@ -150,7 +154,11 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
   // Starts true so the first paint shows the loading state without the mount
   // effect having to set it synchronously.
   const [loading, setLoading] = useState(true);
-  const [ownView, setView] = useState<View>("Board");
+  /* Standalone with nothing chosen, the page answers "which projects are
+     there?" before "what is every task in all of them?". Arriving with a
+     project already named skips straight past it. */
+  const [ownView, setView] = useState<View>(
+    embedded || initialProject ? "Board" : "Projects");
   // Embedded, the host's tabs choose the view; standalone, the page does.
   const view = embedded?.view ?? ownView;
   const [grouping, setGrouping] = useState<Grouping>("Bucket");
@@ -341,6 +349,37 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
   const scoped = useMemo(() => all.filter(inScope), [all, inScope]);
 
   const visible = useMemo(() => all.filter(matches), [all, matches]);
+
+  /* One row per project for the Projects view. Counted from `scoped` rather
+     than `visible`: the filter box narrows a board, but a project list that
+     dropped projects as you typed would read as projects disappearing. A
+     project with no tasks still gets a row - that is the state you most need
+     to see from here. */
+  const projectRows = useMemo(() => {
+    const names = new Set<string>(wsProjects ?? data?.projects ?? []);
+    for (const t of scoped) {
+      if (t.project_name) names.add(t.project_name);
+    }
+    if (scoped.some((t) => !t.project_name)) names.add(NO_PROJECT);
+    const today = startOfDay(new Date());
+    return Array.from(names)
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => {
+        const own = scoped.filter((t) => (t.project_name || NO_PROJECT) === name);
+        const open = own.filter((t) => t.status !== "done");
+        return {
+          name,
+          total: own.length,
+          open: open.length,
+          done: own.length - open.length,
+          critical: open.filter((t) => t.priority === "critical").length,
+          overdue: open.filter((t) => {
+            const d = parseISO(t.end_date);
+            return d != null && startOfDay(d) < today;
+          }).length,
+        };
+      });
+  }, [wsProjects, data, scoped]);
 
   /** Board columns show top-level tasks only - a bucket of flattened subtasks
    *  was unreadable at this volume. Subtask state lives on the card. */
@@ -1071,7 +1110,7 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
       <div className="mb-3 flex flex-wrap items-center gap-2">
         {!embedded && (
         <div className="flex rounded-lg bg-subtle p-0.5">
-          {VIEWS.map((v) => (
+          {PAGE_VIEWS.map((v) => (
             <button
               key={v}
               onClick={() => setView(v)}
@@ -1096,6 +1135,10 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
           </label>
         )}
 
+        {/* Task-level filters. The Projects view lists projects, not tasks, so
+            none of them would mean anything there. */}
+        {view !== "Projects" && (
+        <>
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -1116,6 +1159,8 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
                  className="h-4 w-4 rounded border-stroke accent-[var(--color-brand)]" />
           Hide done
         </label>
+        </>
+        )}
       </div>
 
       {/* Top-level creator. A dialog rather than a strip in the toolbar: the
@@ -1193,6 +1238,44 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
 
       {loading ? (
         <div className="rounded-xl bg-surface p-6 text-sm text-ink-2 ring-panel">Loading work items…</div>
+            ) : view === "Projects" ? (
+        /* ─────────── Projects ─────────── */
+        /* What this page opens on: which projects exist and how each is
+           doing. Picking one puts the board behind it, filtered to it. */
+        projectRows.length === 0 ? (
+          <EmptyState icon="folder" title="No projects yet"
+                      hint="Start one and its tasks, documents and server all hang off it."
+                      action={<Button icon="plus" variant="primary"
+                                      onClick={() => setStartingProject(true)}>New project</Button>} />
+        ) : (
+          <ul className="divide-y divide-stroke overflow-hidden rounded-xl bg-surface ring-panel">
+            {projectRows.map((p) => (
+              <li key={p.name}>
+                <button
+                  onClick={() => { setProject(p.name); setView("Board"); }}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-subtle/60 focus-ring"
+                >
+                  <Icon name="folder" className="h-4 w-4 shrink-0 text-ink-3" />
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">{p.name}</span>
+                  {p.overdue > 0 && (
+                    <span className="shrink-0 rounded-md bg-danger/10 px-1.5 py-0.5 text-xs font-semibold text-danger">
+                      {p.overdue} overdue
+                    </span>
+                  )}
+                  {p.critical > 0 && (
+                    <span className="shrink-0 rounded-md bg-warnx/10 px-1.5 py-0.5 text-xs font-semibold text-warnx">
+                      {p.critical} critical
+                    </span>
+                  )}
+                  <span className="shrink-0 text-xs text-ink-3">
+                    {p.total === 0 ? "no tasks yet" : `${p.open} open · ${p.done} done`}
+                  </span>
+                  <Icon name="chevron" className="h-4 w-4 shrink-0 text-ink-3" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )
             ) : view === "Board" ? (
         /* ─────────── Board ─────────── */
         <div className="flex gap-3 overflow-x-auto pb-2">

@@ -124,6 +124,7 @@ urlpatterns = [
     path('api/tasks/<int:pk>/time/<int:entry_id>/delete', time_tracking.api_task_time_delete, name='api_task_time_delete'),
     path('api/projects/<str:name>/docs', project_docs_api.api_project_docs, name='api_project_docs'),
     path('api/projects/<str:name>/docs/sync', project_docs_api.api_project_docs_sync, name='api_project_docs_sync'),
+    path('api/projects/<str:name>/docs/library', project_docs_api.api_project_library, name='api_project_library'),
     path('api/projects/<str:name>/credentials', project_credentials.api_project_credentials, name='api_project_credentials'),
     path('api/projects/<str:name>/credentials/<int:pk>', project_credentials.api_project_credential_update, name='api_project_credential_update'),
     path('api/projects/<str:name>/credentials/<int:pk>/delete', project_credentials.api_project_credential_delete, name='api_project_credential_delete'),

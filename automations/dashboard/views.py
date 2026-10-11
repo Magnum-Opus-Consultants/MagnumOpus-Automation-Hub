@@ -4952,6 +4952,26 @@ def api_server_delete(request, pk):
     return JsonResponse({'ok': True})
 
 
+def _ssh_bin():
+    """The ssh binary: Git's on a Windows dev box, the system one on a server."""
+    win = r'C:\Program Files\Git\usr\bin\ssh.exe'
+    return win if os.path.exists(win) else 'ssh'
+
+
+def _ssh_key_path(key_name):
+    """Where the private key for `key_name` lives.
+
+    On a dev box that is ~/.ssh. Under systemd HOME is often unset or points at
+    the service account rather than a person, so expanduser('~') silently
+    resolves somewhere with no keys in it and every scan fails as "not
+    reachable". SERVER_SSH_KEY_DIR names the directory outright for that case.
+    """
+    base = (os.getenv('SERVER_SSH_KEY_DIR') or '').strip()
+    if not base:
+        base = os.path.join(os.path.expanduser('~'), '.ssh')
+    return os.path.join(base, key_name)
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def api_server_scan(request, pk):
@@ -4966,10 +4986,10 @@ def api_server_scan(request, pk):
         return JsonResponse({'ok': False, 'detail': 'No SSH access configured — add SSH user, IP and key first.'}, status=200)
 
     import subprocess
-    ssh_bin = r'C:\Program Files\Git\usr\bin\ssh.exe'
-    if not os.path.exists(ssh_bin):
-        ssh_bin = 'ssh'
-    keypath = os.path.join(os.path.expanduser('~'), '.ssh', rec.ssh_key)
+    ssh_bin = _ssh_bin()
+    keypath = _ssh_key_path(rec.ssh_key)
+    if not os.path.exists(keypath):
+        return JsonResponse({'ok': False, 'detail': f'SSH key not found at {keypath}.'}, status=200)
     remote = (
         'echo @@OS; ( . /etc/os-release 2>/dev/null; echo "$PRETTY_NAME" ); '
         'echo @@CORES; nproc; '
@@ -5080,10 +5100,10 @@ def api_server_metrics(request):
         return JsonResponse({'available': False, 'detail': 'No SSH access configured for live metrics.'})
 
     import subprocess
-    ssh_bin = r'C:\Program Files\Git\usr\bin\ssh.exe'
-    if not os.path.exists(ssh_bin):
-        ssh_bin = 'ssh'
-    key = os.path.join(os.path.expanduser('~'), '.ssh', rec.ssh_key)
+    ssh_bin = _ssh_bin()
+    key = _ssh_key_path(rec.ssh_key)
+    if not os.path.exists(key):
+        return JsonResponse({'available': False, 'detail': f'SSH key not found at {key}.'})
     remote = 'nproc; head -1 /proc/loadavg; free -m | sed -n "2p"; df -m / | tail -1; uptime -p'
     try:
         p = subprocess.run(

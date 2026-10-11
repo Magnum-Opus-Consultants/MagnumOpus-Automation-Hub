@@ -1411,9 +1411,9 @@ This cannot be undone.`)) return;
 
 /** Text-only nav row — no icons; active state is a brand label on a subtle fill. */
 /**
- * Start a project: its name and, optionally, its client - then straight into
- * it. Shared by the rail and the Projects page. An empty `workspace` files it
- * under the default one.
+ * Start a project: its name and its client - then straight into it. Shared by
+ * the rail and the Projects page. An empty `workspace` files it under the
+ * default one.
  */
 export function NewProjectDialog({ workspace, onClose, onCreated }: {
   workspace: string; onClose: () => void; onCreated?: () => void;
@@ -1450,6 +1450,11 @@ export function NewProjectDialog({ workspace, onClose, onCreated }: {
       setError("Give the project a name.");
       return;
     }
+    const c = client.trim();
+    if (!c) {
+      setError("Say which client the project is for.");
+      return;
+    }
     setBusy(true);
     try {
       const r = await fetch("/api/tasks/projects/create", {
@@ -1462,13 +1467,11 @@ export function NewProjectDialog({ workspace, onClose, onCreated }: {
         setError(d.detail || "Could not create the project.");
         return;
       }
-      if (client.trim()) {
-        await fetch(`/api/projects/${encodeURIComponent(n)}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ client: client.trim() }),
-        });
-      }
+      await fetch(`/api/projects/${encodeURIComponent(n)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ client: c }),
+      });
       onCreated?.();
       if (withServer || withRepo) {
         // The project exists either way; anything that fails is said plainly.
@@ -1593,13 +1596,13 @@ export function NewProjectDialog({ workspace, onClose, onCreated }: {
           className="h-9 w-full rounded bg-canvas px-2.5 text-[13px] text-ink ring-control placeholder:text-ink-3 focus-ring"
         />
         <label className="mb-1 mt-3 block text-xs font-medium text-ink-2" htmlFor="proj-client">
-          Client <span className="font-normal text-ink-3">(optional)</span>
+          Client
         </label>
         <input
           id="proj-client"
           value={client}
           disabled={busy}
-          onChange={(e) => setClient(e.target.value)}
+          onChange={(e) => { setClient(e.target.value); setError(""); }}
           onKeyDown={keys}
           placeholder="e.g. NAB"
           className="h-9 w-full rounded bg-canvas px-2.5 text-[13px] text-ink ring-control placeholder:text-ink-3 focus-ring"
