@@ -16,12 +16,12 @@ import {
   type MenuItem,
 } from "@/components/ui";
 import {
-  BUCKETS, statusesIn, STATE_DOT, statusTone, PRIORITY_STRIP, PRIORITY_TEXT, PRIORITY_ORDER,
+  BUCKETS, statusesIn, STATE_DOT, COLUMN_DOT, statusTone, PRIORITY_STRIP, PRIORITY_TEXT, PRIORITY_ORDER,
   NO_PROJECT, NO_LIST, MONTHS, DOW,
   parseISO, toISO, addDays, startOfDay, dayDiff, monthMatrix, periodLabel,
   labelOf, fmtHours, rollUp, sumTotals,
   DueChip, TimeChip, ProgressBar,
-  type Task, type Choice, type Payload, type Totals,
+  type Task, type Choice, type Payload, type Totals, type Column,
 } from "@/components/tracker";
 import { Workload } from "@/components/workload";
 import { AssigneePicker } from "@/components/assignee";
@@ -391,31 +391,47 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
       a.title.localeCompare(b.title);
 
     if (grouping === "Bucket") {
-      return BUCKETS
-        .map((key) => {
+      /* The columns come from the server so they can be added, renamed and
+         reordered without a deploy. An older server sends none, in which case
+         the built-in six stand in rather than the board drawing nothing. */
+      const defs = (data?.columns ?? []).length
+        ? data!.columns!
+        : BUCKETS.map((key, i) => ({
+            id: -1 - i, key, label: labelOf(statuses, key), order: i,
+            colour: "slate", is_done: key === "done", builtin: true,
+            statuses: [...statusesIn(key)],
+            hide_when_empty: key === "backlog" || key === "on_hold",
+          }));
+      return defs
+        .map((c) => {
           // A column holds its own status plus the ones that qualify it, so a
           // task can never fall between the columns and disappear.
-          const held = statusesIn(key);
+          const held = c.statuses?.length ? c.statuses : [c.key];
           return {
-            key, label: labelOf(statuses, key), dot: STATE_DOT[key],
-            droppable: key as string | null,
+            key: c.key, label: c.label,
+            dot: COLUMN_DOT[c.colour] ?? STATE_DOT[c.key] ?? "bg-ink-3",
+            droppable: c.key as string | null,
+            column: c as Column | null,
             items: cards.filter((t) => held.includes(t.status)).sort(sort),
           };
         })
         // Backlog and On Hold are states a board need not always show; empty,
         // they are noise. The rest anchor the workflow and always stand.
-        .filter((c) => !["backlog", "on_hold"].includes(c.key) || c.items.length > 0);
+        .filter((c) => !c.column?.hide_when_empty || c.items.length > 0);
     }
     if (grouping === "Priority") {
       return ["critical", "high", "medium", "low"].map((key) => ({
         key, label: labelOf(priorities, key), dot: PRIORITY_STRIP[key],
         droppable: null as string | null,
+        // Only grouping by bucket has a column behind it to edit.
+        column: null as Column | null,
         items: cards.filter((t) => t.priority === key).sort(sort),
       }));
     }
     const names = Array.from(new Set(cards.map((t) => t.project_name || NO_PROJECT))).sort();
     return names.map((key) => ({
       key, label: key, dot: "bg-brand", droppable: null as string | null,
+      column: null as Column | null,
       items: cards.filter((t) => (t.project_name || NO_PROJECT) === key).sort(sort),
     }));
   }, [visible, grouping, statuses, priorities]);
@@ -738,6 +754,85 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
   async function removeDraftSubtask(id: number) {
     await fetch(`/api/tasks/${id}/delete`, { method: "DELETE" }).catch(() => {});
     await load();
+  }
+
+  /* ── The board's own columns ─────────────────────────────────────────────
+     One dialog adds and edits: `colEdit` null with `colOpen` set means a new
+     one. Deleting asks where the work goes first - the server refuses to drop
+     a column with tasks in it, and says how many are in the way. */
+  const [colOpen, setColOpen] = useState(false);
+  const [colEdit, setColEdit] = useState<Column | null>(null);
+  const [colLabel, setColLabel] = useState("");
+  const [colColour, setColColour] = useState("slate");
+  const [colBusy, setColBusy] = useState(false);
+  const [colError, setColError] = useState("");
+  const [colMoveTo, setColMoveTo] = useState<string | null>(null);
+
+  function openColumn(c: Column | null) {
+    setColEdit(c);
+    setColLabel(c?.label ?? "");
+    setColColour(c?.colour ?? "slate");
+    setColError("");
+    setColMoveTo(null);
+    setColOpen(true);
+  }
+  function closeColumn() {
+    setColOpen(false);
+    setColEdit(null);
+    setColError("");
+    setColMoveTo(null);
+  }
+
+  async function saveColumn() {
+    const label = colLabel.trim();
+    if (!label) return setColError("Give the column a name.");
+    setColBusy(true);
+    setColError("");
+    try {
+      const body = JSON.stringify({ label, colour: colColour });
+      const r = colEdit
+        ? await fetch(`/api/tasks/columns/${colEdit.id}`,
+                      { method: "PATCH", headers: { "Content-Type": "application/json" }, body })
+        : await fetch("/api/tasks/columns",
+                      { method: "POST", headers: { "Content-Type": "application/json" }, body });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        setColError(d.detail || "Could not save the column.");
+        return;
+      }
+      closeColumn();
+      await load();
+    } finally {
+      setColBusy(false);
+    }
+  }
+
+  async function deleteColumn(moveTo?: string) {
+    if (!colEdit) return;
+    setColBusy(true);
+    setColError("");
+    try {
+      const r = await fetch(`/api/tasks/columns/${colEdit.id}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(moveTo ? { move_to: moveTo } : {}),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        // Tasks are in the way: the server says how many, and the dialog turns
+        // into a question about where they should go.
+        if (typeof d.tasks === "number" && d.tasks > 0) {
+          const first = (data?.columns ?? []).find((c) => c.id !== colEdit.id);
+          setColMoveTo(first?.key ?? null);
+        }
+        setColError(d.detail || "Could not delete the column.");
+        return;
+      }
+      closeColumn();
+      await load();
+    } finally {
+      setColBusy(false);
+    }
   }
 
   async function closeDraft() {
@@ -1418,9 +1513,20 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
                   isOver ? "ring-2 ring-brand" : "ring-stroke/60"
                 }`}
               >
-                <header className="flex items-center gap-2 px-3 py-2.5">
+                <header className="group flex items-center gap-2 px-3 py-2.5">
                   <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${col.dot}`} />
                   <h3 className="truncate text-sm font-semibold text-ink">{col.label}</h3>
+                  {/* Only on a real column: the stand-in six have no row to
+                      edit until the server has sent its own. */}
+                  {col.column && col.column.id > 0 && (
+                    <button
+                      onClick={() => openColumn(col.column!)}
+                      title={`Edit the ${col.label} column`}
+                      className="shrink-0 rounded p-0.5 text-ink-3 opacity-0 transition hover:text-ink focus-ring group-hover:opacity-100"
+                    >
+                      <Icon name="edit" className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   <span className="ml-auto rounded-md bg-surface px-1.5 py-0.5 text-xs font-semibold text-ink-2">
                     {col.items.length}
                   </span>
@@ -1443,6 +1549,17 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
               </section>
             );
           })}
+          {/* Columns are the board's own, not this project's: they are the
+              same everywhere, so adding one here adds it to every board. */}
+          {grouping === "Bucket" && (data?.columns ?? []).length > 0 && (
+            <button
+              onClick={() => openColumn(null)}
+              className="flex w-56 shrink-0 items-start gap-2 rounded-xl border border-dashed border-stroke px-3 py-2.5 text-sm font-medium text-ink-3 transition hover:border-brand hover:text-brand focus-ring"
+            >
+              <Icon name="plus" className="mt-0.5 h-4 w-4 shrink-0" />
+              Add column
+            </button>
+          )}
         </div>
       ) : view === "Workload" ? (
         /* ─────────── Workload ─────────── */
@@ -2042,6 +2159,98 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
       {menu && (
         <ContextMenu x={menu.x} y={menu.y} items={menuFor(menu.task)}
                      onClose={() => setMenu(null)} />
+      )}
+
+      {colOpen && (
+        <Modal
+          title={colEdit ? `Edit the ${colEdit.label} column` : "Add a column"}
+          compact
+          onClose={closeColumn}
+          footer={
+            <div className="flex w-full items-center justify-between gap-3">
+              {colEdit && !colEdit.builtin ? (
+                <Button variant="danger" icon="trash" disabled={colBusy}
+                        onClick={() => void deleteColumn(colMoveTo ?? undefined)}>
+                  Delete
+                </Button>
+              ) : <span />}
+              <span className="flex items-center gap-2">
+                <Button variant="ghost" onClick={closeColumn}>Cancel</Button>
+                <Button variant="primary" spinning={colBusy} disabled={colBusy}
+                        onClick={() => void saveColumn()}>
+                  {colEdit ? "Save" : "Add column"}
+                </Button>
+              </span>
+            </div>
+          }
+        >
+          <div className="space-y-4 pb-1">
+            <div>
+              <label htmlFor="col-label" className="mb-1 block text-xs font-medium text-ink-2">
+                Name
+              </label>
+              <input
+                id="col-label"
+                autoFocus
+                value={colLabel}
+                onChange={(e) => { setColLabel(e.target.value); setColError(""); }}
+                onKeyDown={(e) => { if (e.key === "Enter") void saveColumn(); }}
+                placeholder="e.g. Blocked"
+                className="h-9 w-full rounded-md bg-surface px-2.5 text-sm text-ink ring-control placeholder:text-ink-3 focus-ring"
+              />
+            </div>
+
+            <div>
+              <span className="mb-1 block text-xs font-medium text-ink-2">Colour</span>
+              <div className="flex flex-wrap gap-1.5">
+                {Object.entries(COLUMN_DOT).map(([name, dot]) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => setColColour(name)}
+                    title={name}
+                    aria-pressed={colColour === name}
+                    className={`flex h-7 w-7 items-center justify-center rounded-full ring-1 transition ${
+                      colColour === name ? "ring-2 ring-brand" : "ring-stroke hover:ring-ink-3"}`}
+                  >
+                    <span className={`h-3.5 w-3.5 rounded-full ${dot}`} />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* The server refuses to drop a column with work in it and says how
+                many tasks are in the way; this is where they are sent. */}
+            {colMoveTo !== null && (
+              <div>
+                <label htmlFor="col-move" className="mb-1 block text-xs font-medium text-ink-2">
+                  Move those tasks to
+                </label>
+                <select id="col-move" value={colMoveTo}
+                        onChange={(e) => setColMoveTo(e.target.value)}
+                        className="h-9 w-full rounded-md bg-surface px-2 text-sm text-ink ring-control focus-ring">
+                  {(data?.columns ?? [])
+                    .filter((c) => c.id !== colEdit?.id)
+                    .map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+                </select>
+                <p className="mt-1 text-xs text-ink-3">
+                  Press Delete again to move them and remove the column.
+                </p>
+              </div>
+            )}
+
+            {colEdit?.builtin && (
+              <p className="text-xs text-ink-3">
+                This is one of the built-in columns. It can be renamed and
+                recoloured, but reporting, the Gantt and the ClickUp mirror are
+                written against it, so it cannot be removed.
+              </p>
+            )}
+            {colError && (
+              <p className="rounded-lg bg-bad-bg px-3 py-2 text-xs text-bad">{colError}</p>
+            )}
+          </div>
+        </Modal>
       )}
 
       {confirming && (

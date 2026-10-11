@@ -49,7 +49,11 @@ class ProjectTask(models.Model):
 
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='backlog')
+    # No `choices`: the board's columns are rows in BoardColumn now, so a task
+    # can sit in one somebody added. STATUS_CHOICES stays as the built-in set -
+    # every one of its keys is still a real column, and the rest of the app
+    # (reporting, the Gantt, the ClickUp mirror) is written against them.
+    status = models.CharField(max_length=40, default='backlog')
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium')
     project_name = models.CharField(max_length=100, blank=True, default='')
     # Which workspace a task belongs to when it belongs to no project.
@@ -1319,6 +1323,54 @@ class ProjectCredential(models.Model):
 
     def __str__(self):
         return f'{self.label} ({self.project_name})'
+
+
+class BoardColumn(models.Model):
+    """A column on the task board.
+
+    The board used to be six constants in the frontend. They are rows now, so
+    columns can be added, renamed and reordered without a deploy.
+
+    `key` is also the value stored in ProjectTask.status, which is why the six
+    built-in keys can be renamed but not removed: reporting, the Gantt, the
+    workload view and the ClickUp mirror are all written against those exact
+    strings, and dropping one would quietly change what they count. A column
+    somebody added here owns its key outright and can go whenever they like,
+    once its tasks have somewhere else to be.
+    """
+    COLOURS = [
+        ('slate', 'Slate'), ('blue', 'Blue'), ('amber', 'Amber'),
+        ('green', 'Green'), ('red', 'Red'), ('violet', 'Violet'),
+    ]
+
+    key = models.SlugField(max_length=40, unique=True)
+    label = models.CharField(max_length=60)
+    order = models.IntegerField(default=0)
+    colour = models.CharField(max_length=10, choices=COLOURS, default='slate')
+    # Work in this column is finished. Asked instead of comparing against the
+    # string "done", so a column somebody adds for their own closing stage
+    # counts the same way the built-in one does.
+    is_done = models.BooleanField(default=False)
+    # Set on the six the rest of the app depends on. They can be renamed,
+    # recoloured and reordered; they cannot be deleted.
+    builtin = models.BooleanField(default=False)
+    # Statuses this column holds besides its own key. The built-ins carry the
+    # qualifying statuses that have no column of their own, so a task set to
+    # "In Progress (Guidance Required)" still lands somewhere.
+    extra_statuses = models.JSONField(default=list, blank=True)
+    # Backlog and On Hold are states a board need not always show.
+    hide_when_empty = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = 'board_column'
+        ordering = ['order', 'id']
+
+    def __str__(self):
+        return self.label
+
+    def statuses(self):
+        """Every status this column shows, its own key first."""
+        return [self.key, *[s for s in (self.extra_statuses or []) if s != self.key]]
 
 
 class ProjectList(models.Model):

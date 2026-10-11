@@ -157,6 +157,9 @@ urlpatterns = [
     path('api/handbook/server-access/<int:pk>/reveal', hb.api_server_secret, name='api_server_secret'),
 
     path('api/tasks', platform_api.api_planner_tasks, name='api_tasks'),
+    path('api/tasks/columns', platform_api.api_board_columns, name='api_board_columns'),
+    path('api/tasks/columns/reorder', platform_api.api_board_columns_reorder, name='api_board_columns_reorder'),
+    path('api/tasks/columns/<int:pk>', platform_api.api_board_column_detail, name='api_board_column_detail'),
     path('api/tasks/projects', platform_api.api_task_projects, name='api_task_projects'),
     path('api/tasks/projects/create', platform_api.api_project_create, name='api_project_create'),
     path('api/tasks/projects/update', platform_api.api_project_update, name='api_project_update'),

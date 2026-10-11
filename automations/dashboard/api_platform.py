@@ -17,8 +17,10 @@ from django.views.decorators.http import require_http_methods
 
 from django.contrib.auth.models import User
 
-from .models import (Domain, Repository, ProjectTask, ProjectMeta, ProjectList,
-                     Workspace, ServerRecord)
+from django.utils.text import slugify
+
+from .models import (BoardColumn, Domain, Repository, ProjectTask, ProjectMeta,
+                     ProjectList, Workspace, ServerRecord)
 from .views import _require_module
 import logging
 
@@ -667,7 +669,11 @@ def api_planner_tasks(request):
                     'username': u.username}
                    for u in User.objects.filter(is_active=True)
                    .order_by('first_name', 'username')],
-        'statuses': list(ProjectTask.STATUS_CHOICES),
+        # The board's columns travel with the tasks: it cannot draw a column
+        # for a status it has not been told about, and a second request for
+        # them would let the two arrive out of step.
+        'columns': [_column_dict(c) for c in BoardColumn.objects.all()],
+        'statuses': _status_choices(),
         'priorities': list(ProjectTask.PRIORITY_CHOICES),
         'companies': list(ProjectTask.COMPANY_CHOICES),
         'total': len(rows),
@@ -1193,3 +1199,145 @@ def api_list_delete(request):
     n, _ = qs.delete()
     in_use = ProjectTask.objects.filter(project_name=project, list_name=name).count() if project else 0
     return JsonResponse({'ok': True, 'removed_declaration': n, 'tasks_still_in_list': in_use})
+
+
+# ── Board columns ──────────────────────────────────────────────────────────
+#
+# The board's columns, which used to be constants in the frontend. Anything
+# here that touches ProjectTask.status has to leave the six built-in keys
+# alone: see BoardColumn's docstring for why.
+
+def _column_dict(c):
+    return {
+        'id': c.id, 'key': c.key, 'label': c.label, 'order': c.order,
+        'colour': c.colour, 'is_done': c.is_done, 'builtin': c.builtin,
+        'statuses': c.statuses(), 'hide_when_empty': c.hide_when_empty,
+    }
+
+
+def _status_choices():
+    """Every status a task can be set to, with the label people now see.
+
+    A column's label wins over the built-in one, so renaming a column renames
+    it everywhere the status is shown - the task editor's dropdown included -
+    rather than only on the board.
+    """
+    cols = list(BoardColumn.objects.all())
+    out = [(c.key, c.label) for c in cols]
+    seen = {c.key for c in cols}
+    for key, label in ProjectTask.STATUS_CHOICES:
+        if key not in seen:
+            out.append((key, label))
+            seen.add(key)
+    return out
+
+
+def _unique_key(label):
+    """A key from the label, never colliding with one already in use."""
+    base = slugify(label)[:36] or 'column'
+    key, n = base, 2
+    while BoardColumn.objects.filter(key=key).exists():
+        key = f'{base}-{n}'
+        n += 1
+    return key
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def api_board_columns(request):
+    """The board's columns (GET), or add one (POST)."""
+    err = _require_module(request, 'tasks')
+    if err:
+        return err
+
+    if request.method == 'GET':
+        return JsonResponse({'columns': [_column_dict(c) for c in BoardColumn.objects.all()]})
+
+    data = _body(request)
+    label = str(data.get('label') or '').strip()
+    if not label:
+        return JsonResponse({'detail': 'Give the column a name.'}, status=400)
+    if BoardColumn.objects.filter(label__iexact=label).exists():
+        return JsonResponse({'detail': f'There is already a "{label}" column.'}, status=400)
+    last = BoardColumn.objects.order_by('-order').first()
+    col = BoardColumn.objects.create(
+        key=_unique_key(label), label=label,
+        order=(last.order + 1) if last else 0,
+        colour=str(data.get('colour') or 'slate'),
+        is_done=bool(data.get('is_done')),
+        builtin=False,
+    )
+    return JsonResponse(_column_dict(col), status=201)
+
+
+@csrf_exempt
+@require_http_methods(["PATCH", "POST", "DELETE"])
+def api_board_column_detail(request, pk):
+    """Rename, recolour or remove one column.
+
+    Removing takes `move_to`, the key of the column its tasks go to: a column
+    cannot simply be dropped while work is sitting in it, and choosing where
+    that work lands is not a decision this endpoint should make on its own.
+    """
+    err = _require_module(request, 'tasks')
+    if err:
+        return err
+    col = BoardColumn.objects.filter(id=pk).first()
+    if col is None:
+        return JsonResponse({'detail': 'No such column.'}, status=404)
+
+    if request.method == 'DELETE':
+        if col.builtin:
+            return JsonResponse(
+                {'detail': f'"{col.label}" is one of the built-in columns. It can be '
+                           'renamed and moved, but reporting, the Gantt and the ClickUp '
+                           'mirror are written against it, so it cannot be removed.'},
+                status=400)
+        held = ProjectTask.objects.filter(status__in=col.statuses())
+        if held.exists():
+            move_to = str(_body(request).get('move_to') or '').strip()
+            target = BoardColumn.objects.filter(key=move_to).exclude(id=col.id).first()
+            if target is None:
+                return JsonResponse(
+                    {'detail': 'Say which column these tasks move to.',
+                     'tasks': held.count()}, status=400)
+            held.update(status=target.key)
+        col.delete()
+        return JsonResponse({'ok': True})
+
+    data = _body(request)
+    if 'label' in data:
+        label = str(data.get('label') or '').strip()
+        if not label:
+            return JsonResponse({'detail': 'Give the column a name.'}, status=400)
+        if BoardColumn.objects.filter(label__iexact=label).exclude(id=col.id).exists():
+            return JsonResponse({'detail': f'There is already a "{label}" column.'}, status=400)
+        col.label = label
+    if 'colour' in data:
+        col.colour = str(data.get('colour') or 'slate')
+    if 'is_done' in data:
+        col.is_done = bool(data.get('is_done'))
+    if 'hide_when_empty' in data:
+        col.hide_when_empty = bool(data.get('hide_when_empty'))
+    col.save()
+    return JsonResponse(_column_dict(col))
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def api_board_columns_reorder(request):
+    """Put the columns in the order given, as a list of ids."""
+    err = _require_module(request, 'tasks')
+    if err:
+        return err
+    ids = _body(request).get('order') or []
+    by_id = {c.id: c for c in BoardColumn.objects.all()}
+    changed = []
+    for i, cid in enumerate(ids):
+        col = by_id.get(cid)
+        if col is not None and col.order != i:
+            col.order = i
+            changed.append(col)
+    if changed:
+        BoardColumn.objects.bulk_update(changed, ['order'])
+    return JsonResponse({'columns': [_column_dict(c) for c in BoardColumn.objects.all()]})

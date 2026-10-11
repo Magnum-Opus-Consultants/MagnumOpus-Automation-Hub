@@ -25,10 +25,30 @@ export type Task = {
   created_at: string | null; updated_at: string | null;
 };
 export type Choice = [string, string];
+/** A column on the board, as the server holds it. */
+export type Column = {
+  id: number; key: string; label: string; order: number;
+  colour: string; is_done: boolean;
+  /** Built-in columns can be renamed and moved, but not deleted. */
+  builtin: boolean;
+  /** Every status this column shows, its own key first. */
+  statuses: string[];
+  hide_when_empty: boolean;
+};
+
+/** The dot beside a column's name, by the colour chosen for it. */
+export const COLUMN_DOT: Record<string, string> = {
+  slate: "bg-ink-3", blue: "bg-brand", amber: "bg-warnx",
+  green: "bg-good", red: "bg-bad", violet: "bg-infox",
+};
+
 export type Payload = {
   tasks: Task[]; counts: Record<string, number>; projects: string[];
   lists: Record<string, string[]>;
   statuses: Choice[]; priorities: Choice[]; companies: Choice[]; total: number;
+  /** The board's columns. Absent from an older server, which the board reads
+   *  as "use the built-in six" rather than drawing no columns at all. */
+  columns?: Column[];
   /** Everyone a task can be assigned to. */
   people?: { id: number; name: string; username?: string }[];
 };
