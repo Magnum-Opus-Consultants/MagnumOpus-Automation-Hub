@@ -48,7 +48,10 @@ jobs:
           HOST: ${{ secrets.SERVER_HOST }}
           USER_NAME: ${{ secrets.SERVER_USER }}
         run: |
-          rsync -az --delete -e "ssh -i ~/.ssh/deploy -o StrictHostKeyChecking=no" \
+          # cache/ is the build's own scratch space - hundreds of megabytes the
+          # server has no use for, and it is rebuilt locally next time anyway.
+          rsync -az --delete --exclude 'cache/' \
+            -e "ssh -i ~/.ssh/deploy -o StrictHostKeyChecking=no" \
             frontend/.next/ "$USER_NAME@$HOST:$APP_DIR/frontend/.next/"
           rsync -az -e "ssh -i ~/.ssh/deploy -o StrictHostKeyChecking=no" \
             frontend/package.json frontend/package-lock.json \
