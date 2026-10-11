@@ -626,6 +626,10 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
    * was already added. */
   const [draftId, setDraftId] = useState<number | null>(null);
   const [draftState, setDraftState] = useState<"idle" | "saving" | "saved">("idle");
+  // The subtask being typed in the New task dialog. The ones already added are
+  // read back off the draft rather than held here, so the list and the board
+  // cannot drift apart.
+  const [subTitle, setSubTitle] = useState("");
   const draftSnap = useRef("");
   // The title as last filed. Picking a status or project is a decision already
   // made, so it goes almost at once; a title is still being written, so it
@@ -704,8 +708,36 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
     setNewTitle("");
     setDraftId(null);
     setDraftState("idle");
+    setSubTitle("");
     draftSnap.current = "";
     draftTitle.current = "";
+  }
+
+  /** Add a subtask under the task this dialog has already filed. */
+  async function addDraftSubtask() {
+    const clean = subTitle.trim();
+    if (!clean || draftId == null) return;
+    const parent = byId.get(draftId);
+    const projectFor = parent?.project_name
+      ?? (creating?.project === NO_PROJECT ? "" : (creating?.project ?? ""));
+    const body: Record<string, unknown> = {
+      title: clean, status: "todo", priority: "medium", parent: draftId,
+      project_name: projectFor,
+      list_name: parent?.list_name ?? "",
+    };
+    if (!projectFor && workspace) body.workspace = workspace;
+    setSubTitle("");
+    await fetch("/api/tasks/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).catch(() => {});
+    await load();
+  }
+
+  async function removeDraftSubtask(id: number) {
+    await fetch(`/api/tasks/${id}/delete`, { method: "DELETE" }).catch(() => {});
+    await load();
   }
 
   async function closeDraft() {
@@ -720,8 +752,15 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
     // had not been created yet, file one that this function then has no id to
     // delete, leaving it behind.
     const id = draftId;
+    // Its subtasks go too. Deleting a task elsewhere detaches them, which is
+    // right for one that has been around; here they were added in this dialog
+    // and cancelling means none of it happened.
+    const kids = id != null ? kidsOf(id) : [];
     resetDraft();
     if (id != null) {
+      for (const k of kids) {
+        await fetch(`/api/tasks/${k.id}/delete`, { method: "DELETE" }).catch(() => {});
+      }
       await fetch(`/api/tasks/${id}/delete`, { method: "DELETE" }).catch(() => {});
       await load();
     }
@@ -1259,6 +1298,52 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
                 <StatusSelect id="new-task-status" value={creating.status} statuses={statuses}
                               onChange={(v) => setCreating({ ...creating, status: v })} />
               </div>
+            </div>
+
+            {/* Subtasks. They hang off the task this dialog has already filed,
+                so there is nothing to attach them to until it has a title. */}
+            <div>
+              <span className="mb-1 block text-xs font-medium text-ink-2">Subtasks</span>
+              {draftId == null ? (
+                <p className="text-xs text-ink-3">
+                  Give the task a title first - subtasks hang off it.
+                </p>
+              ) : (
+                <>
+                  {kidsOf(draftId).length > 0 && (
+                    <ul className="mb-2 space-y-1">
+                      {kidsOf(draftId).map((k) => (
+                        <li key={k.id}
+                            className="flex items-center gap-2 rounded-md bg-subtle/60 px-2 py-1.5">
+                          <Icon name="subtasks" className="h-3.5 w-3.5 shrink-0 text-ink-3" />
+                          <span className="min-w-0 flex-1 truncate text-sm text-ink">{k.title}</span>
+                          <button type="button" onClick={() => void removeDraftSubtask(k.id)}
+                                  title="Remove this subtask"
+                                  className="shrink-0 rounded p-0.5 text-ink-3 transition hover:text-danger focus-ring">
+                            <Icon name="x" className="h-3.5 w-3.5" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={subTitle}
+                      onChange={(e) => setSubTitle(e.target.value)}
+                      onKeyDown={(e) => {
+                        // Enter adds the subtask. Without this it would reach
+                        // the title field's handler and close the dialog.
+                        if (e.key === "Enter") { e.preventDefault(); void addDraftSubtask(); }
+                      }}
+                      placeholder="Add a subtask…"
+                      className="h-9 min-w-0 flex-1 rounded-md bg-surface px-2.5 text-sm text-ink
+                                 ring-control placeholder:text-ink-3 focus-ring"
+                    />
+                    <Button icon="plus" onClick={() => void addDraftSubtask()}
+                            disabled={!subTitle.trim()}>Add</Button>
+                  </div>
+                </>
+              )}
             </div>
 
           </div>
