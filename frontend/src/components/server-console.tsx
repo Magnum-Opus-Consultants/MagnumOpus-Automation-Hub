@@ -41,7 +41,10 @@ export function ServerConsole({ project, serverId }: { project: string; serverId
       const fit = new FitAddon();
       term.loadAddon(fit);
       term.open(box.current);
-      fit.fit();
+      /* Fitting on the frame after open: straight away the element has been
+         added but not laid out, so the row count comes out one short and the
+         last line sits below the visible box. */
+      requestAnimationFrame(() => { if (!disposed) fit.fit(); });
       term.writeln("Connecting to the server console…");
 
       const r = await fetch(
@@ -110,7 +113,12 @@ export function ServerConsole({ project, serverId }: { project: string; serverId
           </button>
         )}
       </div>
-      <div ref={box} className="h-[420px] bg-[#0b0f14] p-2" />
+      {/* The padding is on the wrapper, not on the element xterm measures: it
+          sizes its rows from that element, so padding there costs a row and
+          the prompt ends up clipped against the bottom edge. */}
+      <div className="bg-[#0b0f14] p-2">
+        <div ref={box} className="h-[460px]" />
+      </div>
     </div>
   );
 }

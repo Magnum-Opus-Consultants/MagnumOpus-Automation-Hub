@@ -339,36 +339,60 @@ def _github_fallback(rec):
     }
 
 
+def _scan_repo(rec):
+    """Read one repository's current state, from its clone or from GitHub.
+
+    This is the expensive part - a git subprocess, or a GitHub request - so the
+    result is kept on the row and only worked out again when asked for.
+    """
+    h = _repo_history(rec, limit=1)
+    state = {
+        'available': h['available'],
+        'error': h['error'],
+        'branch': h['branch'],
+        'dirty': h['dirty'],
+        'ahead': h['ahead'],
+        'behind': h['behind'],
+        'remote': h['remote'],
+        'last_commit': h['commits'][0] if h['commits'] else None,
+        'source': 'git' if h['available'] else None,
+    }
+    # No local clone does not mean unreadable. If the repo is on the connected
+    # GitHub account, its history is a request away - and saying "unreadable"
+    # about something we can plainly read is just wrong.
+    if not h['available']:
+        state.update(_github_fallback(rec))
+    return state
+
+
+def _store_scan(rec):
+    from django.utils import timezone
+    rec.scan = _scan_repo(rec)
+    rec.scanned_at = timezone.now()
+    rec.save(update_fields=['scan', 'scanned_at'])
+    return rec.scan
+
+
 def api_repos(request):
     err = _require_module(request, 'repos')
     if err:
         return err
+    # ?refresh=1 is the Refresh button: read every repository again. Otherwise
+    # the stored reading is served, and only a repository never read before is
+    # looked at - so the page costs nothing to open twice.
+    refresh = request.GET.get('refresh') == '1'
     rows = []
     for r in Repository.objects.select_related('server').all():
         d = _repo_dict(r)
-        h = _repo_history(r, limit=1)
-        d.update({
-            'available': h['available'],
-            'error': h['error'],
-            'branch': h['branch'],
-            'dirty': h['dirty'],
-            'ahead': h['ahead'],
-            'behind': h['behind'],
-            'remote': h['remote'],
-            'last_commit': h['commits'][0] if h['commits'] else None,
-            'source': 'git' if h['available'] else None,
-        })
-        # No local clone does not mean unreadable. If the repo is on the
-        # connected GitHub account, its history is a request away - and saying
-        # "unreadable" about something we can plainly read is just wrong.
-        if not h['available']:
-            d.update(_github_fallback(r))
+        state = _store_scan(r) if (refresh or r.scanned_at is None) else r.scan
+        d.update(state or {})
+        d['scanned_at'] = r.scanned_at.isoformat() if r.scanned_at else None
         rows.append(d)
     return JsonResponse({
         'repos': rows,
         'total': len(rows),
-        'linked': sum(1 for r in rows if r['available']),
-        'dirty': sum(1 for r in rows if (r['dirty'] or 0) > 0),
+        'linked': sum(1 for r in rows if r.get('available')),
+        'dirty': sum(1 for r in rows if (r.get('dirty') or 0) > 0),
     })
 
 
@@ -458,9 +482,14 @@ def api_repo_update(request, pk):
     rec = Repository.objects.filter(id=pk).first()
     if not rec:
         return JsonResponse({'detail': 'Not found.'}, status=404)
+    was = (rec.local_path, rec.remote_url)
     _apply_repo_fields(rec, _body(request))
     if not rec.name:
         return JsonResponse({'detail': 'A repository name is required.'}, status=400)
+    # Point it somewhere else and the stored reading describes the old place,
+    # so it is thrown away and taken again the next time the list is opened.
+    if was != (rec.local_path, rec.remote_url):
+        rec.scan, rec.scanned_at = {}, None
     rec.save()
     return JsonResponse(_repo_dict(rec))
 

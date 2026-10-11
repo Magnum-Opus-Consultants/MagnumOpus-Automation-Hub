@@ -629,6 +629,15 @@ class Repository(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # The last read of this repository's state - branch, latest commit, and
+    # whether a working copy is ahead, behind or dirty. Kept because working it
+    # out costs either a git subprocess or a GitHub request per repository, and
+    # the list page asks for all of them at once; doing that on every load left
+    # the page saying "Loading repositories…" for as long as GitHub took to
+    # answer twenty times over. Refreshed on demand, not per request.
+    scan = models.JSONField(default=dict, blank=True)
+    scanned_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         db_table = 'repository_record'
         ordering = ['order', 'name']

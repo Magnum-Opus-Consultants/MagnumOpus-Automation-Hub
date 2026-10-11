@@ -98,12 +98,18 @@ export default function ReposPage() {
 
   // Every state update happens after an await, so nothing re-renders
   // synchronously while the mount effect is still running.
-  const load = useCallback(async () => {
+  const load = useCallback(async (rescan = false) => {
     try {
-      // Every repository on the GitHub account is listed, not only the ones
-      // made through Sentinel: anything new on GitHub is tracked first.
-      await fetch("/api/github/sync", { method: "POST" }).catch(() => null);
-      const r = await fetch("/api/repos");
+      // Both of these cost a round trip to GitHub for every repository on the
+      // account, which is why they happen on an explicit refresh rather than
+      // every time the page is opened. Otherwise the stored reading is served
+      // and anything never read before is read once.
+      if (rescan) {
+        // Every repository on the GitHub account is listed, not only the ones
+        // made through Sentinel: anything new on GitHub is tracked first.
+        await fetch("/api/github/sync", { method: "POST" }).catch(() => null);
+      }
+      const r = await fetch(`/api/repos${rescan ? "?refresh=1" : ""}`);
       if (!r.ok) throw new Error(String(r.status));
       const d: Payload = await r.json();
       setData(d);
@@ -115,8 +121,8 @@ export default function ReposPage() {
     }
   }, []);
 
-  /** Refresh from a user action — shows the spinner, then reloads. */
-  const refresh = useCallback(() => { setLoading(true); void load(); }, [load]);
+  /** Refresh from a user action — reads every repository again, then reloads. */
+  const refresh = useCallback(() => { setLoading(true); void load(true); }, [load]);
 
   useEffect(() => {
     fetch("/api/auth/me")
