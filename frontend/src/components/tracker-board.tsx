@@ -1027,7 +1027,16 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
           e.stopPropagation();
           e.dataTransfer.effectAllowed = "move";
           e.dataTransfer.setData("text/plain", String(t.id));
-          setDragId(t.id);
+          /* Take the picture of the card explicitly, and only then fade it.
+             The browser snapshots the element after this handler returns, so
+             marking it dragged here meant it photographed a card already
+             fading out - all that survived was the priority strip, which is
+             why only the top of the card appeared to move. The offset keeps
+             the card under the cursor at the point it was grabbed. */
+          const el = e.currentTarget;
+          const box = el.getBoundingClientRect();
+          e.dataTransfer.setDragImage(el, e.clientX - box.left, e.clientY - box.top);
+          requestAnimationFrame(() => setDragId(t.id));
         }}
         onDragEnd={() => { setDragId(null); setDragOver(null); }}
         onClick={() => openEditor(t)}
