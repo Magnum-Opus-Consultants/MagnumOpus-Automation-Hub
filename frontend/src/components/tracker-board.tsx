@@ -927,8 +927,16 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
     try {
       await fetch(`/api/tasks/${t.id}/delete`, { method: "DELETE" });
       if (selected === t.id) {
-        setSelected(null);
-        setForm(null);
+        /* Deleting a subtask goes back to its parent rather than closing on
+           nothing - the parent is where you were before you opened it, and
+           usually there is another subtask to deal with next. */
+        const up = t.parent != null ? byId.get(t.parent) : null;
+        if (up) {
+          openEditor(up);
+        } else {
+          setSelected(null);
+          setForm(null);
+        }
       }
       await load();
     } finally {
@@ -1008,14 +1016,26 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
     return (
       <article
         draggable
-        onDragStart={() => setDragId(t.id)}
+        /* dataTransfer has to be filled in for this to be a card drag. Without
+           it the browser has nothing to carry, so it falls back to dragging
+           whatever text happens to be selected - which is why a drag across
+           the board sometimes picked up half the page instead of the card.
+           select-none stops a slow press selecting the title in the first
+           place, and the card is told to drag itself rather than let an
+           ancestor claim the gesture. */
+        onDragStart={(e) => {
+          e.stopPropagation();
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("text/plain", String(t.id));
+          setDragId(t.id);
+        }}
         onDragEnd={() => { setDragId(null); setDragOver(null); }}
         onClick={() => openEditor(t)}
         onContextMenu={(e) => {
           e.preventDefault();
           setMenu({ x: e.clientX, y: e.clientY, task: t });
         }}
-        className={`cursor-grab overflow-hidden rounded-lg bg-surface ring-panel transition hover:ring-brand/40 active:cursor-grabbing ${
+        className={`cursor-grab select-none overflow-hidden rounded-lg bg-surface ring-panel transition hover:ring-brand/40 active:cursor-grabbing ${
           dragId === t.id ? "opacity-40" : ""
         }`}
       >
@@ -1290,9 +1310,16 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
             return (
               <section
                 key={col.key}
-                onDragOver={col.droppable ? (e) => { e.preventDefault(); setDragOver(col.key); } : undefined}
+                /* dropEffect to match the card's effectAllowed, so the cursor
+                   says "move" rather than the default "copy", and the drop is
+                   claimed here rather than bubbling on to the page. */
+                onDragOver={col.droppable ? (e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  setDragOver(col.key);
+                } : undefined}
                 onDragLeave={() => setDragOver((c) => (c === col.key ? null : c))}
-                onDrop={col.droppable ? () => onDrop("status", col.droppable!) : undefined}
+                onDrop={col.droppable ? (e) => { e.preventDefault(); onDrop("status", col.droppable!); } : undefined}
                 className={`flex w-72 shrink-0 flex-col rounded-xl bg-subtle/50 ring-1 ring-inset transition ${
                   isOver ? "ring-2 ring-brand" : "ring-stroke/60"
                 }`}
@@ -1713,7 +1740,21 @@ export function TrackerBoard({ embedded }: { embedded?: EmbeddedScope } = {}) {
               <div className="min-w-0 flex-1">
                 <p className="mb-0.5 flex items-center gap-2 text-xs text-ink-3">
                   <span>#{sel.id}</span>
-                  {sel.parent != null && <span className="truncate">· subtask of {byId.get(sel.parent)?.title}</span>}
+                  {/* The parent is the way back out of a subtask: opening a
+                      subtask replaced the task that led to it, and without
+                      this the only route back was to close and find it
+                      again. */}
+                  {sel.parent != null && byId.get(sel.parent) && (
+                    <button
+                      type="button"
+                      onClick={() => openEditor(byId.get(sel.parent!)!)}
+                      title={`Back to ${byId.get(sel.parent)?.title}`}
+                      className="flex min-w-0 items-center gap-1 truncate text-ink-3 underline-offset-2 transition hover:text-ink hover:underline focus-ring"
+                    >
+                      <Icon name="back" className="h-3 w-3 shrink-0" />
+                      <span className="truncate">subtask of {byId.get(sel.parent)?.title}</span>
+                    </button>
+                  )}
                   {sel.project_name && <span className="truncate">· {sel.project_name}</span>}
                 </p>
                 <h2 className="truncate text-base font-semibold text-ink">{sel.title}</h2>

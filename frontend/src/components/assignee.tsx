@@ -3,14 +3,14 @@
 /**
  * Who a task belongs to.
  *
- * A row of avatars that toggle. With eight or so people a dropdown would be
- * three interactions (open, find, close) for something that should be one, and
- * it would hide who is already on the task behind a closed control.
- *
- * Several people can hold one task. The workload view books the full estimate
+ * A dropdown: closed it shows who holds the task, open it lists everyone to
+ * pick from. Several people can still hold one task, so the rows toggle rather
+ * than choosing one and closing - the workload view books the full estimate
  * against each of them, because splitting it would invent a division nobody
- * recorded - worth knowing before assigning three people to a 40-hour job.
+ * recorded, which is worth knowing before putting three people on a 40-hour
+ * job.
  */
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Sidebar";
 
 export type Person = { id: number; name: string; username?: string };
@@ -26,11 +26,33 @@ export function AssigneePicker({ people, value, onChange, label = "Assigned to" 
   onChange: (ids: number[]) => void;
   label?: string;
 }) {
+  const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLDivElement>(null);
+
   const toggle = (id: number) =>
     onChange(value.includes(id) ? value.filter((v) => v !== id) : [...value, id]);
 
+  /* Closing on a click anywhere else and on Escape: the list stays open while
+     several people are picked, so it needs a way out that is not a second
+     click on the button. */
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: MouseEvent) => {
+      if (!wrap.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("mousedown", away);
+      document.removeEventListener("keydown", key);
+    };
+  }, [open]);
+
+  const chosen = people.filter((p) => value.includes(p.id));
+
   return (
-    <div>
+    <div ref={wrap} className="relative">
       <div className="mb-1.5 flex items-baseline justify-between">
         <span className="text-[13px] font-medium text-ink">{label}</span>
         {value.length > 0 && (
@@ -40,33 +62,58 @@ export function AssigneePicker({ people, value, onChange, label = "Assigned to" 
           </button>
         )}
       </div>
+
       {people.length === 0 ? (
         <p className="text-xs text-ink-3">No people to assign to yet.</p>
       ) : (
-        <div className="flex flex-wrap gap-1.5">
-          {people.map((p) => {
-            const on = value.includes(p.id);
-            return (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => toggle(p.id)}
-                aria-pressed={on}
-                title={p.name}
-                className={`flex items-center gap-1.5 rounded-full py-1 pl-1 pr-2.5 text-xs transition focus-ring ${
-                  on ? "bg-brand text-white"
-                     : "bg-subtle text-ink-2 hover:bg-subtle hover:text-ink"}`}
-              >
-                <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold ${
-                  on ? "bg-white/25 text-white" : "bg-surface text-ink-3"}`}>
-                  {initials(p.name)}
+        <>
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            aria-haspopup="listbox"
+            className="flex h-9 w-full items-center gap-2 rounded-lg bg-canvas px-2.5 text-left text-[13px] text-ink ring-control focus-ring"
+          >
+            {chosen.length === 0 ? (
+              <span className="flex-1 text-ink-3">Unassigned</span>
+            ) : (
+              <>
+                <AssigneeStack people={chosen} />
+                <span className="min-w-0 flex-1 truncate">
+                  {chosen.map((p) => p.name).join(", ")}
                 </span>
-                <span className="max-w-28 truncate">{p.name}</span>
-                {on && <Icon name="check" className="h-3 w-3 shrink-0" />}
-              </button>
-            );
-          })}
-        </div>
+              </>
+            )}
+            <Icon name="chevron" className={`h-4 w-4 shrink-0 text-ink-3 transition ${open ? "rotate-180" : ""}`} />
+          </button>
+
+          {open && (
+            <ul role="listbox" aria-multiselectable
+                className="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-lg bg-surface py-1 shadow-lg ring-1 ring-stroke">
+              {people.map((p) => {
+                const on = value.includes(p.id);
+                return (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={on}
+                      onClick={() => toggle(p.id)}
+                      className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-[13px] transition hover:bg-subtle"
+                    >
+                      <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold ${
+                        on ? "bg-brand text-white" : "bg-subtle text-ink-3"}`}>
+                        {initials(p.name)}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-ink">{p.name}</span>
+                      {on && <Icon name="check" className="h-4 w-4 shrink-0 text-brand" />}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
       )}
     </div>
   );
