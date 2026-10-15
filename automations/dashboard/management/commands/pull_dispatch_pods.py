@@ -226,6 +226,8 @@ def build(code, r, now, tz):
     parties = sorted(r.get('BookingParties', ()))
     port = r.get('WDL_RL_NKLastDischargePort') or ''
     local = dispatched.astimezone(tz)
+    cutoff = _parse(r.get('WDL_CTOCutOffTime'))
+    cutoff_local = cutoff.astimezone(tz) if cutoff else None
 
     return DispatchPod(
         branch=code,
@@ -240,7 +242,7 @@ def build(code, r, now, tz):
         in_awa_view=(code == 'DOR' and bool(port)
                      and any(VIEW_BOOKING_WORD.search(p) for p in parties)),
         transport_mode=(r.get('WDL_TransportMode') or '')[:10],
-        cto_cutoff=_parse(r.get('WDL_CTOCutOffTime')),
+        cto_cutoff=cutoff,
         dtu_count=len(units),
         dtus=', '.join(u.get('WDH_ReferenceNumber') or '' for u in units)[:400],
         vehicles=', '.join(u.get('WDH_VehicleReference') or '' for u in units)[:400],
@@ -259,6 +261,8 @@ def build(code, r, now, tz):
         dispatched_local=local.strftime('%Y-%m-%d %H:%M'),
         pod_uploaded_local=(first_pod.astimezone(tz).strftime('%Y-%m-%d %H:%M')
                             if first_pod else ''),
+        cto_cutoff_date=cutoff_local.date() if cutoff_local else None,
+        cto_cutoff_local=cutoff_local.strftime('%Y-%m-%d %H:%M') if cutoff_local else '',
         pulled_at=now,
     )
 

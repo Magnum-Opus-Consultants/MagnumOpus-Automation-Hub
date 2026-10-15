@@ -2968,6 +2968,10 @@ class DispatchPod(models.Model):
     dispatched_date = models.DateField(db_index=True)
     dispatched_local = models.CharField(max_length=16, blank=True, default='')
     pod_uploaded_local = models.CharField(max_length=16, blank=True, default='')
+    # The CTO cut-off in the same local time. Bruce's CargoWise view picks load
+    # lists by this date, not by the day they went out.
+    cto_cutoff_date = models.DateField(null=True, blank=True)
+    cto_cutoff_local = models.CharField(max_length=16, blank=True, default='')
 
     pulled_at = models.DateTimeField()
 
